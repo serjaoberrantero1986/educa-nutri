@@ -2759,7 +2759,13 @@ async function sendWhatsappMessage(phone: string, text: string) {
     console.error("Erro ao carregar configurações dinâmicas de WhatsApp do Firestore:", sanitizeError(err));
   }
 
-  const url = `${evolutionUrl}/message/sendText/${instance}`;
+  // Normalize base URL to prevent double slashes (e.g. site//message/)
+  let baseUrl = evolutionUrl.trim();
+  if (baseUrl.endsWith("/")) {
+    baseUrl = baseUrl.slice(0, -1);
+  }
+
+  const url = `${baseUrl}/message/sendText/${encodeURIComponent(instance)}`;
   
   const payload = {
     number: phone,
@@ -2779,7 +2785,8 @@ async function sendWhatsappMessage(phone: string, text: string) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "apikey": apiKey
+        "apikey": apiKey,
+        "api-key": apiKey
       },
       body: JSON.stringify(payload)
     });
@@ -2818,7 +2825,13 @@ async function getBase64FromMediaMessage(messageData: any) {
     console.error("Erro ao carregar configurações dinâmicas de WhatsApp do Firestore para mídia:", sanitizeError(err));
   }
 
-  const url = `${evolutionUrl}/chat/getBase64FromMediaMessage/${instance}`;
+  // Normalize base URL to prevent double slashes (e.g. site//chat/)
+  let baseUrl = evolutionUrl.trim();
+  if (baseUrl.endsWith("/")) {
+    baseUrl = baseUrl.slice(0, -1);
+  }
+
+  const url = `${baseUrl}/chat/getBase64FromMediaMessage/${encodeURIComponent(instance)}`;
   const payload = {
     message: messageData
   };
@@ -2828,7 +2841,8 @@ async function getBase64FromMediaMessage(messageData: any) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "apikey": apiKey
+        "apikey": apiKey,
+        "api-key": apiKey
       },
       body: JSON.stringify(payload)
     });
@@ -2879,6 +2893,7 @@ async function logWhatsappWebhook(data: {
 }
 
 // Evolution API Webhook Endpoint - Webhook de Conversação e Lançamento de Dietas
+// Evolution API Webhook Endpoint - Webhook de Conversação e Lançamento de Dietas
 app.post("/api/webhook/whatsapp", async (req, res) => {
   console.log("Recebido Webhook WhatsApp (Evolution API):", JSON.stringify(req.body));
 
@@ -2888,19 +2903,44 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
   }
 
   // Identify typical Evolution API event types - case insensitive
-  const eventName = (body.event || "").toLowerCase();
-  const isMessageUpsert = eventName === "messages.upsert" || eventName === "messages_upsert" || !body.event;
-  if (!isMessageUpsert) {
+  const eventName = String(body.event || "").toLowerCase();
+  
+  // Accept any event containing "messages" or "message" or "upsert" or "receive"
+  // and make sure that if the payload looks like a webhook message, we don't reject it aggressively.
+  const isMessageEvent = 
+    eventName.includes("message") || 
+    eventName.includes("upsert") || 
+    eventName.includes("receive") || 
+    !body.event;
+
+  if (!isMessageEvent) {
     return res.json({ status: "skipped_non_message_event" });
   }
 
-  const data = body.data || body;
-  const key = data.key;
-  if (!key || key.fromMe === true) {
+  // Resolve data object from body.data (can be object or array) or fallback to body representation
+  let data = body.data || body;
+  if (Array.isArray(data)) {
+    data = data[0];
+  }
+
+  if (!data) {
+    return res.status(400).json({ error: "Dados do webhook inválidos" });
+  }
+
+  const key = data.key || {};
+  const fromMe = 
+    key.fromMe === true || 
+    key.fromMe === "true" || 
+    data.fromMe === true || 
+    data.fromMe === "true" || 
+    data.from_me === true || 
+    data.from_me === "true";
+  
+  if (fromMe) {
     return res.json({ status: "skipped_from_me" });
   }
 
-  const senderJid = key.remoteJid || data.sender || "";
+  const senderJid = key.remoteJid || data.sender || data.remoteJid || data.senderJid || data.phone || "";
   if (!senderJid) {
     return res.status(400).json({ error: "Id/telefone do remetente ausente" });
   }
@@ -2911,7 +2951,10 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
   }
 
   // Handle nested message structure correctly in both Evolution API levels
-  const innerMessage = data.message?.message || data.message || {};
+  let innerMessage = data.message?.message || data.message || {};
+  if (Array.isArray(innerMessage)) {
+    innerMessage = innerMessage[0] || {};
+  }
 
   // 1. Resolve text input from conversion, caption, or audio transcription
   let text = "";
@@ -2919,20 +2962,42 @@ app.post("/api/webhook/whatsapp", async (req, res) => {
     text = innerMessage.conversation;
   } else if (innerMessage.extendedTextMessage?.text) {
     text = innerMessage.extendedTextMessage.text;
+  } else if (innerMessage.extendedTextMessage?.textMessage?.text) {
+    text = innerMessage.extendedTextMessage.textMessage.text;
   } else if (innerMessage.imageMessage?.caption) {
     text = innerMessage.imageMessage.caption;
   } else if (data.conversation) {
     text = data.conversation;
+  } else if (data.text) {
+    text = data.text;
   } else if (body.text) {
     text = body.text;
+  } else if (typeof innerMessage === "string") {
+    text = innerMessage;
   }
 
-  const transcription = innerMessage.audioMessage?.transcription || body.transcription || "";
+  const transcription = innerMessage.audioMessage?.transcription || body.transcription || data.transcription || "";
   if (transcription) {
     text = transcription;
   }
 
   const hasImage = !!innerMessage.imageMessage;
+  
+  // Check if it's an audio message but lacks transcription
+  const hasAudio = !!innerMessage.audioMessage;
+  if (hasAudio && !text) {
+    const audioMsg = "Registo de áudio recebido! Para que eu possa processar por áudio, certifique-se de que a transcrição automática está ativa no seu Evolution API, ou envie uma mensagem descritiva por texto ou uma foto da sua refeição!";
+    await sendWhatsappMessage(rawPhone, audioMsg);
+    await logWhatsappWebhook({
+      phone: rawPhone,
+      status: "audio_missing_transcription",
+      receivedText: "[Mensagem de Áudio Sem Transcrição]",
+      responseMessage: audioMsg,
+      rawBody: body
+    });
+    return res.json({ status: "audio_missing_transcription" });
+  }
+
   let imageBase64: string | null = null;
   let imageMimeType: string | null = null;
 
@@ -3039,7 +3104,8 @@ Por favor, abra o aplicativo SportNutri, acesse a aba Meu Perfil e adicione o se
       return res.json({ status: "user_not_found", phone: rawPhone });
     }
 
-    // 2. Validate privileges
+    // 2. Validate privileges (Admin/Developer are automatically authorized for testing!)
+    const isAdminUser = profileData.role === "admin" || profileData.email === "edsonricardosouza@gmail.com";
     const now = Date.now();
     const hasPremium = profileData.premium_access_until
       ? (profileData.premium_access_until === "unlimited" || new Date(profileData.premium_access_until).getTime() > now)
@@ -3049,7 +3115,7 @@ Por favor, abra o aplicativo SportNutri, acesse a aba Meu Perfil e adicione o se
       ? (profileData.whatsapp_access_until === "unlimited" || new Date(profileData.whatsapp_access_until).getTime() > now)
       : false;
 
-    const isAuthorized = hasPremium || hasWhatsappPass;
+    const isAuthorized = hasPremium || hasWhatsappPass || isAdminUser;
 
     if (!isAuthorized) {
       const unauthorizedMsg = `Olá, ${profileData.username || "Atleta"}! 🏋️‍♂️
