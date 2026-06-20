@@ -82,8 +82,8 @@ export async function searchFoodsApi(foodInput: string): Promise<Food[]> {
     const seenNames = new Set<string>();
     const mergedResults: Food[] = [];
 
-    // Prioritize browser-retrieved real-time results first, then server database results
-    const combined = [...clientResults, ...serverResults];
+    // Prioritize high-quality curated server database results first (SQLite / TACO catalog), then browser-retrieved real-time results
+    const combined = [...serverResults, ...clientResults];
 
     combined.forEach(item => {
       const lowerName = item.name.toLowerCase().trim();
