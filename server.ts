@@ -13,17 +13,26 @@ import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 
 // Load Firebase Config safely via FS to avoid relative CJS/ESM issues
-const firebaseConfig = JSON.parse(
-  fs.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf8")
-);
+let firebaseConfig: any = {};
+try {
+  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+  if (fs.existsSync(configPath)) {
+    firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  }
+} catch (e) {
+  console.log("firebase-applet-config.json read bypassed, using environment variables");
+}
+
+const firebaseProjectId = process.env.VITE_FIREBASE_PROJECT_ID || firebaseConfig.projectId;
+const firebaseDatabaseId = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || firebaseConfig.firestoreDatabaseId;
 
 if (admin.apps.length === 0) {
   admin.initializeApp({
-    projectId: firebaseConfig.projectId
+    projectId: firebaseProjectId
   });
 }
-const firestore = firebaseConfig.firestoreDatabaseId
-  ? getFirestore(admin.apps[0], firebaseConfig.firestoreDatabaseId)
+const firestore = firebaseDatabaseId
+  ? getFirestore(admin.apps[0], firebaseDatabaseId)
   : getFirestore(admin.apps[0]);
 
 function sanitizeError(err: any): string {
@@ -35,9 +44,20 @@ async function getDynamicAiConfig(req?: express.Request) {
   const headerKey = req?.headers["x-ai-api-key"] as string;
   const headerModel = req?.headers["x-ai-model"] as string;
 
+  const provider = headerProvider || process.env.AI_PROVIDER || "Google Gemini";
+  let apiKey = headerKey || process.env.AI_API_KEY || "";
+
+  if (!apiKey) {
+    if (provider === "OpenAI" || provider.toLowerCase().includes("openai")) {
+      apiKey = process.env.OPENAI_API_KEY || "";
+    } else {
+      apiKey = process.env.GEMINI_API_KEY || "";
+    }
+  }
+
   return {
-    ai_provider: headerProvider || process.env.AI_PROVIDER || "Google Gemini",
-    ai_api_key: headerKey || process.env.AI_API_KEY || process.env.GEMINI_API_KEY || "",
+    ai_provider: provider,
+    ai_api_key: apiKey,
     ai_model: headerModel || process.env.AI_MODEL || "gemini-3.5-flash"
   };
 }
