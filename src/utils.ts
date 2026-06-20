@@ -3,16 +3,19 @@ import { UserData, DietPlan, Food, Meal } from "./types";
 export const getApiUrl = (path: string): string => {
   const isCapacitor = typeof window !== "undefined" && ((window as any).Capacitor !== undefined || window.location.protocol === "capacitor:");
   
-  // Detect if the app is hosted on an external platform like Vercel (e.g., sportnutri.vercel.app)
-  const isExternalHost = typeof window !== "undefined" && 
-    window.location.hostname !== "localhost" && 
-    window.location.hostname !== "127.0.0.1" && 
-    !window.location.hostname.endsWith(".run.app");
-
-  if (isCapacitor || isExternalHost) {
-    // Point to the live production server domain
+  if (isCapacitor) {
+    // For mobile environments like Capacitor, target the absolute host address.
+    const customApiUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_APP_URL;
+    if (customApiUrl) {
+      const baseUrl = customApiUrl.endsWith('/') ? customApiUrl.slice(0, -1) : customApiUrl;
+      return `${baseUrl}${path}`;
+    }
+    // Mobile fallback to sandboxed backend address
     return `https://ais-pre-pcmdsmwuzuxfdscjzuiifh-60598086565.us-east1.run.app${path}`;
   }
+  
+  // For web environments (local development, preview containers, and custom production domains),
+  // we always route relatively to ensure clients hit the actual active full-stack server container!
   return path;
 };
 
