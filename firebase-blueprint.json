@@ -1,0 +1,225 @@
+{
+  "entities": {
+    "Profile": {
+      "title": "Profile",
+      "description": "User profile containing level, XP, league and custom meals.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "full_name": { "type": "string" },
+        "avatar_url": { "type": "string" },
+        "cpf": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "user_data": { "type": "object" },
+        "xp": { "type": "integer" },
+        "streak": { "type": "integer" },
+        "last_activity_date": { "type": "string" },
+        "league": { "type": "string", "enum": ["Bronze", "Prata", "Ouro", "Safira", "Diamante"] },
+        "custom_meals": { "type": "array" }
+      },
+      "required": ["id", "username", "xp", "streak", "league"]
+    },
+    "Food": {
+      "title": "Food",
+      "description": "Food item nutritional details.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "integer" },
+        "name": { "type": "string" },
+        "category": { "type": "string", "enum": ["proteina", "carboidrato", "fruta", "vegetal", "gordura", "laticinio"] },
+        "calories": { "type": "integer" },
+        "protein": { "type": "integer" },
+        "carbs": { "type": "integer" },
+        "fat": { "type": "integer" },
+        "portion": { "type": "string" },
+        "measure_unit": { "type": "string" },
+        "grams_per_unit": { "type": "integer" }
+      },
+      "required": ["id", "name", "category", "calories", "protein", "carbs", "fat", "measure_unit", "grams_per_unit"]
+    },
+    "FoodLog": {
+      "title": "FoodLog",
+      "description": "Meal food logs recorded by users.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "meal_type": { "type": "string" },
+        "food_name": { "type": "string" },
+        "calories": { "type": "integer" },
+        "protein": { "type": "integer" },
+        "carbs": { "type": "integer" },
+        "fat": { "type": "integer" },
+        "amount": { "type": "number" },
+        "unit": { "type": "string" },
+        "logged_at": { "type": "string", "format": "date-time" },
+        "added_via": { "type": "string", "description": "Method of logging (chat, audio, photo, bot)" }
+      },
+      "required": ["id", "user_id", "meal_type", "food_name", "calories", "protein", "carbs", "fat", "amount", "unit", "logged_at"]
+    },
+    "WaterLog": {
+      "title": "WaterLog",
+      "description": "Water logging details recorded by users.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "amount_ml": { "type": "integer" },
+        "logged_at": { "type": "string", "format": "date-time" },
+        "added_via": { "type": "string", "description": "Method of logging (chat, audio, photo, bot)" }
+      },
+      "required": ["id", "user_id", "amount_ml", "logged_at"]
+    },
+    "Config": {
+      "title": "Config",
+      "description": "Global application configurations such as store prices.",
+      "type": "object",
+      "properties": {
+        "streak_freeze_cost": { "type": "integer" },
+        "premium_pass_cost": { "type": "integer" },
+        "assistant_pass_cost": { "type": "integer" },
+        "whatsapp_pass_cost": { "type": "integer" },
+        "monthly_premium_price": { "type": "number" }
+      }
+    },
+    "WhatsappWebhookLog": {
+      "title": "WhatsappWebhookLog",
+      "description": "Logged messages and requests from/to the WhatsApp Webhook Evolution API.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "phone": { "type": "string" },
+        "receivedText": { "type": "string" },
+        "hasImage": { "type": "boolean" },
+        "status": { "type": "string" },
+        "error": { "type": "string" },
+        "responseType": { "type": "string" },
+        "responseMessage": { "type": "string" },
+        "rawBody": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "phone", "status"]
+    },
+    "WorkoutProfile": {
+      "title": "WorkoutProfile",
+      "description": "User workout configuration profile and muscle fatigue statistics.",
+      "type": "object",
+      "properties": {
+        "experience": { "type": "string", "enum": ["beginner", "intermediate", "advanced"] },
+        "daysPerWeek": { "type": "integer" },
+        "workoutDuration": { "type": "integer" },
+        "equipment": { "type": "array" },
+        "limitations": { "type": "array" },
+        "muscleFatigue": { "type": "object" },
+        "divisionType": { "type": "string" }
+      },
+      "required": ["experience", "daysPerWeek", "workoutDuration", "equipment", "limitations", "muscleFatigue"]
+    },
+    "WorkoutRoutine": {
+      "title": "WorkoutRoutine",
+      "description": "Individualized multi-day generated workout routines.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "division": { "type": "string" },
+        "days": { "type": "array" }
+      },
+      "required": ["id", "user_id", "division", "days"]
+    },
+    "ExerciseLog": {
+      "title": "ExerciseLog",
+      "description": "Historical logged performance records for single exercises completed.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "exercicio": { "type": "string" },
+        "loggedAt": { "type": "string" },
+        "series": { "type": "array" },
+        "esforco": { "type": "integer" },
+        "observacoes": { "type": "string" }
+      },
+      "required": ["id", "user_id", "exercicio", "loggedAt", "series", "esforco"]
+    },
+    "WorkoutEquipment": {
+      "title": "WorkoutEquipment",
+      "description": "Administrator custom registered academy equipment.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string", "enum": ["pesos_livres", "maquinas", "polias", "calistenia"] },
+        "imageUrl": { "type": "string" },
+        "description": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "name", "category", "created_at"]
+    },
+    "AdminExercise": {
+      "title": "AdminExercise",
+      "description": "Administrator custom registered training exercise.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "mainGroup": { "type": "string", "enum": ["peito", "costas", "pernas", "biceps", "triceps", "ombros", "abdome"] },
+        "equipment": { "type": "string", "enum": ["pesos_livres", "maquinas", "polias", "calistenia"] },
+        "secondaryGroups": { "type": "array" },
+        "level": { "type": "string", "enum": ["iniciante", "intermediario", "avancado"] },
+        "type": { "type": "string", "enum": ["composto", "isolador"] },
+        "gifUrl": { "type": "string" },
+        "created_at": { "type": "string" }
+      },
+      "required": ["id", "name", "mainGroup", "equipment", "level", "type", "created_at"]
+    }
+  },
+  "firestore": {
+    "/profiles/{profileId}": {
+      "schema": "Profile",
+      "description": "User profile collection."
+    },
+    "/foods/{foodId}": {
+      "schema": "Food",
+      "description": "Food items repository."
+    },
+    "/food_logs/{logId}": {
+      "schema": "FoodLog",
+      "description": "Logged meals registry."
+    },
+    "/water_logs/{logId}": {
+      "schema": "WaterLog",
+      "description": "Logged water quantities."
+    },
+    "/configs/{configId}": {
+      "schema": "Config",
+      "description": "Global configurations collection."
+    },
+    "/whatsapp_webhook_logs/{logId}": {
+      "schema": "WhatsappWebhookLog",
+      "description": "Webhook diagnostics collection."
+    },
+    "/workout_profiles/{profileId}": {
+      "schema": "WorkoutProfile",
+      "description": "User workout profile."
+    },
+    "/workout_routines/{routineId}": {
+      "schema": "WorkoutRoutine",
+      "description": "Generated routines collection."
+    },
+    "/exercise_logs/{logId}": {
+      "schema": "ExerciseLog",
+      "description": "User logged exercises historical data."
+    },
+    "/workout_equipments/{equipmentId}": {
+      "schema": "WorkoutEquipment",
+      "description": "Admin registered equipment."
+    },
+    "/admin_exercises/{exerciseId}": {
+      "schema": "AdminExercise",
+      "description": "Admin registered exercise."
+    }
+  }
+}

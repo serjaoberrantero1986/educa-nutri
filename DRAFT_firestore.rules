@@ -1,0 +1,119 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default-deny Catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reusable, hardened global helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Helpers for Profile
+    function isValidProfile(data) {
+      return data.keys().hasAll(['id', 'username', 'xp', 'streak', 'league'])
+        && data.keys().size() >= 5
+        && data.id is string && data.id.size() <= 128
+        && data.username is string && data.username.size() >= 1 && data.username.size() <= 50
+        && data.xp is int && data.xp >= 0
+        && data.streak is int && data.streak >= 0
+        && data.league is string && (data.league == 'Bronze' || data.league == 'Prata' || data.league == 'Ouro' || data.league == 'Safira' || data.league == 'Diamante')
+        && (!data.keys().hasAny(['avatar_url']) || (data.avatar_url is string && data.avatar_url.size() <= 1000))
+        && (!data.keys().hasAny(['custom_meals']) || (data.custom_meals is list && data.custom_meals.size() <= 100));
+    }
+
+    // Helpers for Food
+    function isValidFood(data) {
+      return data.keys().hasAll(['id', 'name', 'category', 'calories', 'protein', 'carbs', 'fat', 'measure_unit', 'grams_per_unit'])
+        && data.keys().size() >= 9
+        && data.id is int
+        && data.name is string && data.name.size() <= 200
+        && data.category is string && (data.category == 'proteina' || data.category == 'carboidrato' || data.category == 'fruta' || data.category == 'vegetal' || data.category == 'gordura' || data.category == 'laticinio')
+        && data.calories is int && data.calories >= 0
+        && data.protein is int && data.protein >= 0
+        && data.carbs is int && data.carbs >= 0
+        && data.fat is int && data.fat >= 0
+        && data.measure_unit is string && data.measure_unit.size() <= 50
+        && data.grams_per_unit is int && data.grams_per_unit >= 0;
+    }
+
+    // Helpers for FoodLog
+    function isValidFoodLog(data) {
+      return data.keys().hasAll(['id', 'user_id', 'meal_type', 'food_name', 'calories', 'protein', 'carbs', 'fat', 'amount', 'unit', 'logged_at'])
+        && data.keys().size() == 11
+        && data.id is string
+        && data.user_id is string && data.user_id == request.auth.uid
+        && data.meal_type is string && data.meal_type.size() <= 50
+        && data.food_name is string && data.food_name.size() <= 150
+        && (data.calories is int || data.calories is float)
+        && (data.protein is int || data.protein is float)
+        && (data.carbs is int || data.carbs is float)
+        && (data.fat is int || data.fat is float)
+        && (data.amount is int || data.amount is float)
+        && data.unit is string && data.unit.size() <= 50
+        && data.logged_at is string;
+    }
+
+    // Helpers for WaterLog
+    function isValidWaterLog(data) {
+      return data.keys().hasAll(['id', 'user_id', 'amount_ml', 'logged_at'])
+        && data.keys().size() == 4
+        && data.id is string
+        && data.user_id is string && data.user_id == request.auth.uid
+        && data.amount_ml is int && data.amount_ml >= 0 && data.amount_ml <= 10000
+        && data.logged_at is string;
+    }
+
+    // Match Rules for Collections
+
+    match /profiles/{profileId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && resource.data.xp >= 0;
+      allow create: if isOwner(profileId) && isValidProfile(incoming());
+      allow update: if isOwner(profileId) && isValidProfile(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['username', 'avatar_url', 'custom_meals']) ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['xp', 'streak'])
+      );
+      allow delete: if false;
+    }
+
+    match /foods/{foodId} {
+      allow get, list: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /food_logs/{logId} {
+      allow get: if isSignedIn() && isOwner(resource.data.user_id);
+      allow list: if isSignedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if isSignedIn() && isValidFoodLog(incoming());
+      allow update: if isSignedIn() && isOwner(existing().user_id) && isValidFoodLog(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['amount', 'calories', 'protein', 'carbs', 'fat'])
+      );
+      allow delete: if isSignedIn() && isOwner(existing().user_id);
+    }
+
+    match /water_logs/{logId} {
+      allow get: if isSignedIn() && isOwner(resource.data.user_id);
+      allow list: if isSignedIn() && resource.data.user_id == request.auth.uid;
+      allow create: if isSignedIn() && isValidWaterLog(incoming());
+      allow update: if isSignedIn() && isOwner(existing().user_id) && isValidWaterLog(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['amount_ml'])
+      );
+      allow delete: if isSignedIn() && isOwner(existing().user_id);
+    }
+  }
+}

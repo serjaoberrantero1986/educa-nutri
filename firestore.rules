@@ -1,0 +1,252 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default-deny Catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reusable, hardened global helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'edsonricardosouza@gmail.com' ||
+        (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin' ||
+          get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.email == 'edsonricardosouza@gmail.com'
+        ))
+      );
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Helpers for Profile
+    function isValidProfile(data) {
+      return data.keys().hasAll(['id', 'username', 'xp', 'streak', 'league'])
+        && data.keys().size() >= 5
+        && data.id is string && data.id.size() <= 128
+        && data.username is string && data.username.size() >= 1 && data.username.size() <= 50
+        && data.xp is number && data.xp >= 0
+        && data.streak is number && data.streak >= 0
+        && data.league is string && (data.league == 'Bronze' || data.league == 'Prata' || data.league == 'Ouro' || data.league == 'Safira' || data.league == 'Diamante')
+        && (!data.keys().hasAny(['role']) || (data.role is string || data.role == null))
+        && (!data.keys().hasAny(['avatar_url']) || (data.avatar_url is string || data.avatar_url == null))
+        && (!data.keys().hasAny(['custom_meals']) || (data.custom_meals is list && data.custom_meals.size() <= 100))
+        && (!data.keys().hasAny(['diet_plan']) || data.diet_plan is map)
+        && (!data.keys().hasAny(['last_activity_date']) || data.last_activity_date is string)
+        && (!data.keys().hasAny(['streak_freeze_active']) || data.streak_freeze_active is bool)
+        && (!data.keys().hasAny(['premium_access_until']) || (data.premium_access_until is string || data.premium_access_until == null))
+        && (!data.keys().hasAny(['rewarded_goals_today']) || data.rewarded_goals_today is map)
+        && (!data.keys().hasAny(['full_name']) || (data.full_name is string || data.full_name == null))
+        && (!data.keys().hasAny(['cpf']) || (data.cpf is string || data.cpf == null))
+        && (!data.keys().hasAny(['whatsapp']) || (data.whatsapp is string || data.whatsapp == null))
+        && (!data.keys().hasAny(['is_deleted']) || data.is_deleted is bool)
+        && (!data.keys().hasAny(['paid_premium']) || data.paid_premium is bool)
+        && (!data.keys().hasAny(['user_data']) || (data.user_data is map || data.user_data == null));
+    }
+
+    // Helpers for Food
+    function isValidFood(data) {
+      return data.keys().hasAll(['id', 'name', 'category', 'calories', 'protein', 'carbs', 'fat', 'measure_unit', 'grams_per_unit'])
+        && data.keys().size() >= 9
+        && data.id is number
+        && data.name is string && data.name.size() <= 200
+        && data.category is string && (data.category == 'proteina' || data.category == 'carboidrato' || data.category == 'fruta' || data.category == 'vegetal' || data.category == 'gordura' || data.category == 'laticinio')
+        && data.calories is number && data.calories >= 0
+        && data.protein is number && data.protein >= 0
+        && data.carbs is number && data.carbs >= 0
+        && data.fat is number && data.fat >= 0
+        && data.measure_unit is string && data.measure_unit.size() <= 50
+        && data.grams_per_unit is number && data.grams_per_unit >= 0;
+    }
+
+    // Helpers for FoodLog
+    function isValidFoodLog(data) {
+      return data.keys().hasAll(['id', 'user_id', 'meal_type', 'food_name', 'calories', 'protein', 'carbs', 'fat', 'amount', 'unit', 'logged_at'])
+        && data.keys().size() >= 11 && data.keys().size() <= 12
+        && data.id is string
+        && data.user_id is string && data.user_id == request.auth.uid
+        && data.meal_type is string && data.meal_type.size() <= 50
+        && data.food_name is string && data.food_name.size() <= 500
+        && data.calories is number
+        && data.protein is number
+        && data.carbs is number
+        && data.fat is number
+        && data.amount is number
+        && data.unit is string && data.unit.size() <= 100
+        && data.logged_at is string
+        && (!data.keys().hasAny(['added_via']) || (data.added_via is string && data.added_via.size() <= 100));
+    }
+
+    // Helpers for WaterLog
+    function isValidWaterLog(data) {
+      return data.keys().hasAll(['id', 'user_id', 'amount_ml', 'logged_at'])
+        && data.keys().size() >= 4 && data.keys().size() <= 6
+        && data.id is string
+        && data.user_id is string && data.user_id == request.auth.uid
+        && data.amount_ml is number && data.amount_ml >= 0 && data.amount_ml <= 10000
+        && data.logged_at is string
+        && (!data.keys().hasAny(['added_via']) || (data.added_via is string && data.added_via.size() <= 100));
+    }
+
+    // Helpers for WorkoutProfile
+    function isValidWorkoutProfile(data) {
+      return data.keys().hasAll(['experience', 'daysPerWeek', 'workoutDuration', 'equipment', 'limitations', 'muscleFatigue'])
+        && data.experience is string
+        && (data.experience == 'beginner' || data.experience == 'intermediate' || data.experience == 'advanced')
+        && data.daysPerWeek is number
+        && data.workoutDuration is number
+        && data.equipment is list
+        && data.limitations is list
+        && data.muscleFatigue is map
+        && (!data.keys().hasAny(['divisionType']) || (data.divisionType is string || data.divisionType == null));
+    }
+
+    // Helpers for WorkoutRoutine
+    function isValidWorkoutRoutine(data) {
+      return data.keys().hasAll(['id', 'user_id', 'createdAt', 'division', 'days'])
+        && data.id is string
+        && data.user_id is string && data.user_id == request.auth.uid
+        && data.createdAt is string
+        && data.division is string
+        && data.days is list;
+    }
+
+    // Helpers for ExerciseLog
+    function isValidExerciseLog(data) {
+      return data.keys().hasAll(['user_id', 'exercicio', 'loggedAt', 'series', 'esforco'])
+        && data.user_id is string && data.user_id == request.auth.uid
+        && data.exercicio is string
+        && data.loggedAt is string
+        && data.series is list
+        && data.esforco is number
+        && (!data.keys().hasAny(['observacoes']) || (data.observacoes is string || data.observacoes == null));
+    }
+
+    // Helpers for WorkoutEquipment
+    function isValidWorkoutEquipment(data) {
+      return data.keys().hasAll(['id', 'name', 'category', 'created_at'])
+        && data.id is string
+        && data.name is string && data.name.size() <= 200
+        && data.category is string && (data.category == 'pesos_livres' || data.category == 'maquinas' || data.category == 'maquina' || data.category == 'polias' || data.category == 'polia' || data.category == 'calistenia')
+        && (!data.keys().hasAny(['imageUrl']) || data.imageUrl is string)
+        && (!data.keys().hasAny(['description']) || data.description is string)
+        && data.created_at is string;
+    }
+
+    // Helpers for AdminExercise
+    function isValidAdminExercise(data) {
+      return data.keys().hasAll(['id', 'name', 'mainGroup', 'equipment', 'level', 'type', 'created_at'])
+        && data.id is string
+        && data.name is string && data.name.size() <= 200
+        && data.mainGroup is string && (data.mainGroup == 'peito' || data.mainGroup == 'costas' || data.mainGroup == 'pernas' || data.mainGroup == 'biceps' || data.mainGroup == 'triceps' || data.mainGroup == 'ombros' || data.mainGroup == 'abdome')
+        && data.equipment is string && (data.equipment == 'pesos_livres' || data.equipment == 'maquinas' || data.equipment == 'maquina' || data.equipment == 'polias' || data.equipment == 'polia' || data.equipment == 'calistenia')
+        && (!data.keys().hasAny(['secondaryGroups']) || data.secondaryGroups is list)
+        && data.level is string && (data.level == 'iniciante' || data.level == 'intermediario' || data.level == 'avancado')
+        && data.type is string && (data.type == 'composto' || data.type == 'isolador')
+        && (!data.keys().hasAny(['gifUrl']) || data.gifUrl is string)
+        && data.created_at is string;
+    }
+
+    // Match Rules for Collections
+
+    match /profiles/{profileId} {
+      allow get, list: if isSignedIn();
+      allow create: if isOwner(profileId) && isValidProfile(incoming()) && (
+        (!incoming().keys().hasAny(['role']) || incoming().role == 'user') &&
+        (!incoming().keys().hasAny(['premium_access_until']) || incoming().premium_access_until == null) &&
+        (!incoming().keys().hasAny(['whatsapp_access_until']) || incoming().whatsapp_access_until == null)
+      );
+      allow update: if (isOwner(profileId) || isAdmin()) && (
+        isAdmin() || (
+          isValidProfile(incoming()) &&
+          incoming().role == existing().role &&
+          incoming().premium_access_until == existing().premium_access_until &&
+          incoming().whatsapp_access_until == existing().whatsapp_access_until
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /foods/{foodId} {
+      allow get, list: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /food_logs/{logId} {
+      allow get: if isSignedIn() && (isOwner(resource.data.user_id) || isAdmin());
+      allow list: if isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidFoodLog(incoming());
+      allow update: if isSignedIn() && (isOwner(existing().user_id) || isAdmin()) && isValidFoodLog(incoming()) && (
+        isAdmin() || incoming().diff(existing()).affectedKeys().hasOnly(['amount', 'calories', 'protein', 'carbs', 'fat'])
+      );
+      allow delete: if isSignedIn() && (isOwner(existing().user_id) || isAdmin());
+    }
+
+    match /water_logs/{logId} {
+      allow get: if isSignedIn() && (isOwner(resource.data.user_id) || isAdmin());
+      allow list: if isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidWaterLog(incoming());
+      allow update: if isSignedIn() && (isOwner(existing().user_id) || isAdmin()) && isValidWaterLog(incoming()) && (
+        isAdmin() || incoming().diff(existing()).affectedKeys().hasOnly(['amount_ml'])
+      );
+      allow delete: if isSignedIn() && (isOwner(existing().user_id) || isAdmin());
+    }
+
+    match /configs/{configId} {
+      allow get, list: if isSignedIn();
+      allow write, update: if isAdmin();
+    }
+
+    match /whatsapp_webhook_logs/{logId} {
+      allow get, list: if isSignedIn() && (request.auth.token.email == 'edsonricardosouza@gmail.com' || isAdmin());
+      allow write: if false;
+    }
+
+    match /workout_profiles/{profileId} {
+      allow get, list: if isSignedIn() && (isOwner(profileId) || isAdmin());
+      allow create, update: if isSignedIn() && (isOwner(profileId) || isAdmin()) && isValidWorkoutProfile(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /workout_routines/{routineId} {
+      allow get: if isSignedIn() && (isOwner(routineId) || isAdmin());
+      allow list: if isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin());
+      allow create, update: if isSignedIn() && (isOwner(routineId) || isAdmin()) && isValidWorkoutRoutine(incoming());
+      allow delete: if isSignedIn() && (isOwner(routineId) || isAdmin());
+    }
+
+    match /exercise_logs/{logId} {
+      allow get: if isSignedIn() && (isOwner(resource.data.user_id) || isAdmin());
+      allow list: if isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidExerciseLog(incoming());
+      allow update: if isSignedIn() && (isOwner(existing().user_id) || isAdmin()) && isValidExerciseLog(incoming());
+      allow delete: if isSignedIn() && (isOwner(existing().user_id) || isAdmin());
+    }
+
+    match /workout_equipments/{equipmentId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isAdmin() && isValidWorkoutEquipment(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /admin_exercises/{exerciseId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isAdmin() && isValidAdminExercise(incoming());
+      allow delete: if isAdmin();
+    }
+  }
+}
