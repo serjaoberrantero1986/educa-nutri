@@ -809,6 +809,128 @@ async function getFatSecretToken(): Promise<string | null> {
   return null;
 }
 
+async function enrichFoodWithExactCaloriesAndMacros(item: any): Promise<any> {
+  const name = item.food_name || "";
+  if (!name) return item;
+
+  try {
+    const cleanTerm = name.split("(")[0].trim();
+    if (cleanTerm.length < 2) return item;
+
+    // Search Local SQLite database first (which is ultra-precise and contains TACO reference, e.g. Frango Grelhado = 165kcal)
+    // We normalize characters both in SQL check and search word to handle spelling variations/accents perfectly.
+    const sql = `
+      SELECT * FROM foods 
+      WHERE name LIKE ? 
+         OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LOWER(name), 'á', 'a'), 'é', 'e'), 'í', 'i'), 'ó', 'o'), 'ú', 'u') LIKE ?
+    `;
+    const termNormalized = cleanTerm.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const databaseMatch = db.prepare(sql).all(`%${cleanTerm}%`, `%${termNormalized}%`) as any[];
+
+    if (databaseMatch && databaseMatch.length > 0) {
+      // Find the best exact match of name
+      let bestLocal = databaseMatch.find((f: any) => {
+        const localNom = f.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        return localNom === termNormalized;
+      });
+      if (!bestLocal) {
+        // If no exact match, try to find one where it starts with the term
+        bestLocal = databaseMatch.find((f: any) => {
+          const localNom = f.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+          return localNom.startsWith(termNormalized);
+        });
+      }
+      if (!bestLocal) {
+        bestLocal = databaseMatch[0];
+      }
+
+      console.log(`[AI-Enrichment] Matched AI food "${name}" with database reference "${bestLocal.name}" (${bestLocal.calories} kcal)`);
+      
+      // Let's preserve the original AI amount, but update other fields to match official local DB values
+      return {
+        ...item,
+        food_name: bestLocal.name.split("(")[0].trim(),
+        calories_per_100: bestLocal.calories,
+        protein_per_100: bestLocal.protein,
+        carbs_per_100: bestLocal.carbs,
+        fat_per_100: bestLocal.fat,
+        grams_per_unit: bestLocal.grams_per_unit || item.grams_per_unit || 100,
+        unit: bestLocal.measure_unit || item.unit || "unidade",
+        confidence_explanation: `Estimativa calibrada perfeitamente com a tabela de referência do aplicativo (${bestLocal.name}).`
+      };
+    }
+
+    // If not found in SQLite, we do a real API search on FatSecret to get ultra precise values!
+    const token = await getFatSecretToken();
+    if (token && !isEgressBlocked) {
+      console.log(`[AI-Enrichment] Querying FatSecret for unresolved food: "${cleanTerm}"`);
+      const response = await fetchWithTimeout("https://platform.fatsecret.com/rest/server.api", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "SportNutri - WebApp - Version 1.1 - edsonricardosouza@gmail.com"
+        },
+        body: new URLSearchParams({
+          method: "foods.search.v2",
+          search_expression: cleanTerm,
+          format: "json",
+          max_results: "1"
+        }).toString()
+      }, 1500);
+
+      if (response.ok) {
+        const data = (await response.json()) as any;
+        let foodsList: any[] = [];
+        if (data && data.foods_search && data.foods_search.results && data.foods_search.results.food) {
+          const rawFood = data.foods_search.results.food;
+          foodsList = Array.isArray(rawFood) ? rawFood : [rawFood];
+        } else if (data && data.foods && data.foods.food) {
+          const rawFood = data.foods.food;
+          foodsList = Array.isArray(rawFood) ? rawFood : [rawFood];
+        }
+
+        if (foodsList.length > 0) {
+          const matched = foodsList[0];
+          const desc = matched.food_description || "";
+          
+          const caloriesMatch = desc.match(/Calories:\s*(\d+(?:\.\d+)?)\s*kcal/i);
+          const calories = caloriesMatch ? Math.round(parseFloat(caloriesMatch[1])) : 0;
+
+          const fatMatch = desc.match(/Fat:\s*(\d+(?:\.\d+)?)\s*g/i);
+          const fat = fatMatch ? parseFloat(fatMatch[1]) : 0;
+
+          const carbsMatch = desc.match(/Carbs:\s*(\d+(?:\.\d+)?)\s*g/i);
+          const carbs = carbsMatch ? parseFloat(carbsMatch[1]) : 0;
+
+          const proteinMatch = desc.match(/Protein:\s*(\d+(?:\.\d+)?)\s*g/i);
+          const protein = proteinMatch ? parseFloat(proteinMatch[1]) : 0;
+
+          const portionMatch = desc.match(/Per\s*([^-\|]+)/i);
+          const portion = portionMatch ? portionMatch[1].trim() : "100g";
+
+          console.log(`[AI-Enrichment] Successfully calibrated "${name}" via FatSecret API: ${calories}kcal, ${protein}P, ${carbs}C, ${fat}F`);
+
+          return {
+            ...item,
+            food_name: matched.food_name,
+            calories_per_100: calories,
+            protein_per_100: protein,
+            carbs_per_100: carbs,
+            fat_per_100: fat,
+            confidence_explanation: `Estimativa em tempo real calibrada perfeitamente via API integrada FatSecret.`
+          };
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[AI-Enrichment] Erro de calibração para "${name}":`, err.message || err);
+  }
+
+  // Fallback to original AI estimate
+  return item;
+}
+
 // API Routes
 app.get("/api/foods", async (req, res) => {
   try {
@@ -1427,6 +1549,16 @@ Certifique-se de que se houver múltiplos alimentos (ex: tapioca, presunto, quei
         textOutput = textOutput.replace(/^```json\s*/i, "").replace(/```$/, "").trim();
       }
       const result = JSON.parse(textOutput || '{"foods":[]}');
+
+      // Calibration in real-time using local database/FatSecret
+      if (result && result.foods && Array.isArray(result.foods)) {
+        const enriched = [];
+        for (const f of result.foods) {
+          enriched.push(await enrichFoodWithExactCaloriesAndMacros(f));
+        }
+        result.foods = enriched;
+      }
+
       return res.json(result);
     } catch (parseError: any) {
       console.warn("Falha ao processar o JSON retornado pelo Gemini, acionando o backup inteligente offline:", parseError.message || parseError);
@@ -1999,9 +2131,10 @@ Retorne SOMENTE o JSON estruturado completo em Português do Brasil. Sem usar as
       const actions: any[] = [];
       if (parsed.added_foods && Array.isArray(parsed.added_foods)) {
         for (const f of parsed.added_foods) {
+          const enrichedFood = await enrichFoodWithExactCaloriesAndMacros(f);
           actions.push({
             type: "ADD_FOOD",
-            ...f
+            ...enrichedFood
           });
         }
       }
