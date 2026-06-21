@@ -114,7 +114,161 @@ export default function AdminTab({
   const [credentialsSuccessMessage, setCredentialsSuccessMessage] = useState<string | null>(null);
 
   // Active sub-tab inside Admin Panel page
-  const [activeAdminSubTab, setActiveAdminSubTab] = useState<'users' | 'pricing' | 'connections'>('users');
+  const [activeAdminSubTab, setActiveAdminSubTab] = useState<'users' | 'pricing' | 'connections' | 'foods'>('users');
+
+  // Administrating Custom / Calibrated Foods States
+  const [foodsList, setFoodsList] = useState<any[]>([]);
+  const [foodsSearch, setFoodsSearch] = useState('');
+  const [loadingFoods, setLoadingFoods] = useState(false);
+  const [selectedFood, setSelectedFood] = useState<any | null>(null);
+  const [isFoodModalOpen, setIsFoodModalOpen] = useState(false);
+  
+  // Custom Food Form states
+  const [foodNameInput, setFoodNameInput] = useState('');
+  const [foodCategoryInput, setFoodCategoryInput] = useState('carboidrato');
+  const [foodCaloriesInput, setFoodCaloriesInput] = useState<number | string>(0);
+  const [foodProteinInput, setFoodProteinInput] = useState<number | string>(0);
+  const [foodCarbsInput, setFoodCarbsInput] = useState<number | string>(0);
+  const [foodFatInput, setFoodFatInput] = useState<number | string>(0);
+  const [foodPortionInput, setFoodPortionInput] = useState('100g');
+  const [foodMeasureUnitInput, setFoodMeasureUnitInput] = useState('g');
+  const [foodGramsPerUnitInput, setFoodGramsPerUnitInput] = useState<number | string>(1);
+  const [savingFood, setSavingFood] = useState(false);
+  const [foodSuccessMessage, setFoodSuccessMessage] = useState<string | null>(null);
+
+  const fetchAdminFoods = async (searchQuery: string = '') => {
+    setLoadingFoods(true);
+    try {
+      const response = await fetch(`/api/admin/foods?userId=${encodeURIComponent(user.uid)}&email=${encodeURIComponent(user.email || '')}&q=${encodeURIComponent(searchQuery)}`);
+      if (response.ok) {
+        const data = await response.json();
+        setFoodsList(data.foods || []);
+      }
+    } catch (err) {
+      console.error("Erro ao carregar lista de alimentos no admin:", err);
+    } finally {
+      setLoadingFoods(false);
+    }
+  };
+
+  const handleFoodSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setFoodsSearch(val);
+  };
+
+  const handleFoodSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    fetchAdminFoods(foodsSearch);
+  };
+
+  const handleOpenAddFoodModal = () => {
+    setSelectedFood(null);
+    setFoodNameInput('');
+    setFoodCategoryInput('carboidrato');
+    setFoodCaloriesInput(0);
+    setFoodProteinInput(0);
+    setFoodCarbsInput(0);
+    setFoodFatInput(0);
+    setFoodPortionInput('100g');
+    setFoodMeasureUnitInput('g');
+    setFoodGramsPerUnitInput(1);
+    setFoodSuccessMessage(null);
+    setIsFoodModalOpen(true);
+  };
+
+  const handleOpenEditFoodModal = (food: any) => {
+    setSelectedFood(food);
+    setFoodNameInput(food.name);
+    setFoodCategoryInput(food.category || 'carboidrato');
+    setFoodCaloriesInput(food.calories);
+    setFoodProteinInput(food.protein);
+    setFoodCarbsInput(food.carbs);
+    setFoodFatInput(food.fat);
+    setFoodPortionInput(food.portion || '100g');
+    setFoodMeasureUnitInput(food.measure_unit || 'g');
+    setFoodGramsPerUnitInput(food.grams_per_unit || 1);
+    setFoodSuccessMessage(null);
+    setIsFoodModalOpen(true);
+  };
+
+  const handleSaveFood = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!foodNameInput.trim()) return;
+
+    setSavingFood(true);
+    setFoodSuccessMessage(null);
+
+    const foodPayload = {
+      name: foodNameInput.trim(),
+      category: foodCategoryInput,
+      calories: Number(foodCaloriesInput),
+      protein: Number(foodProteinInput),
+      carbs: Number(foodCarbsInput),
+      fat: Number(foodFatInput),
+      portion: foodPortionInput,
+      measure_unit: foodMeasureUnitInput,
+      grams_per_unit: Number(foodGramsPerUnitInput)
+    };
+
+    const isEdit = !!selectedFood;
+    const url = isEdit ? '/api/admin/foods/update' : '/api/admin/foods';
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adminUserId: user.uid,
+          adminEmail: user.email || '',
+          food: foodPayload
+        })
+      });
+
+      if (response.ok) {
+        setFoodSuccessMessage(isEdit ? 'Alimento atualizado perfeitamente!' : 'Alimento cadastrado e calibrado com sucesso!');
+        setTimeout(() => {
+          setIsFoodModalOpen(false);
+          fetchAdminFoods(foodsSearch);
+        }, 1200);
+      } else {
+        const errData = await response.json();
+        console.error("Erro ao salvar alimento:", errData.error);
+      }
+    } catch (err) {
+      console.error("Erro na requisição ao salvar alimento:", err);
+    } finally {
+      setSavingFood(false);
+    }
+  };
+
+  const handleDeleteFood = async (foodName: string) => {
+    const confirmed = window.confirm(`Deseja mesmo excluir o alimento "${foodName}"? Esta operação é definitiva.`);
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch('/api/admin/foods/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adminUserId: user.uid,
+          adminEmail: user.email || '',
+          name: foodName
+        })
+      });
+
+      if (response.ok) {
+        fetchAdminFoods(foodsSearch);
+      }
+    } catch (err) {
+      console.error("Erro ao excluir alimento:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeAdminSubTab === 'foods') {
+      fetchAdminFoods(foodsSearch);
+    }
+  }, [activeAdminSubTab]);
 
   useEffect(() => {
     if (storeConfig) {
@@ -877,6 +1031,18 @@ export default function AdminTab({
           <Activity size={14} />
           Conexões
         </button>
+
+        <button
+          onClick={() => setActiveAdminSubTab('foods')}
+          className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-black text-xs transition-all border-0 cursor-pointer shrink-0 ${
+            activeAdminSubTab === 'foods'
+              ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-white shadow-md shadow-amber-500/10'
+              : 'bg-slate-50 dark:bg-slate-900 text-slate-400 dark:text-slate-500 hover:text-slate-600'
+          }`}
+        >
+          <ChefHat size={14} />
+          Tabela Alimentar
+        </button>
       </div>
 
       {activeAdminSubTab === 'pricing' && (
@@ -1446,6 +1612,138 @@ export default function AdminTab({
         </div>
       </section>
         </>
+      )}
+
+      {activeAdminSubTab === 'foods' && (
+        <section className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-50 dark:border-slate-800 pb-5">
+            <div>
+              <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">
+                <ChefHat className="text-amber-500" />
+                Catálogo de Alimentos (Tabela)
+              </h3>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                Gerencie todos os alimentos do aplicativo (TACO, calibrações de IA e alimentos customizados).
+              </p>
+            </div>
+            
+            <button
+              onClick={handleOpenAddFoodModal}
+              className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs cursor-pointer border-0 shadow-md shadow-amber-500/10 transition-all shrink-0"
+            >
+              <Plus size={14} />
+              Novo Alimento
+            </button>
+          </div>
+
+          <form onSubmit={handleFoodSearchSubmit} className="flex gap-2">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={foodsSearch}
+                onChange={handleFoodSearchChange}
+                placeholder="Pesquisar alimento por nome... (Ex: Pastel, Whey, Ovo)"
+                className="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-slate-950 border-0 rounded-2xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/30 font-medium transition-all"
+              />
+            </div>
+            <button
+              type="submit"
+              className="px-5 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-extrabold text-xs rounded-2xl cursor-pointer border-0 transition-all shrink-0"
+            >
+              Buscar
+            </button>
+          </form>
+
+          {loadingFoods ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <Loader2 className="animate-spin text-amber-500" size={32} />
+              <p className="text-xs text-slate-400 font-medium">Buscando tabela de alimentos atualizada...</p>
+            </div>
+          ) : foodsList.length === 0 ? (
+            <div className="text-center py-16 border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-3xl">
+              <Bot size={40} className="text-slate-300 mx-auto mb-3" />
+              <p className="text-sm font-bold text-slate-400">Nenhum alimento cadastrado ou encontrado.</p>
+              <p className="text-xs text-slate-300 mt-1">Clique em 'Novo Alimento' para registrar e calibrar um novo prato no banco de dados.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-slate-100 dark:border-slate-800">
+              <table className="w-full border-collapse text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-500 uppercase font-black tracking-wider">
+                    <th className="px-5 py-4">Nome</th>
+                    <th className="px-4 py-4">Categoria</th>
+                    <th className="px-4 py-4 text-center">Calorias</th>
+                    <th className="px-4 py-4 text-center">Proteína</th>
+                    <th className="px-4 py-4 text-center">Carboidratos</th>
+                    <th className="px-4 py-4 text-center">Gorduras</th>
+                    <th className="px-4 py-4">Porção / Unidade</th>
+                    <th className="px-5 py-4 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-slate-600 dark:text-slate-300">
+                  {foodsList.map((f: any, idx: number) => {
+                    const categoryColors: Record<string, string> = {
+                      proteina: 'bg-red-50 text-red-500 dark:bg-red-950/20 dark:text-red-400',
+                      carboidrato: 'bg-amber-50 text-amber-500 dark:bg-amber-950/20 dark:text-amber-400',
+                      fruta: 'bg-emerald-50 text-emerald-500 dark:bg-emerald-950/20 dark:text-emerald-400',
+                      vegetal: 'bg-teal-50 text-teal-500 dark:bg-teal-950/20 dark:text-teal-400',
+                      gordura: 'bg-orange-50 text-orange-500 dark:bg-orange-950/20 dark:text-orange-400',
+                      laticinio: 'bg-blue-50 text-blue-500 dark:bg-blue-950/20 dark:text-blue-400'
+                    };
+                    const catTheme = categoryColors[f.category] || 'bg-slate-50 text-slate-500 dark:bg-slate-950/20 dark:text-slate-400';
+
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/30 transition-all font-medium">
+                        <td className="px-5 py-4 text-slate-800 dark:text-slate-100 font-extrabold pr-2">
+                          {f.name}
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase ${catTheme}`}>
+                            {f.category}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-center font-bold text-slate-800 dark:text-slate-200">
+                          {f.calories} kcal
+                        </td>
+                        <td className="px-4 py-4 text-center text-red-500 font-bold">
+                          {f.protein}g
+                        </td>
+                        <td className="px-4 py-4 text-center text-amber-500 font-bold">
+                          {f.carbs}g
+                        </td>
+                        <td className="px-4 py-4 text-center text-orange-500 font-bold">
+                           {f.fat}g
+                        </td>
+                        <td className="px-4 py-4 text-slate-500 dark:text-slate-400">
+                          {f.portion} ({f.grams_per_unit}{f.measure_unit})
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => handleOpenEditFoodModal(f)}
+                              className="p-2 border-0 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-300 rounded-xl cursor-pointer transition-all"
+                              title="Editar Alimento"
+                            >
+                              <Edit3 size={12} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteFood(f.name)}
+                              className="p-2 border-0 bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950 text-red-500 dark:text-red-400 rounded-xl cursor-pointer transition-all"
+                              title="Excluir Alimento"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       )}
 
       {activeAdminSubTab === 'users' && (
@@ -2079,6 +2377,182 @@ export default function AdminTab({
                   Confirmar
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Custom Foods Add/Edit Modal */}
+        {isFoodModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 w-full max-w-lg shadow-2xl relative space-y-6"
+            >
+              <button
+                type="button"
+                onClick={() => setIsFoodModalOpen(false)}
+                className="absolute right-4 top-4 p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-400 rounded-2xl border-0 cursor-pointer transition-all"
+              >
+                <X size={16} />
+              </button>
+
+              <div>
+                <h3 className="text-lg font-black text-slate-800 dark:text-white flex items-center gap-2">
+                  <ChefHat className="text-amber-500" />
+                  {selectedFood ? 'Editar Alimento' : 'Adicionar Novo Alimento'}
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Seus alimentos personalizados são sincronizados instantaneamente para garantir calibrações perfeitas com a inteligência artificial.
+                </p>
+              </div>
+
+              {foodSuccessMessage ? (
+                <div className="bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 p-4 rounded-2xl flex items-center gap-3 text-xs font-bold ring-1 ring-emerald-500/10">
+                  <Check size={16} className="text-emerald-500 animate-bounce" />
+                  {foodSuccessMessage}
+                </div>
+              ) : (
+                <form onSubmit={handleSaveFood} className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-slate-400 font-extrabold text-[10px] uppercase tracking-wider">Nome do Alimento</label>
+                    <input
+                      type="text"
+                      required
+                      value={foodNameInput}
+                      onChange={(e) => setFoodNameInput(e.target.value)}
+                      placeholder="Ex: Mini Pastel de Frango"
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border-0 rounded-2xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/30 font-medium transition-all"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-slate-400 font-extrabold text-[10px] uppercase tracking-wider">Categoria</label>
+                      <select
+                        value={foodCategoryInput}
+                        onChange={(e) => setFoodCategoryInput(e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border-0 rounded-2xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/30 font-medium transition-all cursor-pointer"
+                      >
+                        <option value="proteina">Proteína</option>
+                        <option value="carboidrato">Carboidrato</option>
+                        <option value="fruta">Fruta</option>
+                        <option value="vegetal">Vegetal</option>
+                        <option value="gordura">Gordura</option>
+                        <option value="laticinio">Laticínio</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-400 font-extrabold text-[10px] uppercase tracking-wider">Calorias (100g ou ref)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={foodCaloriesInput}
+                        onChange={(e) => setFoodCaloriesInput(e.target.value)}
+                        placeholder="kcal"
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border-0 rounded-2xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/30 font-medium transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-slate-400 font-extrabold text-[10px] uppercase tracking-wider">Proteína (g)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        required
+                        value={foodProteinInput}
+                        onChange={(e) => setFoodProteinInput(e.target.value)}
+                        placeholder="g"
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border-0 rounded-2xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/30 font-medium transition-all"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-400 font-extrabold text-[10px] uppercase tracking-wider">Carboidratos (g)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        required
+                        value={foodCarbsInput}
+                        onChange={(e) => setFoodCarbsInput(e.target.value)}
+                        placeholder="g"
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border-0 rounded-2xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/30 font-medium transition-all"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-400 font-extrabold text-[10px] uppercase tracking-wider">Gorduras (g)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        required
+                        value={foodFatInput}
+                        onChange={(e) => setFoodFatInput(e.target.value)}
+                        placeholder="g"
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border-0 rounded-2xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/30 font-medium transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-slate-400 font-extrabold text-[10px] uppercase tracking-wider">Unid. Medida</label>
+                      <input
+                        type="text"
+                        required
+                        value={foodMeasureUnitInput}
+                        onChange={(e) => setFoodMeasureUnitInput(e.target.value)}
+                        placeholder="Ex: fatia ou g"
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border-0 rounded-2xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/30 font-medium transition-all"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-400 font-extrabold text-[10px] uppercase tracking-wider">Peso / Unidade (g)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={foodGramsPerUnitInput}
+                        onChange={(e) => setFoodGramsPerUnitInput(e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border-0 rounded-2xl text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/30 font-medium transition-all"
+                      />
+                    </div>
+
+                    <div className="space-y-1 flex flex-col justify-end">
+                      <div className="h-9 flex items-center justify-center p-2 rounded-2xl bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 text-[10px] font-black uppercase text-center tracking-wider font-extrabold">
+                        Tabela Pronta
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setIsFoodModalOpen(false)}
+                      className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-450 font-extrabold text-xs rounded-2xl cursor-pointer border-0 transition-all text-center"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={savingFood}
+                      className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-extrabold text-xs rounded-2xl cursor-pointer border-0 shadow-md shadow-amber-500/10 transition-all text-center flex items-center justify-center gap-2 font-extrabold"
+                    >
+                      {savingFood && <Loader2 className="animate-spin" size={14} />}
+                      {selectedFood ? 'Salvar Alterações' : 'Cadastrar Alimento'}
+                    </button>
+                  </div>
+                </form>
+              )}
             </motion.div>
           </div>
         )}

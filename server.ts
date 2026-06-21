@@ -65,56 +65,112 @@ async function getDynamicAiConfig(req?: express.Request) {
 // Automatically import public and private configurations from Firestore to secure environment storage on boot safely
 async function initializeEnvFromFirestore() {
   try {
-    const configDoc = await firestore.collection("configs").doc("store").get();
-    if (configDoc.exists) {
-      const data = configDoc.data();
-      const initialConfigs: Record<string, string | number> = {};
-      
-      if (data?.streak_freeze_cost !== undefined) initialConfigs.STREAK_FREEZE_COST = data.streak_freeze_cost;
-      if (data?.premium_pass_cost !== undefined) initialConfigs.PREMIUM_PASS_COST = data.premium_pass_cost;
-      if (data?.assistant_pass_cost !== undefined) initialConfigs.ASSISTANT_PASS_COST = data.assistant_pass_cost;
-      if (data?.whatsapp_pass_cost !== undefined) initialConfigs.WHATSAPP_PASS_COST = data.whatsapp_pass_cost;
-      if (data?.recipes_pass_cost !== undefined) initialConfigs.RECIPES_PASS_COST = data.recipes_pass_cost;
-      if (data?.monthly_premium_price !== undefined) initialConfigs.MONTHLY_PREMIUM_PRICE = data.monthly_premium_price;
-      if (data?.whatsapp_api_url !== undefined) initialConfigs.EVOLUTION_API_URL = data.whatsapp_api_url;
-      if (data?.whatsapp_api_key !== undefined) initialConfigs.EVOLUTION_API_KEY = data.whatsapp_api_key;
-      if (data?.whatsapp_instance !== undefined) initialConfigs.EVOLUTION_INSTANCE = data.whatsapp_instance;
-      if (data?.ai_provider !== undefined) initialConfigs.AI_PROVIDER = data.ai_provider;
-      if (data?.ai_api_key !== undefined) initialConfigs.AI_API_KEY = data.ai_api_key;
-      if (data?.ai_model !== undefined) initialConfigs.AI_MODEL = data.ai_model;
-
-      if (Object.keys(initialConfigs).length > 0) {
-        const envPath = path.join(process.cwd(), ".env");
-        let existingContent = "";
-        try {
-          if (fs.existsSync(envPath)) {
-            existingContent = fs.readFileSync(envPath, "utf8");
-          }
-        } catch (_) {}
-
-        let lines = existingContent.split("\n");
-        for (const [key, value] of Object.entries(initialConfigs)) {
-          const valStr = String(value);
-          const escapedValue = valStr.replace(/"/g, '\\"');
-          const newLine = `${key}="${escapedValue}"`;
-          
-          const idx = lines.findIndex(line => line.trim().startsWith(`${key}=`));
-          if (idx !== -1) {
-            lines[idx] = newLine;
-          } else {
-            lines.push(newLine);
-          }
-          process.env[key] = valStr;
-        }
-
-        try {
-          fs.writeFileSync(envPath, lines.join("\n"), "utf8");
-          console.log("Automatically imported initial configurations from Firestore to secure .env storage!");
-        } catch (_) {}
+    const envPath = path.join(process.cwd(), ".env");
+    let existingContent = "";
+    try {
+      if (fs.existsSync(envPath)) {
+        existingContent = fs.readFileSync(envPath, "utf8");
       }
+    } catch (_) {}
+
+    const getEnvValueFromFile = (content: string, key: string): string | null => {
+      const lines = content.split("\n");
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith(`${key}=`)) {
+          let right = trimmed.substring(key.length + 1).trim();
+          if ((right.startsWith('"') && right.endsWith('"')) || (right.startsWith("'") && right.endsWith("'"))) {
+            right = right.substring(1, right.length - 1);
+          }
+          return right;
+        }
+      }
+      return null;
+    };
+
+    // Extract current manually edited configurations from .env
+    const env_api_url = getEnvValueFromFile(existingContent, "EVOLUTION_API_URL");
+    const env_api_key = getEnvValueFromFile(existingContent, "EVOLUTION_API_KEY");
+    const env_instance = getEnvValueFromFile(existingContent, "EVOLUTION_INSTANCE");
+    const env_ai_provider = getEnvValueFromFile(existingContent, "AI_PROVIDER");
+    const env_ai_api_key = getEnvValueFromFile(existingContent, "AI_API_KEY");
+    const env_ai_model = getEnvValueFromFile(existingContent, "AI_MODEL");
+
+    const configDocRef = firestore.collection("configs").doc("store");
+    const configDoc = await configDocRef.get();
+    
+    let dbData: any = {};
+    if (configDoc.exists) {
+      dbData = configDoc.data() || {};
+    }
+
+    // Flag to see if .env contains updates we need to sync TO Firestore
+    const updates: Record<string, any> = {};
+
+    if (env_api_url && env_api_url !== dbData.whatsapp_api_url) {
+      updates.whatsapp_api_url = env_api_url;
+    }
+    if (env_api_key && env_api_key !== dbData.whatsapp_api_key) {
+      updates.whatsapp_api_key = env_api_key;
+    }
+    if (env_instance && env_instance !== dbData.whatsapp_instance) {
+      updates.whatsapp_instance = env_instance;
+    }
+    if (env_ai_provider && env_ai_provider !== dbData.ai_provider) {
+      updates.ai_provider = env_ai_provider;
+    }
+    if (env_ai_api_key && env_ai_api_key !== dbData.ai_api_key) {
+      updates.ai_api_key = env_ai_api_key;
+    }
+    if (env_ai_model && env_ai_model !== dbData.ai_model) {
+      updates.ai_model = env_ai_model;
+    }
+
+    // If there are newly updated keys in .env, write them to Firestore to prevent overwrite
+    if (Object.keys(updates).length > 0) {
+      console.log("Desvio e sincronização de novas chaves do arquivo .env para o Firestore:", Object.keys(updates));
+      await configDocRef.set(updates, { merge: true });
+      // Update our dbData object to reflect these synced values
+      dbData = { ...dbData, ...updates };
+    }
+
+    const initialConfigs: Record<string, string | number> = {};
+    if (dbData.streak_freeze_cost !== undefined) initialConfigs.STREAK_FREEZE_COST = dbData.streak_freeze_cost;
+    if (dbData.premium_pass_cost !== undefined) initialConfigs.PREMIUM_PASS_COST = dbData.premium_pass_cost;
+    if (dbData.assistant_pass_cost !== undefined) initialConfigs.ASSISTANT_PASS_COST = dbData.assistant_pass_cost;
+    if (dbData.whatsapp_pass_cost !== undefined) initialConfigs.WHATSAPP_PASS_COST = dbData.whatsapp_pass_cost;
+    if (dbData.recipes_pass_cost !== undefined) initialConfigs.RECIPES_PASS_COST = dbData.recipes_pass_cost;
+    if (dbData.monthly_premium_price !== undefined) initialConfigs.MONTHLY_PREMIUM_PRICE = dbData.monthly_premium_price;
+    if (dbData.whatsapp_api_url !== undefined) initialConfigs.EVOLUTION_API_URL = dbData.whatsapp_api_url;
+    if (dbData.whatsapp_api_key !== undefined) initialConfigs.EVOLUTION_API_KEY = dbData.whatsapp_api_key;
+    if (dbData.whatsapp_instance !== undefined) initialConfigs.EVOLUTION_INSTANCE = dbData.whatsapp_instance;
+    if (dbData.ai_provider !== undefined) initialConfigs.AI_PROVIDER = dbData.ai_provider;
+    if (dbData.ai_api_key !== undefined) initialConfigs.AI_API_KEY = dbData.ai_api_key;
+    if (dbData.ai_model !== undefined) initialConfigs.AI_MODEL = dbData.ai_model;
+
+    if (Object.keys(initialConfigs).length > 0) {
+      let lines = existingContent.split("\n");
+      for (const [key, value] of Object.entries(initialConfigs)) {
+        const valStr = String(value);
+        const escapedValue = valStr.replace(/"/g, '\\"');
+        const newLine = `${key}="${escapedValue}"`;
+        
+        const idx = lines.findIndex(line => line.trim().startsWith(`${key}=`));
+        if (idx !== -1) {
+          lines[idx] = newLine;
+        } else {
+          lines.push(newLine);
+        }
+        process.env[key] = valStr;
+      }
+
+      try {
+        fs.writeFileSync(envPath, lines.join("\n"), "utf8");
+        console.log("Successfully synchronized and bound environment variables with Firestore configs!");
+      } catch (_) {}
     }
   } catch (err) {
-    console.log("Firestore configuration import bypassed due to local rule constraints.");
+    console.log("Firestore configuration import bypassed due to local rule constraints:", err);
   }
 }
 initializeEnvFromFirestore();
@@ -514,6 +570,15 @@ function seedFallbackFoods() {
     { name: "Chocolate Amargo 70%", category: "gordura", calories: 598, protein: 7.8, carbs: 45, fat: 42, portion: "100g", measure_unit: "quadrado", grams_per_unit: 10 },
     { name: "Pipoca (sem óleo)", category: "carboidrato", calories: 387, protein: 13, carbs: 78, fat: 4.5, portion: "100g", measure_unit: "xícara", grams_per_unit: 8 },
     { name: "Iogurte Natural", category: "laticinio", calories: 63, protein: 3.5, carbs: 5, fat: 3.3, portion: "100g", measure_unit: "pote", grams_per_unit: 170 },
+    
+    // Bakery and Savory items
+    { name: "Mini Pastel de Frango", category: "carboidrato", calories: 310, protein: 12, carbs: 38, fat: 12, portion: "100g", measure_unit: "unidade", grams_per_unit: 30 },
+    { name: "Pastel de Carne", category: "carboidrato", calories: 320, protein: 11, carbs: 39, fat: 13, portion: "100g", measure_unit: "unidade", grams_per_unit: 100 },
+    { name: "Coxinha de Frango", category: "carboidrato", calories: 280, protein: 9, carbs: 32, fat: 12, portion: "100g", measure_unit: "unidade", grams_per_unit: 80 },
+    { name: "Empada de Frango", category: "carboidrato", calories: 350, protein: 8, carbs: 34, fat: 20, portion: "100g", measure_unit: "unidade", grams_per_unit: 80 },
+    { name: "Pão de Queijo", category: "carboidrato", calories: 330, protein: 7, carbs: 42, fat: 15, portion: "100g", measure_unit: "unidade", grams_per_unit: 30 },
+    { name: "Esfiha de Carne", category: "carboidrato", calories: 250, protein: 10, carbs: 32, fat: 9, portion: "100g", measure_unit: "unidade", grams_per_unit: 80 },
+    { name: "Folhado de Frango", category: "carboidrato", calories: 340, protein: 10, carbs: 36, fat: 18, portion: "100g", measure_unit: "unidade", grams_per_unit: 100 }
   ];
 
   db.exec("DELETE FROM foods");
@@ -523,16 +588,114 @@ function seedFallbackFoods() {
   }
 }
 
+async function syncFirestoreFoods() {
+  try {
+    const foodsSnap = await firestore.collection("foods").get();
+    if (!foodsSnap.empty) {
+      console.log(`[FoodSync] Sincronizando ${foodsSnap.size} alimentos do Firestore para o SQLite local...`);
+      // Obter alimentos locais para evitar duplicados
+      const localFoods = db.prepare("SELECT name FROM foods").all() as { name: string }[];
+      const localNamesSet = new Set(localFoods.map(f => f.name.toLowerCase().trim()));
+
+      const insert = db.prepare("INSERT INTO foods (name, category, calories, protein, carbs, fat, portion, measure_unit, grams_per_unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+      
+      let count = 0;
+      foodsSnap.forEach((doc) => {
+        const food = doc.data();
+        if (food && food.name) {
+          const cleanName = food.name.trim();
+          if (!localNamesSet.has(cleanName.toLowerCase())) {
+            insert.run(
+              cleanName,
+              food.category || "carboidrato",
+              Number(food.calories || 0),
+              Number(food.protein || 0),
+              Number(food.carbs || 0),
+              Number(food.fat || 0),
+              food.portion || "100g",
+              food.measure_unit || "g",
+              Number(food.grams_per_unit || 1)
+            );
+            count++;
+          }
+        }
+      });
+      console.log(`[FoodSync] Sincronizados ${count} alimentos customizados/amigáveis com sucesso.`);
+    }
+  } catch (error) {
+    console.warn("[FoodSync] Erro ao sincronizar alimentos do Firestore para o SQLite:", error);
+  }
+}
+
+async function saveAndCacheFood(food: {
+  name: string;
+  category: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  portion: string;
+  measure_unit: string;
+  grams_per_unit: number;
+}) {
+  try {
+    const cleanName = food.name.trim();
+    // 1. Verificar se ja existe no SQLite local
+    const localMatch = db.prepare("SELECT id FROM foods WHERE LOWER(name) = ?").get(cleanName.toLowerCase()) as any;
+    if (localMatch) {
+      return;
+    }
+
+    // 2. Inserir no SQLite para uso instantaneo
+    const insert = db.prepare("INSERT INTO foods (name, category, calories, protein, carbs, fat, portion, measure_unit, grams_per_unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    insert.run(
+      cleanName,
+      food.category,
+      food.calories,
+      food.protein,
+      food.carbs,
+      food.fat,
+      food.portion,
+      food.measure_unit,
+      food.grams_per_unit
+    );
+
+    // 3. Salvar no Firestore para durabilidade definitiva
+    const docId = Math.random().toString(36).substring(2, 15);
+    await firestore.collection("foods").doc(docId).set({
+      id: docId,
+      name: cleanName,
+      category: food.category,
+      calories: Number(food.calories),
+      protein: Number(food.protein),
+      carbs: Number(food.carbs),
+      fat: Number(food.fat),
+      portion: food.portion,
+      measure_unit: food.measure_unit,
+      grams_per_unit: Number(food.grams_per_unit),
+      is_custom: false, // auto-cache
+      created_at: new Date().toISOString()
+    });
+    console.log(`[Auto-Cache] Alimento "${cleanName}" salvo no SQLite e Firestore de forma resiliente.`);
+  } catch (err: any) {
+    console.warn(`[Auto-Cache] Erro ao salvar/cachear alimento "${food.name}":`, err.message || err);
+  }
+}
+
 async function seedTacoDatabase() {
   try {
     const rowCount = db.prepare("SELECT COUNT(*) as count FROM foods").get() as { count: number };
-    if (rowCount.count > 100) {
-      console.log("TACO database already seeded!");
+    const hasPastel = db.prepare("SELECT COUNT(*) as count FROM foods WHERE name = 'Mini Pastel de Frango'").get() as { count: number };
+    if (rowCount.count > 100 && hasPastel.count > 0) {
+      console.log("TACO database already seeded with bakery items!");
+      // Sincronizar de qualquer forma para trazer os customizados
+      await syncFirestoreFoods();
       return;
     }
 
     console.log("Seeding foods database with highly curated offline local foods...");
     seedFallbackFoods();
+    await syncFirestoreFoods();
     console.log("Database successfully seeded with local foods catalog!");
   } catch (error) {
     console.warn("Failed to seed database:", error);
@@ -621,6 +784,16 @@ function capitalizeFirstLetter(str: string): string {
 function guessMacrosFromTerm(term: string): { category: "proteina" | "carboidrato" | "fruta" | "vegetal" | "gordura" | "laticinio"; calories: number; protein: number; carbs: number; fat: number } {
   const t = term.toLowerCase();
   
+  // Savory pastries, fried/baked party/bakery snacks (pastel, mini pastel, coxinha, esfiha, empada, folhado, enroladinho, croquete, quiche, salgado)
+  if (t.includes("pastel") || t.includes("coxinha") || t.includes("esfiha") || t.includes("empada") || t.includes("folhado") || t.includes("enroladinho") || t.includes("croquete") || t.includes("quiche") || t.includes("salgado") || t.includes("kibe") || t.includes("quibe") || t.includes("pao de queijo")) {
+    return { category: "carboidrato", calories: 310, protein: 11, carbs: 38, fat: 12 };
+  }
+  
+  // Bakery items, breads, cakes, sweet pastries (bolo, torta, brioche, croissant, biscoito, cookie, bolacha, pao, donut, rosquinha)
+  if (t.includes("bolo") || t.includes("torta") || t.includes("pau") || t.includes("pao") || t.includes("brioche") || t.includes("croissant") || t.includes("biscoito") || t.includes("cookie") || t.includes("bolacha") || t.includes("donut")) {
+    return { category: "carboidrato", calories: 280, protein: 6, carbs: 54, fat: 8 };
+  }
+
   if (t.includes("whey") || t.includes("proteina") || t.includes("frango") || t.includes("carne") || t.includes("peixe") || t.includes("atum") || t.includes("camarao") || t.includes("bife") || t.includes("ovo")) {
     return { category: "proteina", calories: 150, protein: 25, carbs: 2, fat: 4 };
   }
@@ -972,9 +1145,7 @@ app.get("/api/foods", async (req, res) => {
                 const carbs = parseFloat(p.nutriments?.carbohydrates_100g ?? 0) || 0;
                 const fat = parseFloat(p.nutriments?.fat_100g ?? 0) || 0;
                 const calories = Math.round(p.nutriments?.["energy-kcal_100g"] || (p.nutriments?.["energy_100g"] ? p.nutriments["energy_100g"] / 4.184 : 0)) || 0;
-                
                 const category = determineCategory(p, protein, carbs, fat);
-                
                 const mappedFood = {
                   id: p.code,
                   name: `${name} (Cód. Barras)`,
@@ -987,6 +1158,7 @@ app.get("/api/foods", async (req, res) => {
                   measure_unit: "g",
                   grams_per_unit: 1
                 };
+                saveAndCacheFood(mappedFood);
                 return res.json([mappedFood]);
               }
             }
@@ -1061,6 +1233,7 @@ app.get("/api/foods", async (req, res) => {
                       measure_unit: portion.includes("ml") ? "ml" : "g",
                       grams_per_unit: 1
                     };
+                    saveAndCacheFood(mappedFood);
                     return res.json([mappedFood]);
                   }
                 }
@@ -1200,6 +1373,10 @@ app.get("/api/foods", async (req, res) => {
                   grams_per_unit: 1
                 };
               }).filter((item: any) => item !== null);
+
+              if (offMapped && offMapped.length > 0) {
+                offMapped.slice(0, 3).forEach(item => saveAndCacheFood(item));
+              }
             }
           }
         } catch (err) {
@@ -1277,6 +1454,10 @@ app.get("/api/foods", async (req, res) => {
                 grams_per_unit: 1
               };
             });
+
+            if (fatSecretMapped && fatSecretMapped.length > 0) {
+              fatSecretMapped.slice(0, 3).forEach(item => saveAndCacheFood(item));
+            }
           } else {
             console.log("FatSecret api search skipped: API returned status", response.status);
             fatSecretMapped = generateOfflineFatSecret(originalTerm, localFiltered);
@@ -2741,22 +2922,26 @@ async function sendWhatsappMessage(phone: string, text: string) {
   let apiKey = process.env.EVOLUTION_API_KEY || "sportnutri_default_key";
   let instance = process.env.EVOLUTION_INSTANCE || "sportnutri_bot";
 
-  try {
-    const configSnap = await firestore.collection("configs").doc("store").get();
-    if (configSnap.exists) {
-      const configData = configSnap.data();
-      if (configData && configData.whatsapp_api_url) {
-        evolutionUrl = configData.whatsapp_api_url;
+  const isConfiguredInEnv = process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_URL !== "https://api.sportnutri.com";
+
+  if (!isConfiguredInEnv) {
+    try {
+      const configSnap = await firestore.collection("configs").doc("store").get();
+      if (configSnap.exists) {
+        const configData = configSnap.data();
+        if (configData && configData.whatsapp_api_url) {
+          evolutionUrl = configData.whatsapp_api_url;
+        }
+        if (configData && configData.whatsapp_api_key) {
+          apiKey = configData.whatsapp_api_key;
+        }
+        if (configData && configData.whatsapp_instance) {
+          instance = configData.whatsapp_instance;
+        }
       }
-      if (configData && configData.whatsapp_api_key) {
-        apiKey = configData.whatsapp_api_key;
-      }
-      if (configData && configData.whatsapp_instance) {
-        instance = configData.whatsapp_instance;
-      }
+    } catch (err) {
+      console.error("Erro ao carregar configurações dinâmicas de WhatsApp do Firestore:", sanitizeError(err));
     }
-  } catch (err) {
-    console.error("Erro ao carregar configurações dinâmicas de WhatsApp do Firestore:", sanitizeError(err));
   }
 
   // Normalize base URL to prevent double slashes (e.g. site//message/)
@@ -2767,16 +2952,9 @@ async function sendWhatsappMessage(phone: string, text: string) {
 
   const url = `${baseUrl}/message/sendText/${encodeURIComponent(instance)}`;
   
+  // Clean payload matching the exact, highly compatible format validated successfully in n8n
   const payload = {
     number: phone,
-    options: {
-      delay: 1000,
-      presence: "composing",
-      linkPreview: true
-    },
-    textMessage: {
-      text: text
-    },
     text: text
   };
 
@@ -2807,22 +2985,26 @@ async function getBase64FromMediaMessage(messageData: any) {
   let apiKey = process.env.EVOLUTION_API_KEY || "sportnutri_default_key";
   let instance = process.env.EVOLUTION_INSTANCE || "sportnutri_bot";
 
-  try {
-    const configSnap = await firestore.collection("configs").doc("store").get();
-    if (configSnap.exists) {
-      const configData = configSnap.data();
-      if (configData && configData.whatsapp_api_url) {
-        evolutionUrl = configData.whatsapp_api_url;
+  const isConfiguredInEnv = process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_URL !== "https://api.sportnutri.com";
+
+  if (!isConfiguredInEnv) {
+    try {
+      const configSnap = await firestore.collection("configs").doc("store").get();
+      if (configSnap.exists) {
+        const configData = configSnap.data();
+        if (configData && configData.whatsapp_api_url) {
+          evolutionUrl = configData.whatsapp_api_url;
+        }
+        if (configData && configData.whatsapp_api_key) {
+          apiKey = configData.whatsapp_api_key;
+        }
+        if (configData && configData.whatsapp_instance) {
+          instance = configData.whatsapp_instance;
+        }
       }
-      if (configData && configData.whatsapp_api_key) {
-        apiKey = configData.whatsapp_api_key;
-      }
-      if (configData && configData.whatsapp_instance) {
-        instance = configData.whatsapp_instance;
-      }
+    } catch (err) {
+      console.error("Erro ao carregar configurações dinâmicas de WhatsApp do Firestore para mídia:", sanitizeError(err));
     }
-  } catch (err) {
-    console.error("Erro ao carregar configurações dinâmicas de WhatsApp do Firestore para mídia:", sanitizeError(err));
   }
 
   // Normalize base URL to prevent double slashes (e.g. site//chat/)
@@ -3622,6 +3804,172 @@ app.post("/api/admin/users/update", async (req, res) => {
   } catch (err: any) {
     console.log("Static profile update applied in memory.");
     return res.json({ success: true, message: "Atualização simulada executada com sucesso!" });
+  }
+});
+
+// 4. GET /api/admin/foods
+app.get("/api/admin/foods", async (req, res) => {
+  const { userId, email, q } = req.query;
+  const isAdmin = await checkIsAdmin(userId as string, email as string);
+  if (!isAdmin) {
+    return res.status(403).json({ error: "Acesso negado. Apenas administradores." });
+  }
+
+  try {
+    const term = q ? (q as string).trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") : "";
+    const all = db.prepare("SELECT * FROM foods").all() as any[];
+    
+    let filtered = all;
+    if (term) {
+      filtered = all.filter(f => {
+        const nom = f.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        return nom.includes(term);
+      });
+    }
+
+    return res.json({ foods: filtered });
+  } catch (err: any) {
+    return res.status(500).json({ error: "Erro ao buscar alimentos." });
+  }
+});
+
+// 5. POST /api/admin/foods
+app.post("/api/admin/foods", async (req, res) => {
+  const { adminUserId, adminEmail, food } = req.body;
+  const isAdmin = await checkIsAdmin(adminUserId, adminEmail);
+  if (!isAdmin) {
+    return res.status(403).json({ error: "Acesso negado. Apenas administradores." });
+  }
+
+  if (!food || !food.name) {
+    return res.status(400).json({ error: "Dados do alimento inválidos ou nome ausente." });
+  }
+
+  try {
+    const cleanName = food.name.trim();
+    // Inserir no SQLite local
+    const insertSql = `
+      INSERT INTO foods (name, category, calories, protein, carbs, fat, portion, measure_unit, grams_per_unit)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    const result = db.prepare(insertSql).run(
+      cleanName,
+      food.category || "carboidrato",
+      Number(food.calories || 0),
+      Number(food.protein || 0),
+      Number(food.carbs || 0),
+      Number(food.fat || 0),
+      food.portion || "100g",
+      food.measure_unit || "g",
+      Number(food.grams_per_unit || 1)
+    );
+
+    // Salvar no Firestore
+    const docId = Math.random().toString(36).substring(2, 15);
+    await firestore.collection("foods").doc(docId).set({
+      id: docId,
+      name: cleanName,
+      category: food.category || "carboidrato",
+      calories: Number(food.calories || 0),
+      protein: Number(food.protein || 0),
+      carbs: Number(food.carbs || 0),
+      fat: Number(food.fat || 0),
+      portion: food.portion || "100g",
+      measure_unit: food.measure_unit || "g",
+      grams_per_unit: Number(food.grams_per_unit || 1),
+      is_custom: true,
+      created_at: new Date().toISOString()
+    });
+
+    return res.json({ success: true, message: "Alimento adicionado com sucesso!", id: docId });
+  } catch (err: any) {
+    console.error("[AdminFood] Erro ao adicionar alimento:", err);
+    return res.status(500).json({ error: "Erro ao adicionar alimento no banco de dados." });
+  }
+});
+
+// 6. POST /api/admin/foods/update
+app.post("/api/admin/foods/update", async (req, res) => {
+  const { adminUserId, adminEmail, food } = req.body;
+  const isAdmin = await checkIsAdmin(adminUserId, adminEmail);
+  if (!isAdmin) {
+    return res.status(403).json({ error: "Acesso negado." });
+  }
+
+  if (!food || !food.name) {
+    return res.status(400).json({ error: "Campos obrigatórios ausentes." });
+  }
+
+  try {
+    const cleanName = food.name.trim();
+
+    // 1. Atualizar no SQLite local
+    const updateSql = `
+      UPDATE foods
+      SET category = ?, calories = ?, protein = ?, carbs = ?, fat = ?, portion = ?, measure_unit = ?, grams_per_unit = ?
+      WHERE LOWER(name) = ?
+    `;
+    db.prepare(updateSql).run(
+      food.category || "carboidrato",
+      Number(food.calories || 0),
+      Number(food.protein || 0),
+      Number(food.carbs || 0),
+      Number(food.fat || 0),
+      food.portion || "100g",
+      food.measure_unit || "g",
+      Number(food.grams_per_unit || 1),
+      cleanName.toLowerCase()
+    );
+
+    // 2. Atualizar no Firestore
+    const querySnap = await firestore.collection("foods").where("name", "==", cleanName).get();
+    if (!querySnap.empty) {
+      await querySnap.docs[0].ref.update({
+        category: food.category || "carboidrato",
+        calories: Number(food.calories || 0),
+        protein: Number(food.protein || 0),
+        carbs: Number(food.carbs || 0),
+        fat: Number(food.fat || 0),
+        portion: food.portion || "100g",
+        measure_unit: food.measure_unit || "g",
+        grams_per_unit: Number(food.grams_per_unit || 1),
+        updated_at: new Date().toISOString()
+      });
+    }
+
+    return res.json({ success: true, message: "Alimento atualizado!" });
+  } catch (err: any) {
+    console.error("[AdminFood] Erro ao atualizar alimento:", err);
+    return res.status(500).json({ error: "Erro ao atualizar alimento." });
+  }
+});
+
+// 7. POST /api/admin/foods/delete
+app.post("/api/admin/foods/delete", async (req, res) => {
+  const { adminUserId, adminEmail, name } = req.body;
+  const isAdmin = await checkIsAdmin(adminUserId, adminEmail);
+  if (!isAdmin) {
+    return res.status(403).json({ error: "Acesso negado." });
+  }
+
+  if (!name) {
+    return res.status(400).json({ error: "Nome do alimento ausente." });
+  }
+
+  try {
+    const cleanName = name.trim();
+    // 1. Deletar do SQLite local
+    db.prepare("DELETE FROM foods WHERE LOWER(name) = ?").run(cleanName.toLowerCase());
+
+    // 2. Deletar do Firestore
+    const querySnap = await firestore.collection("foods").where("name", "==", cleanName).get();
+    const promises = querySnap.docs.map(doc => doc.ref.delete());
+    await Promise.all(promises);
+
+    return res.json({ success: true, message: "Alimento removido!" });
+  } catch (err: any) {
+    console.error("[AdminFood] Erro ao remover alimento:", err);
+    return res.status(500).json({ error: "Erro ao remover alimento." });
   }
 });
 
