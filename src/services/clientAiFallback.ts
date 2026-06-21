@@ -517,16 +517,7 @@ export async function tryFetchWithClientFallback<T>(
   const config = getCachedStoreConfig();
   const hasLocalKey = !!config?.ai_api_key;
 
-  // Direct client-side calls are highly preferred on Vercel/external domains to completely avoid sandbox routing restrictions
-  if (isExternalHost && hasLocalKey) {
-    try {
-      console.log(`[AI Fallback] Attempting direct client-side execution for external host: ${apiUrl}`);
-      return await clientFallbackFn();
-    } catch (fallbackErr) {
-      console.warn("[AI Fallback] Direct client call failed, attempting backend fallback:", fallbackErr);
-    }
-  }
-
+  // Attempt the request to the live multi-database backend first, allowing access to custom calibrations, SQLite, and Firestore sync.
   try {
     const response = await fetch(apiUrl, fetchOptions);
     if (!response.ok) {
@@ -536,7 +527,12 @@ export async function tryFetchWithClientFallback<T>(
   } catch (err) {
     console.warn(`[AI Fallback] API request to ${apiUrl} failed. Bypassing to client fallback...`, err);
     if (hasLocalKey) {
-      return await clientFallbackFn();
+      try {
+        console.log(`[AI Fallback] Attempting direct client-side execution fallback...`);
+        return await clientFallbackFn();
+      } catch (fallbackErr) {
+        console.error("[AI Fallback] Direct client fallback also failed:", fallbackErr);
+      }
     }
     throw err;
   }
