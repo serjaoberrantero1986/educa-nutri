@@ -11,27 +11,54 @@ export function enrichFoodWithExactCaloriesAndMacrosClient(item: any): any {
 
     const termNormalized = cleanTerm.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-    // Search in FALLBACK_FOODS
-    let matchedFood = FALLBACK_FOODS.find((f: any) => {
-      const fallbackNom = f.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-      return fallbackNom === termNormalized;
-    });
+    // Search in FALLBACK_FOODS with structured scoring to prevent fuzzy prefix mismatches (e.g., maca matching macarrao instead of maca fuji)
+    const scoredMatches = FALLBACK_FOODS.map((f: any) => {
+      const fallbackName = f.name.toLowerCase().trim();
+      const fallbackNom = fallbackName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      
+      let score = 0;
+      
+      // Exact match (absolute priority, matching terms normalized)
+      if (fallbackNom === termNormalized || fallbackName === cleanTerm) {
+        score += 10000;
+      }
+      
+      // Word boundary exact containment (e.g. term = "maca", match = "maçã fuji" -> exact word "maçã" matches!)
+      const localWords = fallbackNom.split(/[\s,()\-]+/);
+      const termWords = termNormalized.split(/[\s,()\-]+/);
+      
+      const containsExactWord = localWords.some(w => termWords.includes(w) || w === termNormalized);
+      if (containsExactWord) {
+        score += 5000;
+      }
 
-    if (!matchedFood) {
-      // If no exact match, try to find one where it starts with the term or is included
-      matchedFood = FALLBACK_FOODS.find((f: any) => {
-        const fallbackNom = f.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-        return fallbackNom.startsWith(termNormalized) || termNormalized.startsWith(fallbackNom);
-      });
-    }
+      // First word match (e.g. term = "maca fuji", match = "maçã" -> first words match!)
+      if (localWords.length > 0 && termWords.length > 0 && localWords[0] === termWords[0]) {
+        score += 3000;
+      }
 
-    if (!matchedFood) {
-      // Try fuzzy search for parts of names
-      matchedFood = FALLBACK_FOODS.find((f: any) => {
-        const fallbackNom = f.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-        return fallbackNom.includes(termNormalized) || termNormalized.includes(fallbackNom);
-      });
-    }
+      // Starts with match (prefix matching)
+      if (fallbackNom.startsWith(termNormalized) || fallbackName.startsWith(cleanTerm)) {
+        score += 1000;
+      }
+
+      // If matches as sub-string but not as full word boundary (e.g. "maca" inside "macarrao")
+      if (fallbackNom.includes(termNormalized) && !containsExactWord) {
+        score += 10;
+      } else if (fallbackNom.includes(termNormalized)) {
+        score += 100;
+      }
+
+      // Length difference penalty (closer lengths are better indicators of proximity)
+      const lengthDiff = Math.abs(fallbackNom.length - termNormalized.length);
+      score -= lengthDiff * 5;
+
+      return { food: f, score };
+    }).filter(item => item.score > 0);
+
+    // Sort descending by score
+    scoredMatches.sort((a, b) => b.score - a.score);
+    const matchedFood = scoredMatches.length > 0 ? scoredMatches[0].food : null;
 
     if (matchedFood) {
       console.log(`[Client-AI-Enrichment] Matched AI food "${name}" with client reference "${matchedFood.name}" (${matchedFood.calories} kcal)`);

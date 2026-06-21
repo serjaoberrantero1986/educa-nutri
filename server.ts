@@ -1058,21 +1058,59 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any): Promise<any> {
     const databaseMatch = db.prepare(sql).all(`%${cleanTerm}%`, `%${termNormalized}%`) as any[];
 
     if (databaseMatch && databaseMatch.length > 0) {
-      // Find the best exact match of name
-      let bestLocal = databaseMatch.find((f: any) => {
-        const localNom = f.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-        return localNom === termNormalized;
+      // Rank matches to find the best one based on comprehensive scoring
+      const scoredMatches = databaseMatch.map((f: any) => {
+        const localName = f.name.toLowerCase().trim();
+        const localNom = localName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        
+        let score = 0;
+        
+        // Exact match (absolute priority, matching terms normalized)
+        if (localNom === termNormalized || localName === cleanTerm.toLowerCase()) {
+          score += 10000;
+        }
+        
+        // Word boundary exact containment (e.g. term = "maca", match = "maçã fuji" -> exact word "maçã" matches!)
+        const localWords = localNom.split(/[\s,()\-]+/);
+        const termWords = termNormalized.split(/[\s,()\-]+/);
+        
+        // Check if any of the words in localName match termNormalized exactly or vice versa
+        const containsExactWord = localWords.some(w => termWords.includes(w) || w === termNormalized);
+        if (containsExactWord) {
+          score += 5000;
+        }
+
+        // First word match (e.g. term = "maca fuji", match = "maçã" -> first words match!)
+        if (localWords.length > 0 && termWords.length > 0 && localWords[0] === termWords[0]) {
+          score += 3000;
+        }
+
+        // Starts with match (prefix matching)
+        if (localNom.startsWith(termNormalized) || localName.startsWith(cleanTerm.toLowerCase())) {
+          // If the prefix actually corresponds to a word boundary, give higher score
+          score += 1000;
+        }
+
+        // Penalty for word mismatches: if "maca" is requested but matched "macarrao", "maca" is only a substring of "macarrao".
+        // Let's check if the match contains the query but NOT as a word boundary
+        if (localNom.includes(termNormalized) && !containsExactWord) {
+          // It's a substring match but not a word boundary match (e.g., "maca" inside "macarrao")
+          // Give it a tiny score so word boundary matches win
+          score += 10;
+        } else if (localNom.includes(termNormalized)) {
+          score += 100;
+        }
+
+        // Length difference penalty (closer lengths are better indicators of proximity)
+        const lengthDiff = Math.abs(localNom.length - termNormalized.length);
+        score -= lengthDiff * 5;
+
+        return { food: f, score };
       });
-      if (!bestLocal) {
-        // If no exact match, try to find one where it starts with the term
-        bestLocal = databaseMatch.find((f: any) => {
-          const localNom = f.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-          return localNom.startsWith(termNormalized);
-        });
-      }
-      if (!bestLocal) {
-        bestLocal = databaseMatch[0];
-      }
+
+      // Sort descending by score
+      scoredMatches.sort((a, b) => b.score - a.score);
+      const bestLocal = scoredMatches[0].food;
 
       console.log(`[AI-Enrichment] Matched AI food "${name}" with database reference "${bestLocal.name}" (${bestLocal.calories} kcal)`);
       
