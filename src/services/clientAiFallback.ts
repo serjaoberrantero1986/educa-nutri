@@ -1,6 +1,38 @@
 import { getCachedStoreConfig } from "./storeConfigService";
 import { FALLBACK_FOODS } from "../utils";
 
+export function isCommercialOrIndustrialized(name: string): boolean {
+  if (!name) return false;
+  const norm = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const brandKeywords = [
+    "doritos", "club social", "toddynho", "sufresh", "coca", "fanta", "sprite", "gatorade", 
+    "ruffles", "piraque", "bono", "passatempo", "bis", "oreo", "trakinas", "nestle", 
+    "sadia", "perdigao", "seara", "danone", "yakult", "nescau", "bauducco", "activia", 
+    "polenguinho", "pullman", "pringles", "mcdonald", "burger king", "subway", "nutella", 
+    "hershey", "lacta", "garoto", "kitkat", "snickers", "m&m", "skol", "heineken", "red bull", 
+    "monster", "toddy", "quaker", "barilla", "itambe", "tirolez", "molico", "redbull", 
+    "vigor", "piracanjuba", "elege", "qualy", "claybom", "doriana", "hellmanns", "arisco", 
+    "knorr", "maggi", "yoki", "quero", "fugini", "heinz", "pacoquita", "negresco", "chokito", 
+    "prestigio", "sensacao", "talento", "serenata", "sonho de valsa", "ouro branco", 
+    "ovomaltine", "caixinha", "lata", "garrafa", "pacote", "industrializado", "marca", 
+    "mc Donald", "bk", "salsicha", "presunto", "margarina", "miojo", "nissin", "cup noodle",
+    "gloria", "dolly", "guarana antarctica", "h2oh", "schweppes", "skinka", "ades", "del valle",
+    "kapo", "tang", "clight", "frisco", "mid", "camp", "gatorade", "powerade", "monster energy",
+    "tnt energy", "red bull", "heller", "corona", "budweiser", "stella artois", "eisenbahn",
+    "amstel", "bohemia", "antarctica", "brahma", "itaipava", "cerpa", "devassa", "baden baden",
+    "smirnoff", "absolut", "bacardi", "jose cuervo", "johnnie walker", "chivas", "jack daniels",
+    "ballantines", "red label", "black label", "passaporte", "campari", "aperol", "martini",
+    "cynar", "corote", "51", "velho barreiro", "pitu", "ypioca", "dr peanut", "naked nuts",
+    "maizena", "cremogema", "mucilon", "neston", "farinha lactea", "sustagen", "pediasure",
+    "ensure", "nutren", "whey", "creatina", "albumina", "hipercalorico", "bcaa", "glutamina",
+    "pre treino", "termogenico", "pastilha", "chiclete", "goma de mascar", "trident", "mentos",
+    "hallse", "fini", "haribo", "docile", "snack", "cheetos", "fandangos", "cebolitos",
+    "baconzitos", "sensacoes", "stax", "tyrrells", "marilan", "mabel", "toddy", "negresco", 
+    "passatempo", "nikito", "tortuguita", "lollo", "charge", "smash", "recheado", "recheada"
+  ];
+  return brandKeywords.some(keyword => norm.includes(keyword));
+}
+
 export function enrichFoodWithExactCaloriesAndMacrosClient(item: any): any {
   const name = item.food_name || item.name || "";
   if (!name) return item;
@@ -58,9 +90,19 @@ export function enrichFoodWithExactCaloriesAndMacrosClient(item: any): any {
 
     // Sort descending by score
     scoredMatches.sort((a, b) => b.score - a.score);
-    const matchedFood = scoredMatches.length > 0 ? scoredMatches[0].food : null;
+    const bestMatchWrap = scoredMatches.length > 0 ? scoredMatches[0] : null;
 
-    if (matchedFood) {
+    if (bestMatchWrap) {
+      const matchedFood = bestMatchWrap.food;
+      const isBrandFood = isCommercialOrIndustrialized(cleanTerm);
+      
+      // If it is an industrialized commercial brand, only overwrite if we have an EXACT match in reference catalog (score >= 10000)
+      // This prevents matching "Doritos Queijo" with a completely different generic food like "Pão de Queijo".
+      if (isBrandFood && bestMatchWrap.score < 10000) {
+        console.log(`[Client-AI-Enrichment] Skipping fuzzy catalog overwrite for branded food "${name}" to preserve premium on-the-fly AI calculation.`);
+        return item;
+      }
+
       console.log(`[Client-AI-Enrichment] Matched AI food "${name}" with client reference "${matchedFood.name}" (${matchedFood.calories} kcal)`);
       return {
         ...item,

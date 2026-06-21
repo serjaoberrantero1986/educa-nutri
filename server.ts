@@ -1156,6 +1156,38 @@ async function getFatSecretToken(): Promise<string | null> {
   return null;
 }
 
+function isCommercialOrIndustrialized(name: string): boolean {
+  if (!name) return false;
+  const norm = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const brandKeywords = [
+    "doritos", "club social", "toddynho", "sufresh", "coca", "fanta", "sprite", "gatorade", 
+    "ruffles", "piraque", "bono", "passatempo", "bis", "oreo", "trakinas", "nestle", 
+    "sadia", "perdigao", "seara", "danone", "yakult", "nescau", "bauducco", "activia", 
+    "polenguinho", "pullman", "pringles", "mcdonald", "burger king", "subway", "nutella", 
+    "hershey", "lacta", "garoto", "kitkat", "snickers", "m&m", "skol", "heineken", "red bull", 
+    "monster", "toddy", "quaker", "barilla", "itambe", "tirolez", "molico", "redbull", 
+    "vigor", "piracanjuba", "elege", "qualy", "claybom", "doriana", "hellmanns", "arisco", 
+    "knorr", "maggi", "yoki", "quero", "fugini", "heinz", "pacoquita", "negresco", "chokito", 
+    "prestigio", "sensacao", "talento", "serenata", "sonho de valsa", "ouro branco", 
+    "ovomaltine", "caixinha", "lata", "garrafa", "pacote", "industrializado", "marca", 
+    "mc Donald", "bk", "salsicha", "presunto", "margarina", "miojo", "nissin", "cup noodle",
+    "gloria", "dolly", "guarana antarctica", "h2oh", "schweppes", "skinka", "ades", "del valle",
+    "kapo", "tang", "clight", "frisco", "mid", "camp", "gatorade", "powerade", "monster energy",
+    "tnt energy", "red bull", "heller", "corona", "budweiser", "stella artois", "eisenbahn",
+    "amstel", "bohemia", "antarctica", "brahma", "itaipava", "cerpa", "devassa", "baden baden",
+    "smirnoff", "absolut", "bacardi", "jose cuervo", "johnnie walker", "chivas", "jack daniels",
+    "ballantines", "red label", "black label", "passaporte", "campari", "aperol", "martini",
+    "cynar", "corote", "51", "velho barreiro", "pitu", "ypioca", "dr peanut", "naked nuts",
+    "maizena", "cremogema", "mucilon", "neston", "farinha lactea", "sustagen", "pediasure",
+    "ensure", "nutren", "whey", "creatina", "albumina", "hipercalorico", "bcaa", "glutamina",
+    "pre treino", "termogenico", "pastilha", "chiclete", "goma de mascar", "trident", "mentos",
+    "hallse", "fini", "haribo", "docile", "snack", "cheetos", "fandangos", "cebolitos",
+    "baconzitos", "sensacoes", "stax", "tyrrells", "marilan", "mabel", "toddy", "negresco", 
+    "passatempo", "nikito", "tortuguita", "lollo", "charge", "smash", "recheado", "recheada"
+  ];
+  return brandKeywords.some(keyword => norm.includes(keyword));
+}
+
 async function enrichFoodWithExactCaloriesAndMacros(item: any): Promise<any> {
   const name = item.food_name || "";
   if (!name) return item;
@@ -1165,6 +1197,31 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any): Promise<any> {
     if (cleanTerm.length < 2) return item;
 
     const termNormalized = cleanTerm.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    // 1. PRIORIDADE ABSOLUTA: Pesquisa Grounded via IA Web Search para marcas e produtos industriais comerciais do Brasil
+    if (isCommercialOrIndustrialized(cleanTerm) && !isEgressBlocked) {
+      console.log(`[AI-Enrichment] Alimento industrializado detectado: "${cleanTerm}". Iniciando pesquisa web dinâmica prioritária no Google...`);
+      try {
+        const webResults = await searchFoodOnlineUnified(cleanTerm);
+        if (webResults && webResults.length > 0) {
+          const bestMatched = webResults[0];
+          console.log(`[AI-Enrichment] Calibrado com sucesso de forma dinâmica no Google Search para: "${name}" -> "${bestMatched.name}" (${bestMatched.calories} kcal)`);
+          return {
+            ...item,
+            food_name: bestMatched.name,
+            calories_per_100: bestMatched.calories,
+            protein_per_100: bestMatched.protein,
+            carbs_per_100: bestMatched.carbs,
+            fat_per_100: bestMatched.fat,
+            grams_per_unit: bestMatched.grams_per_unit || item.grams_per_unit || 100,
+            unit: bestMatched.measure_unit || item.unit || "unidade",
+            confidence_explanation: `Calibrado em tempo real com pesquisa web do Google Search para a marca oficial (${bestMatched.name}).`
+          };
+        }
+      } catch (searchErr) {
+        console.warn(`[AI-Enrichment] Busca prioritária na web falhou por "${cleanTerm}", tentando camada local:`, searchErr);
+      }
+    }
 
     // Walk through multiple safety layers: local SQLite, custom Firestore, and in-memory default list fallback
     let databaseMatch: any[] = [];
@@ -1265,22 +1322,30 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any): Promise<any> {
     if (scoredMatches.length > 0) {
       // Sort descending by score
       scoredMatches.sort((a, b) => b.score - a.score);
-      const bestLocal = scoredMatches[0].food;
+      const bestLocalWrap = scoredMatches[0];
+      const bestLocal = bestLocalWrap.food;
 
-      console.log(`[AI-Enrichment] Matched AI food "${name}" with database reference "${bestLocal.name}" (${bestLocal.calories} kcal)`);
-      
-      // Let's preserve the original AI amount, but update other fields to match official local DB values
-      return {
-        ...item,
-        food_name: bestLocal.name.split("(")[0].trim(),
-        calories_per_100: bestLocal.calories,
-        protein_per_100: bestLocal.protein,
-        carbs_per_100: bestLocal.carbs,
-        fat_per_100: bestLocal.fat,
-        grams_per_unit: bestLocal.grams_per_unit || item.grams_per_unit || 100,
-        unit: bestLocal.measure_unit || item.unit || "unidade",
-        confidence_explanation: `Estimativa calibrada perfeitamente com a tabela de referência do aplicativo (${bestLocal.name}).`
-      };
+      // Se for alimento comercial/marca cadastrada de marca e possuir score fraco (< 10000), pulamos a calibração genérica
+      // Isso impede que estimativas precisas da IA de Doritos virem Pão de Queijo ou alimentos desconexos.
+      const isBrandFood = isCommercialOrIndustrialized(cleanTerm);
+      if (isBrandFood && bestLocalWrap.score < 10000) {
+        console.log(`[AI-Enrichment] Força de correspondência insuficiente (${bestLocalWrap.score}) para o alimento industrializado "${name}" com local "${bestLocal.name}". Pulando calibração genérica.`);
+      } else {
+        console.log(`[AI-Enrichment] Matched AI food "${name}" with database reference "${bestLocal.name}" (${bestLocal.calories} kcal)`);
+        
+        // Let's preserve the original AI amount, but update other fields to match official local DB values
+        return {
+          ...item,
+          food_name: bestLocal.name.split("(")[0].trim(),
+          calories_per_100: bestLocal.calories,
+          protein_per_100: bestLocal.protein,
+          carbs_per_100: bestLocal.carbs,
+          fat_per_100: bestLocal.fat,
+          grams_per_unit: bestLocal.grams_per_unit || item.grams_per_unit || 100,
+          unit: bestLocal.measure_unit || item.unit || "unidade",
+          confidence_explanation: `Estimativa calibrada perfeitamente com a tabela de referência do aplicativo (${bestLocal.name}).`
+        };
+      }
     }
 
     // If not found in SQLite or Firestore fallback, we do a real API search on FatSecret to get ultra precise values!
@@ -1857,9 +1922,11 @@ app.get("/api/foods", async (req, res) => {
         fatSecretMapped = generateOfflineFatSecret(originalTerm, localFiltered);
       }
 
-      // If no local match of the brand and query matches standard branding (or query length is >=3), run on-the-fly Search Grounding
+      // Se não houver correspondência local perfeita ou for um produto comercial de marca industrializado,
+      // rodamos a pesquisa dinâmica do Google em tempo real para obter valores 100% idênticos aos da internet.
       let googleSearchResults: any[] = [];
-      if (localFiltered.length === 0 && !isEgressBlocked) {
+      const isCommercial = isCommercialOrIndustrialized(originalTerm);
+      if ((localFiltered.length === 0 || isCommercial) && !isEgressBlocked) {
         try {
           googleSearchResults = await searchFoodOnlineUnified(originalTerm);
         } catch (searchErr) {
