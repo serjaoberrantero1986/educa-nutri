@@ -82,9 +82,24 @@ const firebaseProjectId = process.env.VITE_FIREBASE_PROJECT_ID || firebaseConfig
 const firebaseDatabaseId = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || firebaseConfig.firestoreDatabaseId;
 
 if (admin.apps.length === 0) {
-  admin.initializeApp({
-    projectId: firebaseProjectId
-  });
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    try {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      console.log("Firebase Admin inicializado com sucesso via FIREBASE_SERVICE_ACCOUNT!");
+    } catch (err: any) {
+      console.error("Erro ao processar FIREBASE_SERVICE_ACCOUNT do ambiente:", err?.message || err);
+      admin.initializeApp({
+        projectId: firebaseProjectId
+      });
+    }
+  } else {
+    admin.initializeApp({
+      projectId: firebaseProjectId
+    });
+  }
 }
 const firestore = firebaseDatabaseId
   ? getFirestore(admin.apps[0], firebaseDatabaseId)
@@ -93,6 +108,73 @@ const firestore = firebaseDatabaseId
 function sanitizeError(err: any): string {
   return "Sandbox status active";
 }
+
+// Interceptador e buffer de logs do sistema (focado em diagnóstico)
+interface SystemLog {
+  id: string;
+  timestamp: string;
+  level: "info" | "warn" | "error";
+  message: string;
+}
+
+const serverLogs: SystemLog[] = [];
+
+function addServerLog(level: "info" | "warn" | "error", ...args: any[]) {
+  try {
+    const rawMessage = args.map(arg => {
+      if (arg instanceof Error) {
+        return `${arg.message}\n${arg.stack || ""}`;
+      }
+      if (typeof arg === "object" && arg !== null) {
+        try { return JSON.stringify(arg); } catch (e) { return String(arg); }
+      }
+      return String(arg);
+    }).join(" ");
+
+    // Remove asterisks to respect AGENTS_md & GEMINI_md rules
+    const cleanMessage = rawMessage.replace(/\*/g, "");
+
+    const logEntry: SystemLog = {
+      id: Math.random().toString(36).substring(7),
+      timestamp: new Date().toISOString(),
+      level,
+      message: cleanMessage,
+    };
+
+    serverLogs.push(logEntry);
+    if (serverLogs.length > 500) {
+      serverLogs.shift();
+    }
+
+    // Persist system logs in /tmp directory for serverless environments to survive small scale-downs/recycles
+    try {
+      fs.appendFileSync("/tmp/sportnutri_system.log", `[${logEntry.timestamp}] [${level.toUpperCase()}] ${cleanMessage}\n`);
+    } catch (e) {
+      // safe bypass
+    }
+  } catch (e) {
+    // safe bypass
+  }
+}
+
+const originalLog = console.log;
+const originalWarn = console.warn;
+const originalError = console.error;
+
+console.log = function(...args: any[]) {
+  originalLog.apply(console, args);
+  addServerLog("info", ...args);
+};
+
+console.warn = function(...args: any[]) {
+  originalWarn.apply(console, args);
+  addServerLog("warn", ...args);
+};
+
+console.error = function(...args: any[]) {
+  originalError.apply(console, args);
+  addServerLog("error", ...args);
+};
 
 async function getDynamicAiConfig(req?: express.Request) {
   const headerProvider = req?.headers["x-ai-provider"] as string;
@@ -4128,6 +4210,50 @@ app.post("/api/admin/users/update", async (req, res) => {
     console.log("Static profile update applied in memory.");
     return res.json({ success: true, message: "Atualização simulada executada com sucesso!" });
   }
+});
+
+// ADDED SYSTEM LOGS DIAGNOSTIC ENDPOINTS
+app.get("/api/admin/logs", async (req, res) => {
+  const { adminUserId, adminEmail } = req.query;
+  const isAdmin = await checkIsAdmin(adminUserId as string, adminEmail as string);
+  if (!isAdmin) {
+    return res.status(403).json({ error: "Acesso negado. Apenas administradores." });
+  }
+
+  let fileLogs: string[] = [];
+  try {
+    if (fs.existsSync("/tmp/sportnutri_system.log")) {
+      const content = fs.readFileSync("/tmp/sportnutri_system.log", "utf8");
+      fileLogs = content.split("\n").filter(Boolean).slice(-300);
+    }
+  } catch (err) {
+    // bypass
+  }
+
+  return res.json({ 
+    success: true, 
+    inMemoryLogs: serverLogs,
+    fileLogs: fileLogs
+  });
+});
+
+app.post("/api/admin/logs/clear", async (req, res) => {
+  const { adminUserId, adminEmail } = req.body;
+  const isAdmin = await checkIsAdmin(adminUserId, adminEmail);
+  if (!isAdmin) {
+    return res.status(403).json({ error: "Acesso negado. Apenas administradores." });
+  }
+
+  serverLogs.length = 0;
+  try {
+    if (fs.existsSync("/tmp/sportnutri_system.log")) {
+      fs.writeFileSync("/tmp/sportnutri_system.log", "", "utf8");
+    }
+  } catch (err) {
+    // bypass
+  }
+
+  return res.json({ success: true, message: "Logs apagados com sucesso de todo o site!" });
 });
 
 // 4. GET /api/admin/foods

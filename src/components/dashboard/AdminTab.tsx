@@ -27,7 +27,10 @@ import {
   Image,
   Video,
   Eye,
-  EyeOff
+  EyeOff,
+  Sliders,
+  ShoppingBag,
+  Download
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -45,7 +48,6 @@ import { Profile } from '../../types';
 import { db } from '../../lib/firebase';
 import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { StoreConfig, DEFAULT_STORE_CONFIG, saveStoreConfig } from '../../services/storeConfigService';
-import { ShoppingBag } from 'lucide-react';
 
 interface AdminTabProps {
   user: any;
@@ -114,7 +116,96 @@ export default function AdminTab({
   const [credentialsSuccessMessage, setCredentialsSuccessMessage] = useState<string | null>(null);
 
   // Active sub-tab inside Admin Panel page
-  const [activeAdminSubTab, setActiveAdminSubTab] = useState<'users' | 'pricing' | 'connections' | 'foods'>('users');
+  const [activeAdminSubTab, setActiveAdminSubTab] = useState<'users' | 'pricing' | 'connections' | 'foods' | 'logs'>('users');
+
+  // Diagnostics server logs states
+  const [diagnosticsLogsList, setDiagnosticsLogsList] = useState<any[]>([]);
+  const [diagnosticsFileLogsList, setDiagnosticsFileLogsList] = useState<string[]>([]);
+  const [loadingDiagnosticsLogs, setLoadingDiagnosticsLogs] = useState(false);
+  const [diagnosticsLogsError, setDiagnosticsLogsError] = useState<string | null>(null);
+  const [diagnosticsLogsFilter, setDiagnosticsLogsFilter] = useState<'all' | 'info' | 'warn' | 'error'>('all');
+  const [diagnosticsLogsSearchText, setDiagnosticsLogsSearchText] = useState('');
+
+  const fetchSystemLogs = async () => {
+    setLoadingDiagnosticsLogs(true);
+    setDiagnosticsLogsError(null);
+    try {
+      const response = await fetch(`/api/admin/logs?adminUserId=${encodeURIComponent(user.uid)}&adminEmail=${encodeURIComponent(user.email || '')}`);
+      if (response.ok) {
+        const data = await response.json();
+        setDiagnosticsLogsList(data.inMemoryLogs || []);
+        setDiagnosticsFileLogsList(data.fileLogs || []);
+      } else {
+        const errData = await response.json().catch(() => ({ error: "Erro desconhecido" }));
+        setDiagnosticsLogsError(errData.error || "Erro ao carregar logs.");
+      }
+    } catch (err: any) {
+      setDiagnosticsLogsError("Erro na requisição dos logs: " + (err.message || err));
+    } finally {
+      setLoadingDiagnosticsLogs(false);
+    }
+  };
+
+  const handleClearLogs = async () => {
+    if (!window.confirm("Deseja realmente limpar todos os logs do site em tempo real? Esta operação limpará os buffers em memória e em arquivo temporário.")) return;
+    try {
+      const response = await fetch('/api/admin/logs/clear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adminUserId: user.uid,
+          adminEmail: user.email || ''
+        })
+      });
+      if (response.ok) {
+        setDiagnosticsLogsList([]);
+        setDiagnosticsFileLogsList([]);
+        alert("Logs limpos com sucesso!");
+      } else {
+        alert("Erro ao limpar logs.");
+      }
+    } catch (err: any) {
+      alert("Erro ao limpar logs: " + err.message);
+    }
+  };
+
+  const downloadLogsAsText = () => {
+    try {
+      let content = "=== SPORTNUTRI SYSTEM DIAGNOSTIC LOGS ===\n";
+      content += `Gerado em: ${new Date().toLocaleString()}\n`;
+      content += `Usuario Admin: ${user.email || 'N/A'} (${user.uid})\n`;
+      content += "=========================================\n\n";
+
+      content += "--- EVENTOS INTERCEPTADOS EM MEMORIA ---\n\n";
+      if (diagnosticsLogsList.length === 0) {
+        content += "Nenhum evento em memoria.\n";
+      } else {
+        diagnosticsLogsList.forEach(log => {
+          content += `[${new Date(log.timestamp).toISOString()}] [${log.level.toUpperCase()}] ${log.message}\n`;
+        });
+      }
+
+      if (diagnosticsFileLogsList.length > 0) {
+        content += "\n--- LOGS PERSISTIDOS NO DISCO TEMPORARIO ---\n\n";
+        diagnosticsFileLogsList.forEach(line => {
+          content += `${line}\n`;
+        });
+      }
+
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.id = "btn-download-logs-file"; // Unique HTML ID
+      link.download = `sportnutri_diagnostico_logs_${new Date().toISOString().replace(/:/g, '-')}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert("Erro ao gerar arquivo de logs: " + e.message);
+    }
+  };
 
   // Administrating Custom / Calibrated Foods States
   const [foodsList, setFoodsList] = useState<any[]>([]);
@@ -267,6 +358,8 @@ export default function AdminTab({
   useEffect(() => {
     if (activeAdminSubTab === 'foods') {
       fetchAdminFoods(foodsSearch);
+    } else if (activeAdminSubTab === 'logs') {
+      fetchSystemLogs();
     }
   }, [activeAdminSubTab]);
 
@@ -1043,6 +1136,18 @@ export default function AdminTab({
           <ChefHat size={14} />
           Tabela Alimentar
         </button>
+
+        <button
+          onClick={() => setActiveAdminSubTab('logs')}
+          className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-black text-xs transition-all border-0 cursor-pointer shrink-0 ${
+            activeAdminSubTab === 'logs'
+              ? 'bg-gradient-to-r from-red-600 to-red-500 text-white shadow-md shadow-red-500/10'
+              : 'bg-slate-50 dark:bg-slate-900 text-slate-400 dark:text-slate-500 hover:text-slate-600'
+          }`}
+        >
+          <Sliders size={14} />
+          Logs de Diagnóstico
+        </button>
       </div>
 
       {activeAdminSubTab === 'pricing' && (
@@ -1741,6 +1846,169 @@ export default function AdminTab({
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {activeAdminSubTab === 'logs' && (
+        <section className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-50 dark:border-slate-800 pb-5">
+            <div>
+              <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">
+                <Sliders className="text-red-500" />
+                Logs de Diagnóstico do Servidor
+              </h3>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                Acompanhe o comportamento das requisições, diagnósticos da Inteligência Artificial (Gemini), bancos de dados e APIs em tempo real.
+              </p>
+            </div>
+            
+            <div className="flex gap-2">
+              <button
+                onClick={fetchSystemLogs}
+                disabled={loadingDiagnosticsLogs}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-350 font-extrabold text-xs cursor-pointer border-0 transition-all shrink-0"
+              >
+                <RefreshCw size={12} className={loadingDiagnosticsLogs ? 'animate-spin' : ''} />
+                Atualizar Logs
+              </button>
+
+              <button
+                onClick={handleClearLogs}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950 text-red-600 dark:text-red-400 font-extrabold text-xs cursor-pointer border-0 transition-all shrink-0"
+              >
+                <Trash2 size={12} />
+                Limpar Logs
+              </button>
+            </div>
+          </div>
+
+          {/* Filters Bar */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50 dark:bg-slate-900/40 p-4 rounded-2xl">
+            <div className="flex flex-wrap gap-1.5">
+              {(['all', 'info', 'warn', 'error'] as const).map((lvl) => {
+                const count = lvl === 'all' 
+                  ? diagnosticsLogsList.length 
+                  : diagnosticsLogsList.filter(l => l.level === lvl).length;
+                return (
+                  <button
+                    key={lvl}
+                    onClick={() => setDiagnosticsLogsFilter(lvl)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border-0 cursor-pointer transition-all ${
+                      diagnosticsLogsFilter === lvl
+                        ? lvl === 'error'
+                          ? 'bg-red-500 text-white'
+                          : lvl === 'warn'
+                          ? 'bg-amber-500 text-white'
+                          : lvl === 'info'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-purple-600 text-white'
+                        : 'bg-slate-150 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    {lvl.toUpperCase()} ({count})
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 text-slate-400" size={14} />
+              <input
+                type="text"
+                placeholder="Filtrar termo..."
+                value={diagnosticsLogsSearchText}
+                onChange={(e) => setDiagnosticsLogsSearchText(e.target.value)}
+                className="pl-9 pr-4 py-2 text-xs w-full sm:w-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 focus:outline-none focus:ring-1 focus:ring-purple-500 text-slate-700 dark:text-slate-300"
+              />
+            </div>
+          </div>
+
+          {diagnosticsLogsError && (
+            <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-2xl text-xs text-red-600 dark:text-red-400 font-medium font-bold">
+              {diagnosticsLogsError}
+            </div>
+          )}
+
+          {loadingDiagnosticsLogs ? (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
+              <Loader2 className="animate-spin text-purple-600" size={32} />
+              <span className="text-xs font-bold">Carregando logs do servidor...</span>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="border border-slate-100 dark:border-slate-800 rounded-2xl overflow-hidden">
+                <div className="bg-slate-50 dark:bg-slate-900/60 px-4 py-3 border-b border-slate-100 dark:border-slate-800 text-[10px] font-black text-slate-405 tracking-wider">
+                  ÚLTIMOS EVENTOS EM MEMÓRIA (NODE BUFFER)
+                </div>
+                
+                <div className="divide-y divide-slate-100 dark:divide-slate-800/60 max-h-[400px] overflow-y-auto font-mono text-[11px] leading-relaxed">
+                  {(() => {
+                    const filtered = diagnosticsLogsList.filter(l => {
+                      const matchesLvl = diagnosticsLogsFilter === 'all' || l.level === diagnosticsLogsFilter;
+                      const matchesTxt = !diagnosticsLogsSearchText || l.message.toLowerCase().includes(diagnosticsLogsSearchText.toLowerCase());
+                      return matchesLvl && matchesTxt;
+                    });
+
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">
+                          Nenhum log encontrado para os filtros selecionados.
+                        </div>
+                      );
+                    }
+
+                    return filtered.map((log) => {
+                      let tagColor = "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400";
+                      if (log.level === "warn") tagColor = "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400";
+                      if (log.level === "error") tagColor = "bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400";
+
+                      return (
+                        <div key={log.id} className="p-3 hover:bg-slate-50/50 dark:hover:bg-slate-900/35 transition-all flex gap-3 items-start">
+                          <span className="text-slate-400 dark:text-slate-500 tracking-normal shrink-0">
+                            {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </span>
+                          <span className={`px-1.5 py-0.5 text-[9px] font-extrabold rounded shrink-0 ${tagColor}`}>
+                            {log.level.toUpperCase()}
+                          </span>
+                          <span className="text-slate-700 dark:text-slate-300 break-all select-text font-medium whitespace-pre-wrap">
+                            {log.message}
+                          </span>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+
+              {/* Serverless persistent file logs */}
+              {diagnosticsFileLogsList.length > 0 && (
+                <div className="border border-slate-100 dark:border-slate-800 rounded-2xl overflow-hidden mt-6">
+                  <div className="bg-slate-50 dark:bg-slate-900/60 px-4 py-3 border-b border-slate-100 dark:border-slate-800 text-[10px] font-black text-slate-400 tracking-wider font-bold">
+                    LOGS PERSISTIDOS NO DISCO TEMPORÁRIO
+                  </div>
+                  <div className="p-4 bg-slate-950 text-emerald-400 dark:text-emerald-400/90 font-mono text-[10px] max-h-[300px] overflow-y-auto leading-relaxed select-text space-y-1">
+                    {diagnosticsFileLogsList
+                      .filter(line => !diagnosticsLogsSearchText || line.toLowerCase().includes(diagnosticsLogsSearchText.toLowerCase()))
+                      .map((line, idx) => (
+                        <div key={idx} className="whitespace-pre-wrap">{line}</div>
+                      ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Salvar Arquivo .txt Button */}
+              <div className="flex justify-end pt-4 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  id="btn-salvar-logs-txt"
+                  onClick={downloadLogsAsText}
+                  className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 active:scale-95 text-white font-black text-xs cursor-pointer border-0 shadow-md shadow-emerald-500/10 transition-all"
+                >
+                  <Download size={14} />
+                  Salvar Arquivo .txt
+                </button>
+              </div>
             </div>
           )}
         </section>
