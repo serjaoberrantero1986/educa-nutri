@@ -84,13 +84,31 @@ const firebaseDatabaseId = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || fi
 if (admin.apps.length === 0) {
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     try {
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      let saString = process.env.FIREBASE_SERVICE_ACCOUNT.trim();
+      // Remove any accidental wrapping quotes if pasted raw in some environments
+      if (saString.startsWith("'") && saString.endsWith("'")) {
+        saString = saString.slice(1, -1).trim();
+      }
+      if (saString.startsWith('"') && saString.endsWith('"')) {
+        saString = saString.slice(1, -1).trim();
+      }
+      const serviceAccount = JSON.parse(saString);
+      
+      // Crucial fix: Vercel and other deployment platforms can escape newline characters in JSON strings,
+      // converting "\n" to "\\n". This breaks the RSA private key certificate parsing. We replace "\\n" with "\n".
+      if (serviceAccount.private_key) {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+      }
+      
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
       });
       console.log("Firebase Admin inicializado com sucesso via FIREBASE_SERVICE_ACCOUNT!");
+      if (serviceAccount.private_key) {
+        console.log(`Chave privada Firebase configurada e sanitizada com sucesso (comprimento: ${serviceAccount.private_key.length} caracteres, novas linhas corrigidas).`);
+      }
     } catch (err: any) {
-      console.error("Erro ao processar FIREBASE_SERVICE_ACCOUNT do ambiente:", err?.message || err);
+      console.error("Erro crucial ao processar FIREBASE_SERVICE_ACCOUNT do ambiente:", err?.message || err);
       admin.initializeApp({
         projectId: firebaseProjectId
       });
