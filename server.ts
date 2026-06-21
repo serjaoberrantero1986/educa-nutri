@@ -1047,67 +1047,105 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any): Promise<any> {
     const cleanTerm = name.split("(")[0].trim();
     if (cleanTerm.length < 2) return item;
 
-    // Search Local SQLite database first (which is ultra-precise and contains TACO reference, e.g. Frango Grelhado = 165kcal)
-    // We normalize characters both in SQL check and search word to handle spelling variations/accents perfectly.
-    const sql = `
-      SELECT * FROM foods 
-      WHERE name LIKE ? 
-         OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LOWER(name), 'á', 'a'), 'é', 'e'), 'í', 'i'), 'ó', 'o'), 'ú', 'u') LIKE ?
-    `;
     const termNormalized = cleanTerm.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const databaseMatch = db.prepare(sql).all(`%${cleanTerm}%`, `%${termNormalized}%`) as any[];
 
-    if (databaseMatch && databaseMatch.length > 0) {
-      // Rank matches to find the best one based on comprehensive scoring
-      const scoredMatches = databaseMatch.map((f: any) => {
-        const localName = f.name.toLowerCase().trim();
-        const localNom = localName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-        
-        let score = 0;
-        
-        // Exact match (absolute priority, matching terms normalized)
-        if (localNom === termNormalized || localName === cleanTerm.toLowerCase()) {
-          score += 10000;
+    // Walk through multiple safety layers: local SQLite, custom Firestore, and in-memory default list fallback
+    let databaseMatch: any[] = [];
+    try {
+      databaseMatch = db.prepare("SELECT * FROM foods").all();
+    } catch (e) {
+      console.warn("[SQLite-Error] Failed to read from SQLite table during enrichment:", e);
+    }
+
+    if (!databaseMatch || databaseMatch.length === 0) {
+      try {
+        console.log(`[Vercel-Fallback] SQLite is empty. Checking Firestore "foods" collection...`);
+        const firestoreMatch = await firestore.collection("foods").get();
+        if (!firestoreMatch.empty) {
+          databaseMatch = firestoreMatch.docs.map(doc => doc.data());
         }
-        
-        // Word boundary exact containment (e.g. term = "maca", match = "maçã fuji" -> exact word "maçã" matches!)
-        const localWords = localNom.split(/[\s,()\-]+/);
-        const termWords = termNormalized.split(/[\s,()\-]+/);
-        
-        // Check if any of the words in localName match termNormalized exactly or vice versa
-        const containsExactWord = localWords.some(w => termWords.includes(w) || w === termNormalized);
-        if (containsExactWord) {
-          score += 5000;
-        }
+      } catch (fe) {
+        console.error("[Firestore-Fallback-Error] Failed to fetch foods from Firestore during enrichment:", fe);
+      }
+    }
 
-        // First word match (e.g. term = "maca fuji", match = "maçã" -> first words match!)
-        if (localWords.length > 0 && termWords.length > 0 && localWords[0] === termWords[0]) {
-          score += 3000;
-        }
+    // Direct in-memory resilient list of popular nutritional foods as the ultimate safety layer
+    if (!databaseMatch || databaseMatch.length === 0) {
+      databaseMatch = [
+        { name: "Frango Grelhado", category: "proteina", calories: 165, protein: 31, carbs: 0, fat: 3.6, portion: "100g", measure_unit: "filé médio", grams_per_unit: 100 },
+        { name: "Ovo Cozido", category: "proteina", calories: 70, protein: 6, carbs: 0.6, fat: 5, portion: "1 unidade", measure_unit: "unidade", grams_per_unit: 50 },
+        { name: "Carne Bovina (Patinho)", category: "proteina", calories: 250, protein: 26, carbs: 0, fat: 15, portion: "100g", measure_unit: "bife médio", grams_per_unit: 100 },
+        { name: "Tilápia Grelhada", category: "proteina", calories: 129, protein: 26, carbs: 0, fat: 2.7, portion: "100g", measure_unit: "filé", grams_per_unit: 100 },
+        { name: "Arroz Branco Cozido", category: "carboidrato", calories: 130, protein: 2.7, carbs: 28, fat: 0.3, portion: "100g", measure_unit: "colher de servir", grams_per_unit: 25 },
+        { name: "Arroz Integral Cozido", category: "carboidrato", calories: 111, protein: 2.6, carbs: 23, fat: 0.9, portion: "100g", measure_unit: "colher de servir", grams_per_unit: 25 },
+        { name: "Batata Inglesa Cozida", category: "carboidrato", calories: 77, protein: 2, carbs: 17, fat: 0.1, portion: "100g", measure_unit: "unidade média", grams_per_unit: 100 },
+        { name: "Batata Doce Cozida", category: "carboidrato", calories: 86, protein: 1.6, carbs: 20, fat: 0.1, portion: "100g", measure_unit: "unidade média", grams_per_unit: 100 },
+        { name: "Aveia em Flocos", category: "carboidrato", calories: 389, protein: 17, carbs: 66, fat: 7, portion: "100g", measure_unit: "colher de sopa", grams_per_unit: 15 },
+        { name: "Macarrão Cozido", category: "carboidrato", calories: 158, protein: 5.8, carbs: 31, fat: 0.9, portion: "100g", measure_unit: "pegador", grams_per_unit: 40 },
+        { name: "Pão Integral", category: "carboidrato", calories: 247, protein: 13, carbs: 41, fat: 3.4, portion: "100g", measure_unit: "fatia", grams_per_unit: 25 },
+        { name: "Banana Prata", category: "fruta", calories: 96, protein: 1.3, carbs: 23, fat: 0.3, portion: "100g", measure_unit: "unidade", grams_per_unit: 65 },
+        { name: "Maçã Fuji", category: "fruta", calories: 52, protein: 0.3, carbs: 14, fat: 0.2, portion: "100g", measure_unit: "unidade", grams_per_unit: 130 },
+        { name: "Mamão Papaia", category: "fruta", calories: 43, protein: 0.5, carbs: 11, fat: 0.3, portion: "100g", measure_unit: "fatia média", grams_per_unit: 100 },
+        { name: "Morango", category: "fruta", calories: 32, protein: 0.7, carbs: 7.7, fat: 0.3, portion: "100g", measure_unit: "unidade", grams_per_unit: 15 },
+        { name: "Brócolis Cozido", category: "vegetal", calories: 35, protein: 2.4, carbs: 7.2, fat: 0.4, portion: "100g", measure_unit: "ramo", grams_per_unit: 20 },
+        { name: "Cenoura Crua", category: "vegetal", calories: 41, protein: 0.9, carbs: 10, fat: 0.2, portion: "100g", measure_unit: "unidade média", grams_per_unit: 120 },
+        { name: "Alface Crespa", category: "vegetal", calories: 15, protein: 1.4, carbs: 2.9, fat: 0.2, portion: "100g", measure_unit: "folha", grams_per_unit: 10 },
+        { name: "Espinafre Cozido", category: "vegetal", calories: 23, protein: 3, carbs: 3.6, fat: 0.3, portion: "100g", measure_unit: "colher de sopa", grams_per_unit: 20 },
+        { name: "Pão de Queijo", category: "carboidrato", calories: 330, protein: 7, carbs: 42, fat: 15, portion: "100g", measure_unit: "unidade", grams_per_unit: 30 }
+      ];
+    }
 
-        // Starts with match (prefix matching)
-        if (localNom.startsWith(termNormalized) || localName.startsWith(cleanTerm.toLowerCase())) {
-          // If the prefix actually corresponds to a word boundary, give higher score
-          score += 1000;
-        }
+    // Rank matches to find the best one based on comprehensive scoring
+    const scoredMatches = databaseMatch.map((f: any) => {
+      const localName = f.name.toLowerCase().trim();
+      const localNom = localName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      
+      let score = 0;
+      
+      // Exact match (absolute priority, matching terms normalized)
+      if (localNom === termNormalized || localName === cleanTerm.toLowerCase()) {
+        score += 10000;
+      }
+      
+      // Word boundary exact containment (e.g. term = "maca", match = "maçã fuji" -> exact word "maçã" matches!)
+      const localWords = localNom.split(/[\s,()\-]+/);
+      const termWords = termNormalized.split(/[\s,()\-]+/);
+      
+      // Check if any of the words in localName match termNormalized exactly or vice versa
+      const containsExactWord = localWords.some(w => termWords.includes(w) || w === termNormalized);
+      if (containsExactWord) {
+        score += 5000;
+      }
 
-        // Penalty for word mismatches: if "maca" is requested but matched "macarrao", "maca" is only a substring of "macarrao".
-        // Let's check if the match contains the query but NOT as a word boundary
-        if (localNom.includes(termNormalized) && !containsExactWord) {
-          // It's a substring match but not a word boundary match (e.g., "maca" inside "macarrao")
-          // Give it a tiny score so word boundary matches win
-          score += 10;
-        } else if (localNom.includes(termNormalized)) {
-          score += 100;
-        }
+      // First word match (e.g. term = "maca fuji", match = "maçã" -> first words match!)
+      if (localWords.length > 0 && termWords.length > 0 && localWords[0] === termWords[0]) {
+        score += 3000;
+      }
 
-        // Length difference penalty (closer lengths are better indicators of proximity)
-        const lengthDiff = Math.abs(localNom.length - termNormalized.length);
-        score -= lengthDiff * 5;
+      // Starts with match (prefix matching)
+      if (localNom.startsWith(termNormalized) || localName.startsWith(cleanTerm.toLowerCase())) {
+        // If the prefix actually corresponds to a word boundary, give higher score
+        score += 1000;
+      }
 
-        return { food: f, score };
-      });
+      // Penalty for word mismatches: if "maca" is requested but matched "macarrao", "maca" is only a substring of "macarrao".
+      // Let's check if the match contains the query but NOT as a word boundary
+      if (localNom.includes(termNormalized) && !containsExactWord) {
+        // It's a substring match but not a word boundary match (e.g., "maca" inside "macarrao")
+        // Give it a tiny score so word boundary matches win
+        score += 10;
+      } else if (localNom.includes(termNormalized)) {
+        score += 100;
+      }
 
+      // Length difference penalty (closer lengths are better indicators of proximity)
+      const lengthDiff = Math.abs(localNom.length - termNormalized.length);
+      score -= lengthDiff * 5;
+
+      return { food: f, score };
+    }).filter(item => item.score > 0);
+
+    if (scoredMatches.length > 0) {
       // Sort descending by score
       scoredMatches.sort((a, b) => b.score - a.score);
       const bestLocal = scoredMatches[0].food;
@@ -1128,7 +1166,7 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any): Promise<any> {
       };
     }
 
-    // If not found in SQLite, we do a real API search on FatSecret to get ultra precise values!
+    // If not found in SQLite or Firestore fallback, we do a real API search on FatSecret to get ultra precise values!
     const token = await getFatSecretToken();
     if (token && !isEgressBlocked) {
       console.log(`[AI-Enrichment] Querying FatSecret for unresolved food: "${cleanTerm}"`);
