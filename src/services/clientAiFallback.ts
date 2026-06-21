@@ -114,7 +114,7 @@ export async function callDirectClientAI(
       });
     }
 
-    const payload = {
+    const payload: any = {
       contents: [
         {
           role: "user",
@@ -127,7 +127,8 @@ export async function callDirectClientAI(
       generationConfig: {
         responseMimeType: "application/json",
         temperature: 0.2
-      }
+      },
+      tools: [{ googleSearch: {} }]
     };
 
     const response = await fetch(url, {

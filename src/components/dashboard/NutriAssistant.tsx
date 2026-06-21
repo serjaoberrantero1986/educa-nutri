@@ -5,7 +5,7 @@ import { getApiUrl, formatFoodName } from "../../utils";
 import { db, isFirebaseConfigured } from "../../lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
 import { getAiHeaders } from "../../services/storeConfigService";
-import { tryFetchWithClientFallback, clientChatAssistant } from "../../services/clientAiFallback";
+import { tryFetchWithClientFallback, clientChatAssistant, clientAnalyzeMeal } from "../../services/clientAiFallback";
 
 function getGramsForUnit(unit: string, pendingFood: any): number {
   const normUnit = (unit || "").toLowerCase().trim();
@@ -454,20 +454,25 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
       try {
         const base64Data = (reader.result as string).split(',')[1];
         
-        const response = await fetch(getApiUrl("/api/ai/analyze-meal"), {
-          method: "POST",
-          headers: getAiHeaders(),
-          body: JSON.stringify({
+        const fallbackFn = async () => {
+          return await clientAnalyzeMeal({
             image: base64Data,
             mimeType: file.type
-          })
-        });
+          });
+        };
 
-        if (!response.ok) {
-          throw new Error("Erro de processamento.");
-        }
-
-        const data = await response.json();
+        const data = await tryFetchWithClientFallback<{ foods: any[] }>(
+          getApiUrl("/api/ai/analyze-meal"),
+          {
+            method: "POST",
+            headers: getAiHeaders(),
+            body: JSON.stringify({
+              image: base64Data,
+              mimeType: file.type
+            })
+          },
+          fallbackFn
+        );
         
         if (data.foods && data.foods.length > 0) {
           const hour = new Date().getHours();

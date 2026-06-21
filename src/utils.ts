@@ -170,7 +170,15 @@ export const FALLBACK_FOODS: Food[] = [
   { id: 504, name: "Empada de Frango", category: "carboidrato", calories: 350, protein: 8, carbs: 34, fat: 20, portion: "100g", measure_unit: "unidade", grams_per_unit: 80 },
   { id: 505, name: "Pão de Queijo", category: "carboidrato", calories: 330, protein: 7, carbs: 42, fat: 15, portion: "100g", measure_unit: "unidade", grams_per_unit: 30 },
   { id: 506, name: "Esfiha de Carne", category: "carboidrato", calories: 250, protein: 10, carbs: 32, fat: 9, portion: "100g", measure_unit: "unidade", grams_per_unit: 80 },
-  { id: 507, name: "Folhado de Frango", category: "carboidrato", calories: 340, protein: 10, carbs: 36, fat: 18, portion: "100g", measure_unit: "unidade", grams_per_unit: 100 }
+  { id: 507, name: "Folhado de Frango", category: "carboidrato", calories: 340, protein: 10, carbs: 36, fat: 18, portion: "100g", measure_unit: "unidade", grams_per_unit: 100 },
+
+  // Custom Industrialized Brands for precise client-side local consistency
+  { id: 601, name: "Club Social", category: "carboidrato", calories: 458, protein: 8.3, carbs: 66.7, fat: 16.7, portion: "100g", measure_unit: "unidade", grams_per_unit: 24 },
+  { id: 602, name: "Biscoito Club Social Original", category: "carboidrato", calories: 458, protein: 8.3, carbs: 66.7, fat: 16.7, portion: "100g", measure_unit: "unidade", grams_per_unit: 24 },
+  { id: 603, name: "Biscoito Club Social Integral", category: "carboidrato", calories: 440, protein: 9, carbs: 65, fat: 15, portion: "100g", measure_unit: "unidade", grams_per_unit: 24 },
+  { id: 604, name: "Club Social Original", category: "carboidrato", calories: 458, protein: 8.3, carbs: 66.7, fat: 16.7, portion: "100g", measure_unit: "unidade", grams_per_unit: 24 },
+  { id: 605, name: "Coca Cola Lata", category: "carboidrato", calories: 42, protein: 0, carbs: 10.4, fat: 0, portion: "100ml", measure_unit: "unidade", grams_per_unit: 350 },
+  { id: 606, name: "Coca Cola Zero Lata", category: "carboidrato", calories: 0, protein: 0, carbs: 0, fat: 0, portion: "100ml", measure_unit: "unidade", grams_per_unit: 350 }
 ];
 
 export const generateDiet = (data: UserData, foods: Food[], customMeals?: { id: string; name: string; icon: string }[]): DietPlan => {
