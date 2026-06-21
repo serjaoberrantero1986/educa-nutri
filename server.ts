@@ -1312,6 +1312,21 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any): Promise<any> {
         score += 100;
       }
 
+      // Distinguishing word negative constraints to prevent highly generic words mismatching specific ones
+      if (localNom.includes("doce") && !termNormalized.includes("doce")) {
+        score -= 8000;
+      }
+      if ((localNom.includes("moida") || localNom.includes("moido")) && !termNormalized.includes("moida") && !termNormalized.includes("moido")) {
+        score -= 8000;
+      }
+      if (localNom.includes("integral") && !termNormalized.includes("integral")) {
+        score -= 6000;
+      }
+      if ((localNom.includes("porco") || localNom.includes("suino") || localNom.includes("suina")) && 
+          !termNormalized.includes("porco") && !termNormalized.includes("suino") && !termNormalized.includes("suina") && !termNormalized.includes("lombo")) {
+        score -= 8000;
+      }
+
       // Length difference penalty (closer lengths are better indicators of proximity)
       const lengthDiff = Math.abs(localNom.length - termNormalized.length);
       score -= lengthDiff * 5;
@@ -1319,20 +1334,47 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any): Promise<any> {
       return { food: f, score };
     }).filter(item => item.score > 0);
 
+    const helperNormalizeUnit = (u: string): string => {
+      const norm = (u || "").toLowerCase().trim();
+      if (norm === "g" || norm === "gr" || norm === "grama" || norm === "gramas") return "gramas";
+      if (norm === "ml" || norm === "mls" || norm === "mililitro" || norm === "mililitros" || norm === "ml.") return "mililitros";
+      if (norm === "fatia" || norm === "fatias") return "fatia";
+      if (norm === "colher de sopa" || norm === "colher" || norm === "colheres" || norm === "colher sopa" || norm === "colher de cha" || norm === "colher de sobremesa") return "colher de sopa";
+      if (norm === "copo" || norm === "copos" || norm === "xicara" || norm === "xícara" || norm === "xicaras" || norm === "xícaras" || norm === "caneca" || norm === "canecas" || norm === "jarra" || norm === "garrafa" || norm === "vidro") return "copo";
+      if (norm === "colher de arroz" || norm === "colher arroz" || norm === "colher de servir" || norm === "colher servir") return "colher de arroz";
+      if (norm === "concha" || norm === "conchas" || norm === "concha média" || norm === "concha de feijão") return "concha";
+      if (norm === "unidade" || norm === "unidades" || norm === "un" || norm === "unid" || norm === "unids" || norm === "u") return "unidade";
+      return "unidade";
+    };
+
     if (scoredMatches.length > 0) {
       // Sort descending by score
       scoredMatches.sort((a, b) => b.score - a.score);
       const bestLocalWrap = scoredMatches[0];
       const bestLocal = bestLocalWrap.food;
 
-      // Se for alimento comercial/marca cadastrada de marca e possuir score fraco (< 10000), pulamos a calibração genérica
-      // Isso impede que estimativas precisas da IA de Doritos virem Pão de Queijo ou alimentos desconexos.
+      // Se for alimento comercial/marca cadastrada e possuir score fraco (< 10000), ou qualquer alimento com score fraco (< 8500), pulamos a calibração genérica
+      // Isso impede que estimativas dinâmicas corretas da IA para pratos específicos (como Carne de Panela) virem alimentos de referência genéricos distantes (como Carne Moída)
       const isBrandFood = isCommercialOrIndustrialized(cleanTerm);
-      if (isBrandFood && bestLocalWrap.score < 10000) {
-        console.log(`[AI-Enrichment] Força de correspondência insuficiente (${bestLocalWrap.score}) para o alimento industrializado "${name}" com local "${bestLocal.name}". Pulando calibração genérica.`);
+      if ((isBrandFood && bestLocalWrap.score < 10000) || bestLocalWrap.score < 8500) {
+        console.log(`[AI-Enrichment] Força de correspondência insuficiente (${bestLocalWrap.score}) para calibração com "${bestLocal.name}". Mantendo estimativa nutricional online da IA.`);
       } else {
         console.log(`[AI-Enrichment] Matched AI food "${name}" with database reference "${bestLocal.name}" (${bestLocal.calories} kcal)`);
         
+        const originalUnit = helperNormalizeUnit(item.unit || "");
+        let finalUnit = originalUnit;
+        let finalGramsPerUnit = Number(item.grams_per_unit || 100);
+
+        if (["gramas", "mililitros", "unidade", "colher de sopa", "fatia", "copo", "colher de arroz", "concha"].includes(originalUnit)) {
+          finalUnit = originalUnit;
+          if (originalUnit === "gramas" || originalUnit === "mililitros") {
+            finalGramsPerUnit = 1;
+          }
+        } else {
+          finalUnit = helperNormalizeUnit(bestLocal.measure_unit) || "unidade";
+          finalGramsPerUnit = bestLocal.grams_per_unit || 100;
+        }
+
         // Let's preserve the original AI amount, but update other fields to match official local DB values
         return {
           ...item,
@@ -1341,8 +1383,8 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any): Promise<any> {
           protein_per_100: bestLocal.protein,
           carbs_per_100: bestLocal.carbs,
           fat_per_100: bestLocal.fat,
-          grams_per_unit: bestLocal.grams_per_unit || item.grams_per_unit || 100,
-          unit: bestLocal.measure_unit || item.unit || "unidade",
+          grams_per_unit: finalGramsPerUnit,
+          unit: finalUnit,
           confidence_explanation: `Estimativa calibrada perfeitamente com a tabela de referência do aplicativo (${bestLocal.name}).`
         };
       }

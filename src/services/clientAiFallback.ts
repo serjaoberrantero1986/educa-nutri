@@ -81,12 +81,40 @@ export function enrichFoodWithExactCaloriesAndMacrosClient(item: any): any {
         score += 100;
       }
 
+      // Distinguishing word negative constraints to prevent highly generic words mismatching specific ones
+      if (fallbackNom.includes("doce") && !termNormalized.includes("doce")) {
+        score -= 8000;
+      }
+      if ((fallbackNom.includes("moida") || fallbackNom.includes("moido")) && !termNormalized.includes("moida") && !termNormalized.includes("moido")) {
+        score -= 8000;
+      }
+      if (fallbackNom.includes("integral") && !termNormalized.includes("integral")) {
+        score -= 6000;
+      }
+      if ((fallbackNom.includes("porco") || fallbackNom.includes("suino") || fallbackNom.includes("suina")) && 
+          !termNormalized.includes("porco") && !termNormalized.includes("suino") && !termNormalized.includes("suina") && !termNormalized.includes("lombo")) {
+        score -= 8000;
+      }
+
       // Length difference penalty (closer lengths are better indicators of proximity)
       const lengthDiff = Math.abs(fallbackNom.length - termNormalized.length);
       score -= lengthDiff * 5;
 
       return { food: f, score };
     }).filter(item => item.score > 0);
+
+    const helperNormalizeUnit = (u: string): string => {
+      const norm = (u || "").toLowerCase().trim();
+      if (norm === "g" || norm === "gr" || norm === "grama" || norm === "gramas") return "gramas";
+      if (norm === "ml" || norm === "mls" || norm === "mililitro" || norm === "mililitros" || norm === "ml.") return "mililitros";
+      if (norm === "fatia" || norm === "fatias") return "fatia";
+      if (norm === "colher de sopa" || norm === "colher" || norm === "colheres" || norm === "colher sopa" || norm === "colher de cha" || norm === "colher de sobremesa") return "colher de sopa";
+      if (norm === "copo" || norm === "copos" || norm === "xicara" || norm === "xícara" || norm === "xicaras" || norm === "xícaras" || norm === "caneca" || norm === "canecas" || norm === "jarra" || norm === "garrafa" || norm === "vidro") return "copo";
+      if (norm === "colher de arroz" || norm === "colher arroz" || norm === "colher de servir" || norm === "colher servir") return "colher de arroz";
+      if (norm === "concha" || norm === "conchas" || norm === "concha média" || norm === "concha de feijão") return "concha";
+      if (norm === "unidade" || norm === "unidades" || norm === "un" || norm === "unid" || norm === "unids" || norm === "u") return "unidade";
+      return "unidade";
+    };
 
     // Sort descending by score
     scoredMatches.sort((a, b) => b.score - a.score);
@@ -97,13 +125,28 @@ export function enrichFoodWithExactCaloriesAndMacrosClient(item: any): any {
       const isBrandFood = isCommercialOrIndustrialized(cleanTerm);
       
       // If it is an industrialized commercial brand, only overwrite if we have an EXACT match in reference catalog (score >= 10000)
-      // This prevents matching "Doritos Queijo" with a completely different generic food like "Pão de Queijo".
-      if (isBrandFood && bestMatchWrap.score < 10000) {
-        console.log(`[Client-AI-Enrichment] Skipping fuzzy catalog overwrite for branded food "${name}" to preserve premium on-the-fly AI calculation.`);
+      // Or if score is weak (< 8500), preserve dynamic values to calculate custom things on-the-fly
+      if ((isBrandFood && bestMatchWrap.score < 10000) || bestMatchWrap.score < 8500) {
+        console.log(`[Client-AI-Enrichment] Skipping fuzzy catalog overwrite for branded/fuzzy food "${name}" (score ${bestMatchWrap.score}) to preserve premium on-the-fly AI calculation.`);
         return item;
       }
 
       console.log(`[Client-AI-Enrichment] Matched AI food "${name}" with client reference "${matchedFood.name}" (${matchedFood.calories} kcal)`);
+      
+      const originalUnit = helperNormalizeUnit(item.unit || "");
+      let finalUnit = originalUnit;
+      let finalGramsPerUnit = Number(item.grams_per_unit || 100);
+
+      if (["gramas", "mililitros", "unidade", "colher de sopa", "fatia", "copo", "colher de arroz", "concha"].includes(originalUnit)) {
+        finalUnit = originalUnit;
+        if (originalUnit === "gramas" || originalUnit === "mililitros") {
+          finalGramsPerUnit = 1;
+        }
+      } else {
+        finalUnit = helperNormalizeUnit(matchedFood.measure_unit) || "unidade";
+        finalGramsPerUnit = matchedFood.grams_per_unit || 100;
+      }
+
       return {
         ...item,
         food_name: matchedFood.name.split("(")[0].trim(),
@@ -111,8 +154,8 @@ export function enrichFoodWithExactCaloriesAndMacrosClient(item: any): any {
         protein_per_100: matchedFood.protein,
         carbs_per_100: matchedFood.carbs,
         fat_per_100: matchedFood.fat,
-        grams_per_unit: matchedFood.grams_per_unit || item.grams_per_unit || 100,
-        unit: matchedFood.measure_unit || item.unit || "unidade",
+        grams_per_unit: finalGramsPerUnit,
+        unit: finalUnit,
         confidence_explanation: `Estimativa calibrada perfeitamente com a tabela de referência do aplicativo (${matchedFood.name}).`
       };
     }
