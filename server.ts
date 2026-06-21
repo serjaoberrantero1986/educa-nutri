@@ -183,6 +183,7 @@ async function callUnifiedAi(options: {
   image?: string;
   mimeType?: string;
   temperature?: number;
+  tools?: any[];
 }, req?: express.Request): Promise<{ text: string }> {
   const config = await getDynamicAiConfig(req);
   let provider = config.ai_provider || "Google Gemini";
@@ -242,6 +243,7 @@ async function callUnifiedAi(options: {
         responseMimeType: options.responseMimeType,
         responseSchema: options.responseSchema,
         temperature: options.temperature,
+        tools: options.tools,
       }
     });
 
@@ -1096,12 +1098,149 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any): Promise<any> {
         }
       }
     }
+
+    // If not found in SQLite and FatSecret, let's do an AI Online Search Grounding to calibrate!
+    if (!isEgressBlocked) {
+      console.log(`[AI-Enrichment] Running Google Search Grounding for unresolved item "${cleanTerm}"...`);
+      const webResults = await searchFoodOnlineUnified(cleanTerm);
+      if (webResults && webResults.length > 0) {
+        const bestMatched = webResults[0];
+        console.log(`[AI-Enrichment] Calibrated "${name}" via dynamic Google Search Grounding: ${bestMatched.name} (${bestMatched.calories} kcal)`);
+        return {
+          ...item,
+          food_name: bestMatched.name,
+          calories_per_100: bestMatched.calories,
+          protein_per_100: bestMatched.protein,
+          carbs_per_100: bestMatched.carbs,
+          fat_per_100: bestMatched.fat,
+          grams_per_unit: bestMatched.grams_per_unit || item.grams_per_unit || 100,
+          unit: bestMatched.measure_unit || item.unit || "unidade",
+          confidence_explanation: `Estimativa ultra precisa calibrada via pesquisa em tempo real na web pela IA (${bestMatched.name}).`
+        };
+      }
+    }
   } catch (err: any) {
     console.warn(`[AI-Enrichment] Erro de calibração para "${name}":`, err.message || err);
   }
 
   // Fallback to original AI estimate
   return item;
+}
+
+function cleanJsonBlock(text: string): string {
+  let clean = text.trim();
+  if (clean.startsWith("```json")) {
+    clean = clean.substring(7);
+  } else if (clean.startsWith("```")) {
+    clean = clean.substring(3);
+  }
+  if (clean.endsWith("```")) {
+    clean = clean.substring(0, clean.length - 3);
+  }
+  return clean.trim();
+}
+
+// Advanced AI Real-time Web Search Grounding for Industrialized and Brand Products in Brazil
+async function searchFoodOnlineUnified(query: string): Promise<any[]> {
+  const normalizedQuery = query.toLowerCase().trim();
+  if (normalizedQuery.length < 3) return [];
+  
+  try {
+    const prompt = `Você é um pesquisador nutricional avançado. Sua tarefa é encontrar o peso padrão no mercado brasileiro de uma embalagem individual do alimento solicitado e seus valores de macronutrientes exatos descritos na tabela nutricional oficial do fabricante (ou fontes confiáveis como TACO, TBCA, etc.).
+    
+Alimento para pesquisar: "${query}"
+
+INSTRUÇÕES DE PESQUISA:
+1. Identifique se este é um alimento industrializado ou marca comercial (ex: "Club Social", "Toddynho", "Sufresh", "Coca-Cola Zero", "Bis", "Bono", etc.).
+2. Procure pela tabela nutricional e o peso líquido real de uma unidade de consumo individualizada no Brasil (ex: um pacotinho individual de Club Social tem 24g. Uma lata de Coca-Cola tem 350ml. Um Toddynho tem 200ml).
+3. Determine os macronutrientes exatamento por 100g ou 100ml. Se o fabricante fornece os valores por porção (ex: por porção de 24g), converta matematicamente e com precisão para 100g.
+Exemplo real: Club Social Original (pacote de 24g) fornece 110 kcal, 16g carboidratos, 2g proteínas, 4g gorduras por porção de 24g. Logo, por 100g isso equivale a ~458 kcal, ~66.7g carboidratos, ~8.3g proteínas, ~16.7g gorduras. O peso por unidade (grams_per_unit) de consumo é de 24g.
+4. Identifique o nome correto amigável do produto, ex: "Biscoito Club Social Original".
+5. Preencha uma categoria adequada dentre: "carboidrato", "proteina", "fruta", "vegetal", "laticinio", "gordura".
+
+Retorne obrigatoriamente um objeto JSON contendo uma lista sob a chave "products". Para cada produto encontrado (retorne até 3 variantes se existirem, ex: Club Social Original, Club Social Integral, Club Social Queijo):
+- name: nome amigável completo em português do alimento com a marca (ex: "Biscoito Club Social Original")
+- category: categoria nutricional (ex: "carboidrato")
+- calories: calorias por 100g (ou 100ml)
+- protein: proteínas (g) por 100g (ou 100ml)
+- carbs: carboidratos (g) por 100g (ou 100ml)
+- fat: gorduras (g) por 100g (ou 100ml)
+- portion: descrição curta da porção individualizada padrão (ex: "1 pacote (24g)" ou "1 lata (350ml)")
+- measure_unit: a unidade de medida do consumo individual ("unidade", "pote", "lata", "fatia", "copo")
+- grams_per_unit: peso/volume líquido em gramas ou ml de uma unidade individual de consumo (ex: 24 para Club Social, 350 para lata de refri, 200 para Toddynho).
+
+O JSON DEVE respeitar esta estrutura exata de tipos. Sem usar asteriscos em nenhuma resposta de texto.`;
+
+    console.log(`[Online Search AI] Iniciando pesquisa nacional grounded para: "${query}"...`);
+    
+    const resultObj = await callUnifiedAi({
+      prompt,
+      systemInstruction: "Você é um pesquisador nutricional que atua estruturando informações exatas da tabela nutricional brasileira de produtos via Google Search.",
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          products: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                category: { type: Type.STRING },
+                calories: { type: Type.NUMBER },
+                protein: { type: Type.NUMBER },
+                carbs: { type: Type.NUMBER },
+                fat: { type: Type.NUMBER },
+                portion: { type: Type.STRING },
+                measure_unit: { type: Type.STRING },
+                grams_per_unit: { type: Type.NUMBER }
+              },
+              required: ["name", "category", "calories", "protein", "carbs", "fat", "portion", "measure_unit", "grams_per_unit"]
+            }
+          }
+        },
+        required: ["products"]
+      },
+      tools: [{ googleSearch: {} }] // Ativa o Search Grounding real do Gemini no backend
+    });
+
+    if (resultObj && resultObj.text) {
+      const parsed = JSON.parse(cleanJsonBlock(resultObj.text));
+      if (parsed && parsed.products && Array.isArray(parsed.products)) {
+        console.log(`[Online Search AI] Pesquisa obteve ${parsed.products.length} resultados.`);
+        
+        const mappedProducts = parsed.products.map((p: any, idx: number) => {
+          return {
+            id: `ai-search-${Date.now()}-${idx}`,
+            name: p.name.replace(/\*/g, ""), // Sanity clean asterisks as instructed by project guidelines
+            category: p.category || "carboidrato",
+            calories: Number(p.calories) || 0,
+            protein: Number(p.protein) || 0,
+            carbs: Number(p.carbs) || 0,
+            fat: Number(p.fat) || 0,
+            portion: p.portion || "100g",
+            measure_unit: p.measure_unit || "unidade",
+            grams_per_unit: Number(p.grams_per_unit) || 1
+          };
+        });
+
+        // Cache e salva esses itens no SQLite local!
+        for (const item of mappedProducts) {
+          try {
+            await saveAndCacheFood(item);
+          } catch (dbErr) {
+            console.warn("[Online Search AI] Erro ao salvar item no banco SQLite local:", dbErr);
+          }
+        }
+
+        return mappedProducts;
+      }
+    }
+  } catch (err: any) {
+    console.error(`[Online Search AI] Erro durante a pesquisa nutricional para "${query}":`, err.message || err);
+  }
+  
+  return [];
 }
 
 // API Routes
@@ -1470,8 +1609,18 @@ app.get("/api/foods", async (req, res) => {
         fatSecretMapped = generateOfflineFatSecret(originalTerm, localFiltered);
       }
 
-      // Merge and limit to 50 results
-      const merged = [...localFiltered, ...offlineSupplements, ...offMapped, ...fatSecretMapped].slice(0, 50);
+      // If no local match of the brand and query matches standard branding (or query length is >=3), run on-the-fly Search Grounding
+      let googleSearchResults: any[] = [];
+      if (localFiltered.length === 0 && !isEgressBlocked) {
+        try {
+          googleSearchResults = await searchFoodOnlineUnified(originalTerm);
+        } catch (searchErr) {
+          console.warn("[API Foods] Error fetching online search fallbacks:", searchErr);
+        }
+      }
+
+      // Merge and limit to 50 results, with highly precise web-searched products prepended
+      const merged = [...googleSearchResults, ...localFiltered, ...offlineSupplements, ...offMapped, ...fatSecretMapped].slice(0, 50);
       return res.json(merged);
     }
     
@@ -1491,24 +1640,27 @@ app.post("/api/ai/analyze-meal", async (req, res) => {
     const apiKeyOnServer = process.env.GEMINI_API_KEY;
     const prompt = `Você é um analista nutricional de IA avançado para o aplicativo SportNutri.
 Analise a refeição fornecida pelo usuário (seja por áudio transcrito em texto ou através de uma imagem/foto).
-O usuário pode ter comido vários alimentos de uma vez só (por exemplo: "três tapiocas com uma fatia de presunto e uma fatia de queijo branco com uma colher de creme de queijo cottage e um copo de café com leite").
+O usuário pode ter comido vários alimentos de uma vez só (por exemplo: "três tapiocas com uma fatia de presunto e uma fatia de queijo branco com uma colher de creme de queijo cottage e um copo de café com leite" ou em caso de industrializados "um pacote de club social com coca zero").
 
-Identifique CADA elemento da refeição separadamente. Para cada elemento individual, estime com precisão os valores com base no peso real ou de referência da tabela TACO, gerando valores realistas para o tamanho da porção descrita.
+Para alimentos industrializados, marcas nacionais/internacionais ou produtos embalados (por exemplo, "Club Social", "Toddynho", "Sufresh", "Bono", "Passatempo", "Coca-Cola lata", etc.), você deve REALIZAR uma pesquisa detalhada na web (Search Grounding) para identificar o peso exato de um pacote individual comercializado no Brasil e seus macros/valores nutricionais exatos reais descritos na tabela nutricional do fabricante.
+Por exemplo, um pacote padrão individual de biscoito Club Social (Original ou Integral) contém 24g (composto de 3 bolachas dentro do pacotinho individual) e fornece cerca de 110 kcal, 16g de carboidratos, 2g de proteínas e 4g de gorduras. Você deve identificar o peso exato do pacote e calibrá-lo como 'grams_per_unit: 24' e com as calorias corretas.
+
+Identifique CADA elemento da refeição separadamente. Para todos os alimentos, estime com precisão os valores com base no peso real ou de referência da tabela oficial TACO ou pesquisa web para industrializados, gerando valores realistas para o tamanho da porção descrita.
 
 Retorne um objeto JSON contendo uma lista sob a chave "foods". Para cada alimento, preencha:
-- food_name: nome amigável em português do alimento (ex: "Tapioca", "Presunto Cozido", "Queijo de Minas", "Requeijão Cottage", "Café com Leite")
+- food_name: nome amigável em português do alimento (ex: "Tapioca", "Presunto Cozido", "Queijo de Minas", "Biscoito Club Social Original", "Coca-Cola Zero")
 - amount: número correspondente à quantidade (ex: se o usuário comeu "3 tapiocas", amount é 3. Se comeu "uma colher", amount é 1. Se comeu "100g de frango", amount é 100)
 - unit: a unidade de medida correspondente, que deve ser estritamente uma destas opções válidas em português e minúsculas: "gramas", "mililitros", "unidade", "colher de sopa", "fatia", "copo", "colher de arroz", "concha"
-- grams_per_unit: o peso estimado real em gramas de UMA unidade da medida escolhida para esse alimento específico (ex: uma tapioca (unidade) costuma pesar cerca de 50g. Uma fatia de presunto pesa cerca de 15g. Uma fatia de queijo branco pesa cerca de 30g. Uma colher de requeijão tem 20g. Um copo de café com leite tem 200ml)
-- calories_per_100: calorias de uma porção de referência de 100g ou 100ml deste alimento (ex: arroz branco cozido tem ~130 kcal por 100g)
+- grams_per_unit: o peso estimado real em gramas de UMA unidade da medida escolhida para esse alimento específico (ex: uma tapioca (unidade) tem 50g. Um pacote individual de Club Social tem 24g. Uma lata de refrigerante tem 350ml. Uma fatia de presunto tem 15g)
+- calories_per_100: calorias de uma porção de referência de 100g ou 100ml deste alimento (ex: arroz branco cozido tem ~130 kcal por 100g. Biscoito Club Social tem cerca de 458 kcal por 100g para dar o total correto)
 - protein_per_100: gramas de proteína em 100g ou 100ml deste alimento
 - carbs_per_100: gramas de carboidrato em 100g ou 100ml deste alimento
 - fat_per_100: gramas de gordura em 100g ou 100ml deste alimento
-- confidence_explanation: uma explicação curta e direta em português sobre a estimativa e os valores nutricionais escolhidos para dar confiança ao usuário (ex: "Estimado com base em 1 fatia padrão de presunto (15g), fornecendo cerca de 15kcal por fatia.")
+- category: categoria nutricional do alimento, obrigatoriamente um destes em minúsculas: "carboidrato", "proteina", "fruta", "vegetal", "laticinio", "gordura"
+- confidence_explanation: uma explicação curta e direta em português sobre a estimativa e os valores nutricionais escolhidos, destacando se foi calibrado via pesquisa web de marcas nacional (ex: "Calibrado com pesquisa web para embalagem individual padrão de Club Social (24g) fornecendo 110 kcal.")
 - meal_type: a categoria ou tipo de refeição à qual este alimento mais adequadamente pertence ou é consumido na dieta do usuário dentre as seguintes opções restritas: "Café da Manhã", "Lanche da Manhã", "Almoço", "Lanche da Tarde", "Jantar", "Ceia".
-Por exemplo, arroz, feijão, bife de carne, filé de frango grelhado, batata cozida, saladas e fatias de tomate pertencem ao "Almoço" ou "Jantar" (classifique preferencialmente como "Almoço" para refeições pesadas salgadas se não souber o horário ou se forem pratos centrais de almoço); pães, tapioca, café com leite, manteiga e geleia pertencem ao "Café da Manhã"; e frutas, whey protein ou iogurte grego pertencem ao "Lanche da Tarde" ou "Lanche da Manhã".
 
-Certifique-se de que se houver múltiplos alimentos (ex: tapioca, presunto, queijo), você crie itens separados para cada um deles. Se for apenas um, devolva uma lista com um item. Todo o output deve ser em Português do Brasil. Sem usar asteriscos em nenhuma resposta ou texto descritivo.`;
+Certifique-se de que se houver múltiplos alimentos (ex: hambúrguer, batata frita, refri), você crie itens separados para cada um deles. Se for apenas um, devolva uma lista com um item. Todo o output deve ser em Português do Brasil. Sem usar asteriscos em nenhuma resposta ou texto descritivo.`;
 
     let contents;
     if (image && mimeType) {
@@ -1534,7 +1686,7 @@ Certifique-se de que se houver múltiplos alimentos (ex: tapioca, presunto, quei
     let responseText = "";
 
     try {
-      console.log("Tentando analisar refeição com o modelo e provedor unificado...");
+      console.log("Tentando analisar refeição com o modelo, provedor unificado e Web Search Grounding...");
       const resultObj = await callUnifiedAi({
         prompt: text ? `${prompt}\n\nEntrada do usuário: ${text}` : prompt,
         systemInstruction: "Você é um analista nutricional de IA avançado para o aplicativo SportNutri.",
@@ -1556,13 +1708,14 @@ Certifique-se de que se houver múltiplos alimentos (ex: tapioca, presunto, quei
                   protein_per_100: { type: Type.NUMBER },
                   carbs_per_100: { type: Type.NUMBER },
                   fat_per_100: { type: Type.NUMBER },
+                  category: { type: Type.STRING, description: "Categoria do alimento: 'proteina', 'carboidrato', 'fruta', 'vegetal', 'laticinio', 'gordura'" },
                   confidence_explanation: { type: Type.STRING },
                   meal_type: { type: Type.STRING, description: "Categorize este alimento específico na refeição mais adequada (opções: 'Café da Manhã', 'Lanche da Manhã', 'Almoço', 'Lanche da Tarde', 'Jantar', 'Ceia')" }
                 },
                 required: [
                   "food_name", "amount", "unit", "grams_per_unit",
                   "calories_per_100", "protein_per_100", "carbs_per_100", "fat_per_100",
-                  "confidence_explanation", "meal_type"
+                  "category", "confidence_explanation", "meal_type"
                 ]
               }
             }
@@ -1570,7 +1723,8 @@ Certifique-se de que se houver múltiplos alimentos (ex: tapioca, presunto, quei
           required: ["foods"]
         },
         image: image,
-        mimeType: mimeType
+        mimeType: mimeType,
+        tools: [{ googleSearch: {} }] // Ativa o Search Grounding real do Gemini no backend
       }, req);
       responseText = resultObj.text;
     } catch (err: any) {
@@ -1735,7 +1889,28 @@ Certifique-se de que se houver múltiplos alimentos (ex: tapioca, presunto, quei
       if (result && result.foods && Array.isArray(result.foods)) {
         const enriched = [];
         for (const f of result.foods) {
-          enriched.push(await enrichFoodWithExactCaloriesAndMacros(f));
+          const enrichedItem = await enrichFoodWithExactCaloriesAndMacros(f);
+          
+          // Let's automatically save/cache this analyzed food into the database!
+          // This allows us to learn about industrialized foods (e.g. Club Social) that the AI searched on the web,
+          // saving them to SQLite and Firestore collections, making them searchable and cataloged instantly!
+          try {
+            await saveAndCacheFood({
+              name: enrichedItem.food_name, 
+              category: enrichedItem.category || f.category || "carboidrato",
+              calories: Number(enrichedItem.calories_per_100),
+              protein: Number(enrichedItem.protein_per_100),
+              carbs: Number(enrichedItem.carbs_per_100),
+              fat: Number(enrichedItem.fat_per_100),
+              portion: "100g",
+              measure_unit: enrichedItem.unit || f.unit || "unidade",
+              grams_per_unit: Number(enrichedItem.grams_per_unit || f.grams_per_unit || 100)
+            });
+          } catch (dBError: any) {
+            console.warn(`[SaveFromAnalysis] Erro ao salvar alimento analisado "${enrichedItem.food_name}":`, dBError?.message || dBError);
+          }
+
+          enriched.push(enrichedItem);
         }
         result.foods = enriched;
       }
