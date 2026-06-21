@@ -1,4 +1,58 @@
 import { getCachedStoreConfig } from "./storeConfigService";
+import { FALLBACK_FOODS } from "../utils";
+
+export function enrichFoodWithExactCaloriesAndMacrosClient(item: any): any {
+  const name = item.food_name || item.name || "";
+  if (!name) return item;
+
+  try {
+    const cleanTerm = name.split("(")[0].trim().toLowerCase();
+    if (cleanTerm.length < 2) return item;
+
+    const termNormalized = cleanTerm.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    // Search in FALLBACK_FOODS
+    let matchedFood = FALLBACK_FOODS.find((f: any) => {
+      const fallbackNom = f.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      return fallbackNom === termNormalized;
+    });
+
+    if (!matchedFood) {
+      // If no exact match, try to find one where it starts with the term or is included
+      matchedFood = FALLBACK_FOODS.find((f: any) => {
+        const fallbackNom = f.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        return fallbackNom.startsWith(termNormalized) || termNormalized.startsWith(fallbackNom);
+      });
+    }
+
+    if (!matchedFood) {
+      // Try fuzzy search for parts of names
+      matchedFood = FALLBACK_FOODS.find((f: any) => {
+        const fallbackNom = f.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        return fallbackNom.includes(termNormalized) || termNormalized.includes(fallbackNom);
+      });
+    }
+
+    if (matchedFood) {
+      console.log(`[Client-AI-Enrichment] Matched AI food "${name}" with client reference "${matchedFood.name}" (${matchedFood.calories} kcal)`);
+      return {
+        ...item,
+        food_name: matchedFood.name.split("(")[0].trim(),
+        calories_per_100: matchedFood.calories,
+        protein_per_100: matchedFood.protein,
+        carbs_per_100: matchedFood.carbs,
+        fat_per_100: matchedFood.fat,
+        grams_per_unit: matchedFood.grams_per_unit || item.grams_per_unit || 100,
+        unit: matchedFood.measure_unit || item.unit || "unidade",
+        confidence_explanation: `Estimativa calibrada perfeitamente com a tabela de referência do aplicativo (${matchedFood.name}).`
+      };
+    }
+  } catch (err) {
+    console.warn("Error calibrating food client-side:", err);
+  }
+
+  return item;
+}
 
 // Check if we are on an external host (e.g., sportnutri.vercel.app)
 export const isExternalHost = typeof window !== "undefined" && 
@@ -266,9 +320,10 @@ Retorne SOMENTE o JSON estruturado completo em Português do Brasil. Sem usar as
   const actions: any[] = [];
   if (parsed.added_foods && Array.isArray(parsed.added_foods)) {
     for (const f of parsed.added_foods) {
+      const enriched = enrichFoodWithExactCaloriesAndMacrosClient(f);
       actions.push({
         type: "ADD_FOOD",
-        ...f
+        ...enriched
       });
     }
   }
@@ -326,7 +381,11 @@ Certifique-se de que se houver múltiplos alimentos, você crie itens separados.
   const userPrompt = text ? `Entrada do usuário: ${text}` : "Identifique os alimentos desta imagem.";
   const rawResponse = await callDirectClientAI(systemPrompt, userPrompt, image, mimeType);
   const cleanJson = cleanJsonBlock(rawResponse);
-  return JSON.parse(cleanJson || '{"foods":[]}');
+  const result = JSON.parse(cleanJson || '{"foods":[]}');
+  if (result && result.foods && Array.isArray(result.foods)) {
+    result.foods = result.foods.map((f: any) => enrichFoodWithExactCaloriesAndMacrosClient(f));
+  }
+  return result;
 }
 
 // 3. Direct Client Generate Exercise

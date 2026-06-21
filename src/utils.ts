@@ -161,7 +161,16 @@ export const FALLBACK_FOODS: Food[] = [
   { id: 401, name: "Brócolis Cozido", category: "vegetal", calories: 35, protein: 2.4, carbs: 7.2, fat: 0.4, portion: "100g", measure_unit: "ramo", grams_per_unit: 20 },
   { id: 402, name: "Cenoura Crua", category: "vegetal", calories: 41, protein: 0.9, carbs: 10, fat: 0.2, portion: "100g", measure_unit: "unidade média", grams_per_unit: 120 },
   { id: 403, name: "Alface Crespa", category: "vegetal", calories: 15, protein: 1.4, carbs: 2.9, fat: 0.2, portion: "100g", measure_unit: "folha", grams_per_unit: 10 },
-  { id: 404, name: "Espinafre Cozido", category: "vegetal", calories: 23, protein: 3, carbs: 3.6, fat: 0.3, portion: "100g", measure_unit: "colher de sopa", grams_per_unit: 20 }
+  { id: 404, name: "Espinafre Cozido", category: "vegetal", calories: 23, protein: 3, carbs: 3.6, fat: 0.3, portion: "100g", measure_unit: "colher de sopa", grams_per_unit: 20 },
+
+  // Bakery and Savory items
+  { id: 501, name: "Mini Pastel de Frango", category: "carboidrato", calories: 310, protein: 12, carbs: 38, fat: 12, portion: "100g", measure_unit: "unidade", grams_per_unit: 30 },
+  { id: 502, name: "Pastel de Carne", category: "carboidrato", calories: 320, protein: 11, carbs: 39, fat: 13, portion: "100g", measure_unit: "unidade", grams_per_unit: 100 },
+  { id: 503, name: "Coxinha de Frango", category: "carboidrato", calories: 280, protein: 9, carbs: 32, fat: 12, portion: "100g", measure_unit: "unidade", grams_per_unit: 80 },
+  { id: 504, name: "Empada de Frango", category: "carboidrato", calories: 350, protein: 8, carbs: 34, fat: 20, portion: "100g", measure_unit: "unidade", grams_per_unit: 80 },
+  { id: 505, name: "Pão de Queijo", category: "carboidrato", calories: 330, protein: 7, carbs: 42, fat: 15, portion: "100g", measure_unit: "unidade", grams_per_unit: 30 },
+  { id: 506, name: "Esfiha de Carne", category: "carboidrato", calories: 250, protein: 10, carbs: 32, fat: 9, portion: "100g", measure_unit: "unidade", grams_per_unit: 80 },
+  { id: 507, name: "Folhado de Frango", category: "carboidrato", calories: 340, protein: 10, carbs: 36, fat: 18, portion: "100g", measure_unit: "unidade", grams_per_unit: 100 }
 ];
 
 export const generateDiet = (data: UserData, foods: Food[], customMeals?: { id: string; name: string; icon: string }[]): DietPlan => {
