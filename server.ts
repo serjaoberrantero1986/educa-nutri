@@ -459,12 +459,29 @@ const PORT = 3000;
 const isProduction = process.env.NODE_ENV === "production";
 const dbPath = isProduction ? "/tmp/sportnutri.db" : "sportnutri.db";
 
-if (isProduction && !fs.existsSync("/tmp/sportnutri.db") && fs.existsSync("sportnutri.db")) {
-  try {
-    fs.copyFileSync("sportnutri.db", "/tmp/sportnutri.db");
-    console.log("Pre-seeded sportnutri.db copied to writable /tmp directory successfully!");
-  } catch (e) {
-    console.warn("Could not copy sqlite file to /tmp during startup", e);
+if (isProduction && !fs.existsSync("/tmp/sportnutri.db")) {
+  const possiblePaths = [
+    path.join(process.cwd(), "sportnutri.db"),
+    path.join(__dirname, "../sportnutri.db"),
+    path.join(__dirname, "sportnutri.db"),
+    path.join(__dirname, "dist/sportnutri.db"),
+    "sportnutri.db"
+  ];
+  let copied = false;
+  for (const src of possiblePaths) {
+    if (fs.existsSync(src)) {
+      try {
+        fs.copyFileSync(src, "/tmp/sportnutri.db");
+        console.log(`[Startup] Pre-seeded sportnutri.db copied to writable /tmp directory from "${src}" successfully!`);
+        copied = true;
+        break;
+      } catch (e) {
+        console.warn(`[Startup] Could not copy sqlite file from "${src}" to /tmp during startup:`, e);
+      }
+    }
+  }
+  if (!copied) {
+    console.warn("[Startup] Warning: Pre-seeded sportnutri.db file was not found under any expected path. Vercel search calibration will fallback to Firestore or local arrays.");
   }
 }
 
