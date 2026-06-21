@@ -33,6 +33,87 @@ export function isCommercialOrIndustrialized(name: string): boolean {
   return brandKeywords.some(keyword => norm.includes(keyword));
 }
 
+function getDeterministicGramsForFoodAndUnit(foodName: string, unit: string, fallbackGrams: number): number {
+  const normFood = (foodName || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const normUnit = (unit || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+
+  if (normUnit === "gramas" || normUnit === "g" || normUnit === "mililitros" || normUnit === "ml") {
+    return 1;
+  }
+
+  // 1. Cooked Rice (Arroz Branco Cozido, Arroz Integral Cozido, etc.)
+  if (normFood.includes("arroz")) {
+    if (normUnit === "concha") return 150;
+    if (normUnit === "colher de arroz" || normUnit === "colher de servir" || normUnit === "colhar de arroz") return 25;
+    if (normUnit === "colher de sopa") return 15;
+    if (normUnit === "copo" || normUnit === "xicara") return 150;
+    if (normUnit === "unidade") return 25;
+  }
+
+  // 2. Cooked Beans (Feijão Carioca Cozido, Feijão Preto Cozido, etc.)
+  if (normFood.includes("feijao")) {
+    if (normUnit === "concha") return 100;
+    if (normUnit === "colher de sopa") return 15;
+    if (normUnit === "copo" || normUnit === "xicara") return 150;
+  }
+
+  // 3. Eggs
+  if (normFood.includes("ovo")) {
+    if (normUnit === "unidade") return 50;
+    if (normUnit === "colher de sopa") return 50;
+  }
+
+  // 4. Frango / Meats / Beef / Tilápia / Filé
+  if (normFood.includes("frango") || normFood.includes("patinho") || normFood.includes("carne beef") || normFood.includes("carne bovina") || normFood.includes("tilapia") || normFood.includes("file")) {
+    if (normUnit === "unidade" || normUnit === "file" || normUnit === "bife") return 100;
+    if (normUnit === "colher de sopa") return 25;
+    if (normUnit === "fatia") return 30;
+    if (normUnit === "concha") return 120;
+  }
+
+  // 5. Pão Francês
+  if (normFood.includes("pao frances")) {
+    if (normUnit === "unidade") return 50;
+  }
+
+  // 6. Pão Integral / Pão de Forma
+  if (normFood.includes("pao integral") || normFood.includes("pao de forma")) {
+    if (normUnit === "fatia" || normUnit === "unidade") return 25;
+  }
+
+  // 7. Banana
+  if (normFood.includes("banana")) {
+    if (normUnit === "unidade") return 65;
+  }
+
+  // 8. Maçã
+  if (normFood.includes("maca")) {
+    if (normUnit === "unidade") return 130;
+  }
+
+  // 9. Batata Inglesa or Batata Doce
+  if (normFood.includes("batata")) {
+    if (normUnit === "unidade") return 100;
+    if (normUnit === "fatia") return 20;
+  }
+
+  // 10. Whey Protein
+  if (normFood.includes("whey")) {
+    if (normUnit === "scoop" || normUnit === "unidade") return 30;
+    if (normUnit === "colher de sopa") return 15;
+  }
+
+  // General default conversions
+  if (normUnit === "colher de sopa") return 15;
+  if (normUnit === "fatia") return 25;
+  if (normUnit === "copo" || normUnit === "xicara") return 200;
+  if (normUnit === "colher de arroz") return 25;
+  if (normUnit === "concha") return 100;
+  if (normUnit === "unidade") return 50;
+
+  return fallbackGrams || 100;
+}
+
 export function enrichFoodWithExactCaloriesAndMacrosClient(item: any): any {
   const name = item.food_name || item.name || "";
   if (!name) return item;
@@ -135,16 +216,13 @@ export function enrichFoodWithExactCaloriesAndMacrosClient(item: any): any {
       
       const originalUnit = helperNormalizeUnit(item.unit || "");
       let finalUnit = originalUnit;
-      let finalGramsPerUnit = Number(item.grams_per_unit || 100);
+      let finalGramsPerUnit = getDeterministicGramsForFoodAndUnit(matchedFood.name, originalUnit, Number(item.grams_per_unit || 100));
 
       if (["gramas", "mililitros", "unidade", "colher de sopa", "fatia", "copo", "colher de arroz", "concha"].includes(originalUnit)) {
         finalUnit = originalUnit;
-        if (originalUnit === "gramas" || originalUnit === "mililitros") {
-          finalGramsPerUnit = 1;
-        }
       } else {
         finalUnit = helperNormalizeUnit(matchedFood.measure_unit) || "unidade";
-        finalGramsPerUnit = matchedFood.grams_per_unit || 100;
+        finalGramsPerUnit = getDeterministicGramsForFoodAndUnit(matchedFood.name, finalUnit, matchedFood.grams_per_unit || 100);
       }
 
       return {
