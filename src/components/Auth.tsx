@@ -70,7 +70,13 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, onClose }) => {
           body: JSON.stringify({ email, password, username })
         });
         
-        const data = await response.json();
+        const text = await response.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          throw new Error(`Erro do servidor (${response.status}): Servidor indisponível ou bloqueado por CORS.`);
+        }
         
         if (!response.ok) {
           throw new Error(data.error || 'Erro ao cadastrar');
@@ -107,7 +113,13 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, onClose }) => {
           body: JSON.stringify({ email, password })
         });
         
-        const data = await response.json();
+        const text = await response.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          throw new Error(`Erro do servidor (${response.status}): Servidor indisponível ou bloqueado por CORS.`);
+        }
         
         if (!response.ok) {
           throw new Error(data.error || 'Erro ao fazer login');
@@ -146,7 +158,14 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, onClose }) => {
           body: JSON.stringify({ email: demoEmail, uid: demoUid, username: demoName })
         });
 
-        const data = await response.json();
+        const text = await response.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          throw new Error(`Erro do servidor (${response.status}): Resposta inválida. Certifique-se de configurar a variável VITE_API_URL no Vercel.`);
+        }
+
         if (!response.ok) {
           throw new Error(data.error || 'Erro ao processar login com Google');
         }
@@ -181,7 +200,14 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, onClose }) => {
         })
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error(`Erro de sincronização (${response.status}): Servidor indisponível ou bloqueado por CORS. Por favor, configure a variável VITE_API_URL no Vercel apontando para o seu backend oficial.`);
+      }
+
       if (!response.ok) {
         throw new Error(data.error || 'Erro ao sincronizar login com o servidor');
       }
