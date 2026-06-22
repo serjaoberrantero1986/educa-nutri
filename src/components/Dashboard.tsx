@@ -1407,7 +1407,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       await fetch(getApiUrl(`/api/water_logs`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: user.uid, amount: amountMl, logged_at: newLog.logged_at }) // Using new logged_at logic
+        body: JSON.stringify({ user_id: user.uid, amount: amount, logged_at: newLog.logged_at }) // Using new logged_at logic
       });
       setWaterLogs(prev => {
         const next = [newLog, ...prev];

@@ -2226,11 +2226,11 @@ app.put("/api/workout_profiles/:userId", async (req, res) => {
     const existing = db.prepare("SELECT * FROM workout_profiles WHERE user_id = ?").get(userId);
     
     const fieldsToInsert = ['user_id'];
-    const valuesToInsert = [userId];
+    const valuesToInsert: any[] = [userId];
     const placeholdersInsert = ['?'];
     
     const setClause = [];
-    const valuesUpdate = [];
+    const valuesUpdate: any[] = [];
     
     for (const [key, value] of Object.entries(updates)) {
        if (key === 'user_id' || key === 'created_at') continue;
