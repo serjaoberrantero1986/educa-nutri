@@ -46,6 +46,7 @@ import {
 } from 'recharts';
 import { Profile } from '../../types';
 import { db } from '../../lib/firebase';
+import { getApiUrl } from '../../utils';
 import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { StoreConfig, DEFAULT_STORE_CONFIG, saveStoreConfig } from '../../services/storeConfigService';
 
@@ -136,7 +137,7 @@ export default function AdminTab({
     setDiagnosticsLogsError(null);
     try {
       const queryParams = `adminUserId=${encodeURIComponent(user.uid)}&adminEmail=${encodeURIComponent(user.email || '')}&userId=${encodeURIComponent(user.uid)}&email=${encodeURIComponent(user.email || '')}`;
-      const response = await fetch(`/api/admin/logs?${queryParams}`);
+      const response = await fetch(getApiUrl(`/api/admin/logs?${queryParams}`));
       if (response.ok) {
         const data = await response.json();
         if (data.success === false) {
@@ -173,7 +174,7 @@ export default function AdminTab({
   const handleClearLogs = async () => {
     if (!window.confirm("Deseja realmente limpar todos os logs do site em tempo real? Esta operação limpará os buffers em memória e em arquivo temporário.")) return;
     try {
-      const response = await fetch('/api/admin/logs/clear', {
+      const response = await fetch(getApiUrl('/api/admin/logs/clear'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -261,7 +262,7 @@ export default function AdminTab({
   const fetchAdminFoods = async (searchQuery: string = '') => {
     setLoadingFoods(true);
     try {
-      const response = await fetch(`/api/admin/foods?userId=${encodeURIComponent(user.uid)}&email=${encodeURIComponent(user.email || '')}&q=${encodeURIComponent(searchQuery)}`);
+      const response = await fetch(getApiUrl(`/api/admin/foods?userId=${encodeURIComponent(user.uid)}&email=${encodeURIComponent(user.email || '')}&q=${encodeURIComponent(searchQuery)}`));
       if (response.ok) {
         const data = await response.json();
         setFoodsList(data.foods || []);
@@ -333,7 +334,7 @@ export default function AdminTab({
     };
 
     const isEdit = !!selectedFood;
-    const url = isEdit ? '/api/admin/foods/update' : '/api/admin/foods';
+    const url = getApiUrl(isEdit ? '/api/admin/foods/update' : '/api/admin/foods');
 
     try {
       const response = await fetch(url, {
@@ -368,7 +369,7 @@ export default function AdminTab({
     if (!confirmed) return;
 
     try {
-      const response = await fetch('/api/admin/foods/delete', {
+      const response = await fetch(getApiUrl('/api/admin/foods/delete'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
