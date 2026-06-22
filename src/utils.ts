@@ -3,12 +3,7 @@ import { UserData, DietPlan, Food, Meal } from "./types";
 export const getApiUrl = (path: string): string => {
   const isCapacitor = typeof window !== "undefined" && ((window as any).Capacitor !== undefined || window.location.protocol === "capacitor:");
   
-  const isExternalHost = typeof window !== "undefined" && 
-    window.location.hostname !== "localhost" && 
-    window.location.hostname !== "127.0.0.1" && 
-    !window.location.hostname.endsWith(".run.app");
-
-  if (isCapacitor || isExternalHost) {
+  if (isCapacitor) {
     // For mobile or external hosts (like Vercel), target the absolute live full-stack backend address.
     const customApiUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_APP_URL;
     if (customApiUrl) {
@@ -19,7 +14,7 @@ export const getApiUrl = (path: string): string => {
     return `https://ais-pre-pcmdsmwuzuxfdscjzuiifh-60598086565.us-east1.run.app${path}`;
   }
   
-  // For web environments (local development, preview containers), route relatively
+  // For web environments (Vercel, local development, preview containers), route relatively
   return path;
 };
 
