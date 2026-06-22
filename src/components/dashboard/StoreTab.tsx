@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { getApiUrl } from '../../utils';
 import { 
   Coins, 
   Flame, 
@@ -130,12 +131,17 @@ export const StoreTab: React.FC<StoreTabProps> = ({
         streak_freeze_active: true
       };
 
-      if (isFirebaseConfigured) {
-        const profileRef = doc(db, 'profiles', user.uid);
-        await updateDoc(profileRef, {
-          xp: finalCoins,
-          streak_freeze_active: true
+      try {
+        await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            xp: finalCoins,
+            streak_freeze_active: true
+          })
         });
+      } catch (err) {
+        console.error("Erro saving to API", err);
       }
       setProfile(updatedProfile);
       alert('Bloqueio de Sequência ativado com sucesso! ❄️ Sua sequência agora está protegida caso você esqueça de registrar um dia.');
@@ -164,12 +170,17 @@ export const StoreTab: React.FC<StoreTabProps> = ({
         premium_access_until: twentyFourHoursFromNow
       };
 
-      if (isFirebaseConfigured) {
-        const profileRef = doc(db, 'profiles', user.uid);
-        await updateDoc(profileRef, {
-          xp: finalCoins,
-          premium_access_until: twentyFourHoursFromNow
+      try {
+        await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            xp: finalCoins,
+            premium_access_until: twentyFourHoursFromNow
+          })
         });
+      } catch (err) {
+        console.error("Erro saving to API", err);
       }
       setProfile(updatedProfile);
       alert('Passe de 24h Premium ativado! 🌟 Agora você pode usar os recursos de foto e gravação de voz livremente pelas próximas 24 horas.');
@@ -201,12 +212,17 @@ export const StoreTab: React.FC<StoreTabProps> = ({
         nutri_assistant_active: twentyFourHoursFromNow
       };
 
-      if (isFirebaseConfigured) {
-        const profileRef = doc(db, 'profiles', user.uid);
-        await updateDoc(profileRef, {
-          xp: finalCoins,
-          nutri_assistant_active: twentyFourHoursFromNow
+      try {
+        await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            xp: finalCoins,
+            nutri_assistant_active: twentyFourHoursFromNow
+          })
         });
+      } catch (err) {
+        console.error("Erro saving to API", err);
       }
       setProfile(updatedProfile);
       alert('Passe 24h Nutri Assistant AI adquirido com sucesso! 🤖💪 Agora o chatbot conversacional está desbloqueado para você pelas próximas 24 horas para criar, atualizar ou excluir registros com facilidade.');
@@ -238,12 +254,17 @@ export const StoreTab: React.FC<StoreTabProps> = ({
         whatsapp_access_until: twentyFourHoursFromNow
       };
 
-      if (isFirebaseConfigured) {
-        const profileRef = doc(db, 'profiles', user.uid);
-        await updateDoc(profileRef, {
-          xp: finalCoins,
-          whatsapp_access_until: twentyFourHoursFromNow
+      try {
+        await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            xp: finalCoins,
+            whatsapp_access_until: twentyFourHoursFromNow
+          })
         });
+      } catch (err) {
+        console.error("Erro saving to API", err);
       }
       setProfile(updatedProfile);
       alert('Passe 24h WhatsApp AI Bot ativado com sucesso! 💬📲 Agora você pode interagir diretamente com o seu assistente pessoal no WhatsApp pelas próximas 24 horas para registrar, auditar e gerenciar sua dieta via chat de forma 100% humanizada!');
@@ -275,12 +296,17 @@ export const StoreTab: React.FC<StoreTabProps> = ({
         recipes_access_until: twentyFourHoursFromNow
       };
 
-      if (isFirebaseConfigured) {
-        const profileRef = doc(db, 'profiles', user.uid);
-        await updateDoc(profileRef, {
-          xp: finalCoins,
-          recipes_access_until: twentyFourHoursFromNow
+      try {
+        await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            xp: finalCoins,
+            recipes_access_until: twentyFourHoursFromNow
+          })
         });
+      } catch (err) {
+        console.error("Erro saving to API", err);
       }
       setProfile(updatedProfile);
       alert('Passe 24h Receitas Inteligentes ativado com sucesso! 🍳🧑‍🍳 Agora você tem acesso ilimitado ao gerador de receitas saudáveis com Inteligência Artificial pelas próximas 24 horas!');
@@ -397,12 +423,17 @@ export const StoreTab: React.FC<StoreTabProps> = ({
         paid_premium: true
       };
 
-      if (isFirebaseConfigured) {
-        const profileRef = doc(db, 'profiles', user.uid);
-        await updateDoc(profileRef, {
-          premium_access_until: 'unlimited',
-          paid_premium: true
+      try {
+        await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            premium_access_until: 'unlimited',
+            paid_premium: true
+          })
         });
+      } catch (err) {
+        console.error("Erro saving to API", err);
       }
       setProfile(updatedProfile);
       

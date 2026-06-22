@@ -596,14 +596,13 @@ export default function AdminTab({
     if (!user) return;
     setLoadingLogs(true);
     try {
-      const logsRef = collection(db, 'whatsapp_webhook_logs');
-      const q = query(logsRef, orderBy('timestamp', 'desc'), limit(30));
-      const querySnapshot = await getDocs(q);
-      const logs: any[] = [];
-      querySnapshot.forEach((docSnap) => {
-        logs.push(docSnap.data());
-      });
-      setWebhookLogs(logs);
+      const res = await fetch(getApiUrl(`/api/admin/whatsapp_logs?userId=${user.uid}`));
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.logs) {
+          setWebhookLogs(data.logs);
+        }
+      }
     } catch (e) {
       console.error("Erro ao buscar logs do webhook do WhatsApp:", e);
     } finally {
@@ -620,185 +619,21 @@ export default function AdminTab({
     try {
       setLoading(true);
 
-      // 1. Fetch user profiles directly from client-side Firestore
-      const querySnapshot = await getDocs(collection(db, 'profiles'));
-      const list: any[] = [];
-      let premiumUsersCount = 0;
-      let activeAdminsCount = 0;
-      let realPaidSalesCount = 0;
-
-      querySnapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        const now = Date.now();
-        const isPremium = data.premium_access_until && (
-          data.premium_access_until === 'unlimited' || 
-          new Date(data.premium_access_until).getTime() > now
-        );
-        if (isPremium) {
-          premiumUsersCount++;
-        }
-        if (data.paid_premium) {
-          realPaidSalesCount++;
-        }
-        const dEmail = (data.email || "").toLowerCase().trim();
-        if (data.role === 'admin' || dEmail === 'edsonricardosouza@gmail.com') {
-          activeAdminsCount++;
-        }
-
-        list.push({
-          id: docSnap.id,
-          username: data.username || "Atleta Anônimo",
-          email: data.email || "",
-          whatsapp: data.whatsapp || "",
-          xp: Number(data.xp || 0),
-          streak: Number(data.streak || 0),
-          role: data.role || "user",
-          premium_access_until: data.premium_access_until || null,
-          whatsapp_access_until: data.whatsapp_access_until || null,
-          avatar_url: data.avatar_url || "",
-          league: data.league || "Bronze",
-          last_activity_date: data.last_activity_date || "",
-          created_at: data.created_at || data.createdAt || "",
-          is_deleted: !!data.is_deleted,
-          paid_premium: !!data.paid_premium
-        });
-      });
-
-      setUsers(list);
-
-      // 2. Fetch real food and water logs size to display 100% real metrics
-      const foodLogsSnapshot = await getDocs(collection(db, 'food_logs'));
-      const waterLogsSnapshot = await getDocs(collection(db, 'water_logs'));
-      const realFoodsLogged = foodLogsSnapshot.size;
-      const realWaterLogged = waterLogsSnapshot.size;
-
-      const saasSalesVolume = realPaidSalesCount * 19.90;
-      const apiTokensUsed = (realFoodsLogged * 1150) + (realWaterLogged * 100);
-
-      const aiTokenRateBRL = 0.00012; 
-
-      const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-      const last6Months: Array<{ month: string, yearNum: number, monthNum: number, custo: number }> = [];
-      const now = new Date();
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const y = d.getFullYear() % 100;
-        const mLabel = `${monthNames[d.getMonth()]}/${y}`;
-        last6Months.push({
-          month: mLabel,
-          yearNum: d.getFullYear(),
-          monthNum: d.getMonth(),
-          custo: 0
-        });
+      const qs = `userId=${user.uid}&email=${encodeURIComponent(user.email || '')}`;
+      
+      const statsRes = await fetch(getApiUrl(`/api/admin/stats?${qs}`));
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        setStats(statsData);
       }
 
-      // Group and calculate AI costs dynamically of fetched logs
-      foodLogsSnapshot.forEach(docSnap => {
-        const data = docSnap.data();
-        const dateStr = data.logged_at || data.created_at || data.date;
-        if (dateStr) {
-          const date = new Date(dateStr);
-          const y = date.getFullYear();
-          const m = date.getMonth();
-          const bucket = last6Months.find(b => b.yearNum === y && b.monthNum === m);
-          if (bucket) {
-            bucket.custo += 1150 * aiTokenRateBRL;
-          }
+      const usersRes = await fetch(getApiUrl(`/api/admin/users?${qs}`));
+      if (usersRes.ok) {
+        const usersData = await usersRes.json();
+        if (usersData.users) {
+          setUsers(usersData.users);
         }
-      });
-
-      waterLogsSnapshot.forEach(docSnap => {
-        const data = docSnap.data();
-        const dateStr = data.logged_at || data.created_at || data.date;
-        if (dateStr) {
-          const date = new Date(dateStr);
-          const y = date.getFullYear();
-          const m = date.getMonth();
-          const bucket = last6Months.find(b => b.yearNum === y && b.monthNum === m);
-          if (bucket) {
-            bucket.custo += 100 * aiTokenRateBRL;
-          }
-        }
-      });
-
-      const apiMonthlyCosts = last6Months.map(b => ({
-        month: b.month,
-        custo: Number(b.custo.toFixed(2))
-      }));
-
-      const salesHistory = [
-        { name: "Seg", vendas: 0, volume: 0 },
-        { name: "Ter", vendas: 0, volume: 0 },
-        { name: "Qua", vendas: 0, volume: 0 },
-        { name: "Qui", vendas: 0, volume: 0 },
-        { name: "Sex", vendas: 0, volume: 0 },
-        { name: "Sáb", vendas: 0, volume: 0 },
-        { name: "Dom", vendas: 0, volume: 0 }
-      ];
-
-      list.forEach(u => {
-        if (u.paid_premium) {
-          const regDate = u.created_at ? new Date(u.created_at) : new Date();
-          const dayIndex = regDate.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
-          const mapIndex = dayIndex === 0 ? 6 : dayIndex - 1;
-          if (salesHistory[mapIndex]) {
-            salesHistory[mapIndex].vendas += 1;
-            salesHistory[mapIndex].volume = Number((salesHistory[mapIndex].volume + 19.90).toFixed(2));
-          }
-        }
-      });
-
-      let chatRequests = 0;
-      let photoRequests = 0;
-      let audioRequests = 0;
-      let botRequests = 0;
-
-      foodLogsSnapshot.forEach(docSnap => {
-        const data = docSnap.data();
-        const via = data.added_via || 'chat';
-        if (via === 'audio') {
-          audioRequests++;
-        } else if (via === 'photo') {
-          photoRequests++;
-        } else if (via === 'bot' || via === 'whatsapp') {
-          botRequests++;
-        } else {
-          chatRequests++;
-        }
-      });
-
-      waterLogsSnapshot.forEach(docSnap => {
-        const data = docSnap.data();
-        const via = data.added_via || 'bot';
-        if (via === 'audio') {
-          audioRequests++;
-        } else if (via === 'photo') {
-          photoRequests++;
-        } else if (via === 'chat') {
-          chatRequests++;
-        } else {
-          botRequests++;
-        }
-      });
-
-      setStats({
-        totalUsers: list.length,
-        premiumUsers: premiumUsersCount,
-        totalFoodsLogged: realFoodsLogged,
-        totalWaterLogged: realWaterLogged,
-        saasSalesVolume: Number(saasSalesVolume.toFixed(2)),
-        apiTokensUsed,
-        activeAdminsCount,
-        salesHistory,
-        toolsUsage: [
-          { name: "Chat", requisicoes: chatRequests },
-          { name: "Foto", requisicoes: photoRequests },
-          { name: "Áudio", requisicoes: audioRequests },
-          { name: "Bot", requisicoes: botRequests }
-        ],
-        apiMonthlyCosts
-      });
-
+      }
     } catch (err) {
       console.error("Admin data fetch error:", err);
     } finally {
@@ -831,8 +666,16 @@ export default function AdminTab({
       return;
     }
     try {
-      const docRef = doc(db, 'profiles', userId);
-      await updateDoc(docRef, { xp: xpVal });
+      await fetch(getApiUrl("/api/admin/users/update"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+           adminUserId: user.uid,
+           adminEmail: user.email,
+           targetUserId: userId,
+           updates: { xp: xpVal }
+        })
+      });
 
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, xp: xpVal } : u));
       if (userId === user.uid && profile) {
@@ -874,7 +717,6 @@ export default function AdminTab({
 
     setSavingEdit(true);
     try {
-      const docRef = doc(db, 'profiles', selectedUser.id);
       const updates = {
         xp: Number(editingCoins),
         role: editingRole,
@@ -882,7 +724,16 @@ export default function AdminTab({
         whatsapp_access_until: editingWhatsapp || null
       };
 
-      await updateDoc(docRef, updates);
+      await fetch(getApiUrl("/api/admin/users/update"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+           adminUserId: user.uid,
+           adminEmail: user.email,
+           targetUserId: selectedUser.id,
+           updates
+        })
+      });
 
       setEditSuccess(true);
       
@@ -924,8 +775,16 @@ export default function AdminTab({
     const newXP = Math.max(0, (targetUser.xp || 0) + amount);
     
     try {
-      const docRef = doc(db, 'profiles', targetId);
-      await updateDoc(docRef, { xp: newXP });
+      await fetch(getApiUrl("/api/admin/users/update"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+           adminUserId: user.uid,
+           adminEmail: user.email,
+           targetUserId: targetId,
+           updates: { xp: newXP }
+        })
+      });
 
       setUsers(prev => prev.map(u => u.id === targetId ? { ...u, xp: newXP } : u));
       if (targetId === user.uid && profile) {
@@ -938,7 +797,6 @@ export default function AdminTab({
 
   const forceSelfUnrestricted = async () => {
     try {
-      const docRef = doc(db, 'profiles', user.uid);
       const updates = {
         xp: 10000,
         premium_access_until: 'unlimited',
@@ -946,7 +804,16 @@ export default function AdminTab({
         role: 'admin'
       };
 
-      await updateDoc(docRef, updates);
+      await fetch(getApiUrl("/api/admin/users/update"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+           adminUserId: user.uid,
+           adminEmail: user.email,
+           targetUserId: user.uid,
+           updates
+        })
+      });
 
       // Refresh local cache and profile
       if (profile) {
@@ -989,8 +856,16 @@ export default function AdminTab({
 
     if (action === 'trash') {
       try {
-        const docRef = doc(db, 'profiles', userId);
-        await updateDoc(docRef, { is_deleted: true });
+        await fetch(getApiUrl("/api/admin/users/update"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+             adminUserId: user.uid,
+             adminEmail: user.email,
+             targetUserId: userId,
+             updates: { is_deleted: true }
+          })
+        });
         setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_deleted: true } : u));
         if (selectedUser?.id === userId) {
           setSelectedUser(null);
@@ -1001,8 +876,16 @@ export default function AdminTab({
       }
     } else if (action === 'restore') {
       try {
-        const docRef = doc(db, 'profiles', userId);
-        await updateDoc(docRef, { is_deleted: false });
+        await fetch(getApiUrl("/api/admin/users/update"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+             adminUserId: user.uid,
+             adminEmail: user.email,
+             targetUserId: userId,
+             updates: { is_deleted: false }
+          })
+        });
         setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_deleted: false } : u));
         if (selectedUser?.id === userId) {
           setSelectedUser(prev => prev ? { ...prev, is_deleted: false } : null);
@@ -1013,23 +896,16 @@ export default function AdminTab({
       }
     } else if (action === 'delete') {
       try {
-        const docRef = doc(db, 'profiles', userId);
-        await deleteDoc(docRef);
+        await fetch(getApiUrl(`/api/profiles/${userId}`), { method: 'DELETE' });
 
         try {
-          const foodQuery = query(collection(db, 'food_logs'), where('user_id', '==', userId));
-          const foodSnap = await getDocs(foodQuery);
-          const foodPromises = foodSnap.docs.map(d => deleteDoc(doc(db, 'food_logs', d.id)));
-          await Promise.all(foodPromises);
+          await fetch(getApiUrl(`/api/food_logs/user/${userId}`), { method: 'DELETE' });
         } catch (foodErr) {
           console.error("Error cleaning up user food logs:", foodErr);
         }
 
         try {
-          const waterQuery = query(collection(db, 'water_logs'), where('user_id', '==', userId));
-          const waterSnap = await getDocs(waterQuery);
-          const waterPromises = waterSnap.docs.map(d => deleteDoc(doc(db, 'water_logs', d.id)));
-          await Promise.all(waterPromises);
+          await fetch(getApiUrl(`/api/water_logs/user/${userId}`), { method: 'DELETE' });
         } catch (waterErr) {
           console.error("Error cleaning up user water logs:", waterErr);
         }

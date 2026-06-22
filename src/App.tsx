@@ -44,7 +44,6 @@ import { domToPng } from "modern-screenshot";
 import { UserData, DietPlan, Food, Meal, Profile } from "./types";
 import { generateDiet, FALLBACK_FOODS, getApiUrl, EXERCISES, formatFoodName, getLocalDateString, calculateNavyBodyFat } from "./utils";
 import { auth, db, isFirebaseConfigured } from "./lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { Auth } from "./components/Auth";
 import { Dashboard } from "./components/Dashboard";
@@ -189,28 +188,10 @@ export default function App() {
 
   const fetchProfile = async (user: any) => {
     setLoadingProfile(true);
-    if (!isFirebaseConfigured) {
-      const todayStr = getLocalDateString();
-      const mockProfile: Profile = {
-        id: user.uid || 'demo-uid',
-        username: user.displayName || 'Usuário Demo',
-        xp: 150,
-        league: 'Bronze',
-        streak: 3,
-        avatar_url: 'https://i.pravatar.cc/150?u=demo',
-        last_activity_date: todayStr,
-        streak_freeze_active: false,
-        premium_access_until: null
-      };
-      setProfile(mockProfile);
-      setLoadingProfile(false);
-      return;
-    }
     try {
-      const docRef = doc(db, 'profiles', user.uid);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const data = docSnap.data() as Profile & { diet_plan?: DietPlan };
+      const resp = await fetch(getApiUrl(`/api/profiles/${user.uid}`));
+      if (resp.ok) {
+        const data = await resp.json() as Profile & { diet_plan?: DietPlan };
         
         let hasEmailUpdated = false;
         if (!data.email && user.email) {
@@ -283,9 +264,13 @@ export default function App() {
 
         if (updateNeeded) {
           try {
-            await updateDoc(docRef, updatedFields);
+            await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(updatedFields)
+            });
           } catch (updateErr) {
-            console.warn("Failed to update profile to Firebase (offline), saving locally:", updateErr);
+            console.warn("Failed to update profile to API (offline), saving locally:", updateErr);
           }
         }
 
@@ -323,9 +308,13 @@ export default function App() {
           premium_access_until: null
         };
         try {
-          await setDoc(docRef, newProfile);
+          await fetch(getApiUrl('/api/profiles'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newProfile)
+          });
         } catch (setErr) {
-          console.warn("Failed to create profile on Firebase (offline), saving locally:", setErr);
+          console.warn("Failed to create profile on API (offline), saving locally:", setErr);
         }
         localStorage.setItem(`profile_${user.uid}`, JSON.stringify(newProfile));
         setProfile(newProfile);
@@ -381,15 +370,18 @@ export default function App() {
   }, [session]);
 
   useEffect(() => {
-    if (session?.user && dietPlan && isFirebaseConfigured) {
+    if (session?.user && dietPlan) {
       const planStr = JSON.stringify(dietPlan);
       if (lastSyncedDietPlanRef.current === planStr) {
         return;
       }
       const syncDietPlan = async () => {
         try {
-          const docRef = doc(db, 'profiles', session.user.uid);
-          await updateDoc(docRef, { diet_plan: dietPlan });
+          await fetch(getApiUrl(`/api/profiles/${session.user.uid}`), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ diet_plan: dietPlan })
+          });
           lastSyncedDietPlanRef.current = planStr;
         } catch (err) {
           console.error("Error syncing diet plan:", err);
@@ -421,15 +413,28 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (isFirebaseConfigured) {
-      const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-        if (firebaseUser) {
-          setSession({ user: firebaseUser });
+    const token = localStorage.getItem('token');
+    if (token) {
+      fetch(getApiUrl('/api/auth/me'), {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.user) {
+          // Pass the user info to the session
+          // We convert sqlite profile id to uid so the rest of the app doesn't break entirely
+          setSession({ user: { ...data.user, uid: data.user.id } });
         } else {
           setSession(null);
+          localStorage.removeItem('token');
         }
+      })
+      .catch(() => {
+        setSession(null);
+        localStorage.removeItem('token');
       });
-      return () => unsubscribe();
+    } else {
+      setSession(null);
     }
   }, []);
 
@@ -447,15 +452,16 @@ export default function App() {
     const plan = generateDiet(userData, activeFoodsList, profile?.custom_meals);
     
     if (session?.user) {
-      const docRef = doc(db, 'profiles', session.user.uid);
       const updatedFields = {
         diet_plan: plan
       };
       
       try {
-        if (isFirebaseConfigured) {
-          await updateDoc(docRef, updatedFields);
-        }
+        await fetch(getApiUrl(`/api/profiles/${session.user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedFields)
+        });
         
         lastSyncedDietPlanRef.current = JSON.stringify(plan);
         setDietPlan(plan);
@@ -487,16 +493,17 @@ export default function App() {
     setDietPlan(plan);
 
     if (session?.user) {
-      const docRef = doc(db, 'profiles', session.user.uid);
       const updatedFields = {
         user_data: newUserData,
         diet_plan: plan
       };
       
       try {
-        if (isFirebaseConfigured) {
-          await updateDoc(docRef, updatedFields);
-        }
+        await fetch(getApiUrl(`/api/profiles/${session.user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedFields)
+        });
         
         setProfile(prev => prev ? { ...prev, ...updatedFields } : null);
         const cached = localStorage.getItem(`profile_${session.user.uid}`);
@@ -538,12 +545,15 @@ export default function App() {
       }
     }
 
-    if (isFirebaseConfigured && session?.user) {
+    if (session?.user) {
       try {
-        const profileRef = doc(db, 'profiles', session.user.uid);
-        await updateDoc(profileRef, { 
-          custom_meals: newMeals,
-          diet_plan: plan
+        await fetch(getApiUrl(`/api/profiles/${session.user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            custom_meals: newMeals,
+            diet_plan: plan
+          })
         });
       } catch (err) {
         console.error('Error saving custom meals and diet plan online:', err);
@@ -786,15 +796,6 @@ export default function App() {
                 <Auth 
                   onClose={() => setShowAuth(false)}
                   onSuccess={() => {
-                    if (!isFirebaseConfigured) {
-                      setSession({
-                        user: {
-                          uid: 'demo-user',
-                          email: 'demo@example.com',
-                          displayName: 'Usuário Demo'
-                        }
-                      });
-                    }
                     setShowAuth(false);
                   }} 
                 />
@@ -810,7 +811,8 @@ export default function App() {
               setProfile={setProfile}
               loadingProfile={loadingProfile}
               onLogout={() => {
-                auth.signOut();
+                localStorage.removeItem('token');
+                setSession(null);
                 setDietPlan(null);
                 lastSyncedDietPlanRef.current = null;
                 setStep(1);

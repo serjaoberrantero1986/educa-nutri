@@ -252,10 +252,14 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({
         xp: finalCoins,
         premium_access_until: passUntil
       };
-      if (isFirebaseConfigured) {
-        await updateDoc(doc(db, 'profiles', user.uid), {
-          xp: finalCoins,
-          premium_access_until: passUntil
+      if (user) {
+        await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            xp: finalCoins,
+            premium_access_until: passUntil
+          })
         });
       }
       setProfile(updated);
@@ -763,17 +767,22 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({
       added_via: registrationMethod
     };
 
-    if (!isFirebaseConfigured) {
-      // Handle local state if needed
-    } else {
-      try {
-        const logId = Math.random().toString(36).substring(2, 15);
-        const newLogFull = { id: logId, ...newLog };
-        const docRef = doc(db, 'food_logs', logId);
-        await setDoc(docRef, newLogFull);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, `food_logs`);
-      }
+    try {
+      const logId = Math.random().toString(36).substring(2, 15);
+      const newLogFull = { id: logId, ...newLog };
+      await fetch(getApiUrl(`/api/food_logs`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...newLogFull,
+          user_id: user.uid,
+          date: newLog.logged_at.split('T')[0],
+          portion_amount: newLog.amount,
+          measure_unit: newLog.unit
+        })
+      });
+    } catch (error) {
+      console.error("API error", error);
     }
     
     fetchLogs();
@@ -819,16 +828,26 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({
       };
     });
 
-    if (isFirebaseConfigured) {
+    if (user) {
       try {
         const promises = newLogs.map(async log => {
           const logId = Math.random().toString(36).substring(2, 15);
-          const docRef = doc(db, 'food_logs', logId);
-          await setDoc(docRef, { id: logId, ...log });
+          await fetch(getApiUrl(`/api/food_logs`), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: logId,
+              ...log,
+              user_id: user.uid,
+              date: log.logged_at.split('T')[0],
+              portion_amount: log.amount,
+              measure_unit: log.unit
+            })
+          });
         });
         await Promise.all(promises);
       } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, `food_logs`);
+        console.error("API Error", error);
       }
     }
 

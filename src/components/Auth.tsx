@@ -1,14 +1,9 @@
 import React, { useState } from 'react';
-import { auth, db, isFirebaseConfigured } from '../lib/firebase';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signInWithPopup, 
-  GoogleAuthProvider 
-} from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { motion } from 'motion/react';
 import { Mail, Lock, User, Chrome, ArrowRight, Loader2, AlertCircle, X } from 'lucide-react';
+import { getApiUrl } from '../utils';
+import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { auth, isFirebaseConfigured } from '../lib/firebase';
 
 interface AuthProps {
   onSuccess: () => void;
@@ -47,6 +42,8 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, onClose }) => {
   });
   const [username, setUsername] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,101 +58,146 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, onClose }) => {
       eraseCookie('remembered_password');
     }
     
-    if (!isFirebaseConfigured) {
-      // In demo mode, just succeed
-      onSuccess();
-      return;
-    }
-
     setLoading(true);
     setError(null);
+    setSuccessMessage(null);
 
     try {
       if (isSignUp) {
-        // Create user in Firebase Auth
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
+        const response = await fetch(getApiUrl('/api/auth/register'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, username })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || 'Erro ao cadastrar');
+        }
 
-        // Initialize user profile in Firestore
-        const profileRef = doc(db, 'profiles', user.uid);
-        await setDoc(profileRef, {
-          id: user.uid,
-          username: username || email.split('@')[0],
-          email: email,
-          xp: 150, // Initial starter XP, matching previous session's profile state
+        // Auto-login after registration
+        localStorage.setItem('token', data.token);
+        
+        // Setup initial user profile preferences
+        const mockProfileData = {
+          xp: 150,
           streak: 1,
           league: 'Bronze',
           role: 'user',
-          premium_access_until: null,
-          whatsapp_access_until: null,
-          avatar_url: `https://i.pravatar.cc/150?u=${user.uid}`,
-          created_at: new Date().toISOString()
+          avatar_url: `https://i.pravatar.cc/150?u=${data.user.id}`
+        };
+        
+        await fetch(getApiUrl(`/api/profiles/${data.user.id}`), {
+          method: 'PUT',
+          headers: { 
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(mockProfileData)
         });
 
-        alert('Cadastro realizado com sucesso!');
-        onSuccess();
+        setSuccessMessage('Cadastro realizado com sucesso! Inicializando seu painel...');
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
       } else {
-        // Sign in with Firebase Auth
-        await signInWithEmailAndPassword(auth, email, password);
-        onSuccess();
+        const response = await fetch(getApiUrl('/api/auth/login'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || 'Erro ao fazer login');
+        }
+
+        localStorage.setItem('token', data.token);
+        setSuccessMessage('Login realizado com sucesso! Redirecionando...');
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
       }
     } catch (err: any) {
       console.error('Auth error:', err);
-      let message = err.message;
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-        message = 'E-mail ou senha inválidos';
-      } else if (err.code === 'auth/email-already-in-use') {
-        message = 'Usuário já cadastrado com este e-mail';
-      } else if (err.code === 'auth/weak-password') {
-        message = 'A senha deve ter pelo menos 6 caracteres';
-      } else if (err.code === 'auth/invalid-email') {
-        message = 'Formato de e-mail inválido';
-      }
-      setError(message);
+      setError(err.message || 'Erro de autenticação');
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleLogin = async () => {
-    if (!isFirebaseConfigured) {
-      onSuccess();
-      return;
-    }
-    setLoading(true);
+    if (googleLoading || loading) return;
+    setGoogleLoading(true);
     setError(null);
+    setSuccessMessage(null);
+
     try {
-      const provider = new GoogleAuthProvider();
-      // Use signInWithPopup as instructed by SKILL.md
-      const userCredential = await signInWithPopup(auth, provider);
-      const user = userCredential.user;
+      if (!isFirebaseConfigured) {
+        // Fallback or simulated mode
+        const demoEmail = "demo-google@example.com";
+        const demoUid = "demo-google-uid";
+        const demoName = "Usuário Google Demo";
 
-      // Check if profile exists already, if not create it
-      const profileRef = doc(db, 'profiles', user.uid);
-      const profileSnap = await getDoc(profileRef);
-
-      if (!profileSnap.exists()) {
-        await setDoc(profileRef, {
-          id: user.uid,
-          username: user.displayName || email.split('@')[0] || 'User',
-          email: user.email || '',
-          xp: 150,
-          streak: 1,
-          league: 'Bronze',
-          role: 'user',
-          premium_access_until: null,
-          whatsapp_access_until: null,
-          avatar_url: user.photoURL || `https://i.pravatar.cc/150?u=${user.uid}`,
-          created_at: new Date().toISOString()
+        const response = await fetch(getApiUrl('/api/auth/google'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: demoEmail, uid: demoUid, username: demoName })
         });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Erro ao processar login com Google');
+        }
+
+        localStorage.setItem('token', data.token);
+        setSuccessMessage('Login simulador Google realizado com sucesso!');
+        setTimeout(() => {
+          onSuccess();
+          window.location.reload();
+        }, 1500);
+        return;
       }
 
-      onSuccess();
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      if (!user) {
+        throw new Error("Não foi possível obter dados do usuário do Google.");
+      }
+
+      // Sincroniza usuário com o backend SQLite
+      const response = await fetch(getApiUrl('/api/auth/google'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: user.email,
+          uid: user.uid,
+          username: user.displayName || user.email?.split('@')[0] || 'Usuário Google'
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao sincronizar login com o servidor');
+      }
+
+      localStorage.setItem('token', data.token);
+      setSuccessMessage('Login com Google realizado com sucesso! Redirecionando...');
+      setTimeout(() => {
+        onSuccess();
+        window.location.reload();
+      }, 1500);
+
     } catch (err: any) {
-      console.error('Google login error:', err);
-      setError(err.message || 'Erro ao realizar login com o Google.');
+      console.error('Google Auth error:', err);
+      setError(err.message || 'Erro ao fazer login com o Google. Por favor, tente novamente.');
     } finally {
-      setLoading(false);
+      setGoogleLoading(false);
     }
   };
 
@@ -176,13 +218,6 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, onClose }) => {
         <p className="text-slate-500 dark:text-slate-400">
           {isSignUp ? 'Comece sua jornada fitness hoje' : 'Acesse sua conta para continuar'}
         </p>
-        
-        {!isFirebaseConfigured && (
-          <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl flex items-center gap-3 text-amber-700 dark:text-amber-400 text-xs font-medium text-left">
-            <AlertCircle size={16} className="shrink-0" />
-            <span>Modo de Demonstração: O banco de dados Firebase não está configurado. Você pode entrar com qualquer e-mail/senha.</span>
-          </div>
-        )}
       </div>
 
       <form onSubmit={handleAuth} className="space-y-4">
@@ -247,15 +282,19 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, onClose }) => {
         </div>
 
         {error && (
-          <p className="text-red-500 text-sm text-center font-medium">{error}</p>
+          <p className="text-red-500 text-sm text-center font-medium bg-red-50 dark:bg-red-950/20 p-3 rounded-xl border border-red-100 dark:border-red-900/30">{error}</p>
+        )}
+
+        {successMessage && (
+          <p className="text-green-500 text-sm text-center font-medium bg-green-50 dark:bg-green-950/20 p-3 rounded-xl border border-green-100 dark:border-green-900/30">{successMessage}</p>
         )}
 
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           type="submit"
-          disabled={loading}
-          className="w-full py-4 bg-purple-cyan text-white font-bold rounded-2xl shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+          disabled={loading || googleLoading}
+          className="w-full py-4 bg-purple-cyan text-white font-bold rounded-2xl shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
         >
           {loading ? (
             <Loader2 className="animate-spin" size={20} />
@@ -279,10 +318,17 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, onClose }) => {
       <motion.button
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
+        disabled={loading || googleLoading}
         onClick={handleGoogleLogin}
-        className="w-full py-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-slate-700 dark:text-white font-bold rounded-2xl flex items-center justify-center gap-3 shadow-sm"
+        className="w-full py-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-slate-700 dark:text-white font-bold rounded-2xl flex items-center justify-center gap-3 shadow-sm disabled:opacity-50 cursor-pointer"
       >
-        <Chrome size={20} className="text-red-500" /> Google
+        {googleLoading ? (
+          <Loader2 className="animate-spin text-purple-600" size={20} />
+        ) : (
+          <>
+            <Chrome size={20} className="text-red-500" /> Google
+          </>
+        )}
       </motion.button>
 
       <p className="mt-8 text-center text-sm text-slate-500 dark:text-slate-400">

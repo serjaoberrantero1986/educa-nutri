@@ -56,7 +56,7 @@ import { updatePassword, updateEmail } from 'firebase/auth';
 import { Profile, FoodLog, WaterLog, DietPlan, Food, UserData, UserWorkoutProfile, WorkoutRoutine, ExerciseLog } from '../types';
 import { analyzeFoodInput, moderateProfileImage } from '../services/aiService';
 import confetti from 'canvas-confetti';
-import { formatFoodName, calculateStreakFromLogs, getLocalDateString } from '../utils';
+import { formatFoodName, calculateStreakFromLogs, getLocalDateString, getApiUrl } from '../utils';
 
 
 import { SummaryHeader } from './dashboard/SummaryHeader';
@@ -300,39 +300,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const fetchWorkoutData = async () => {
     if (!user?.uid) return;
 
-    if (!isFirebaseConfigured) {
-      const storedProfile = localStorage.getItem(`workout_profile_${user.uid}`);
-      let localProfile: UserWorkoutProfile | null = storedProfile ? JSON.parse(storedProfile) : null;
-      
-      const storedRoutine = localStorage.getItem(`workout_routine_${user.uid}`);
-      const localRoutine: WorkoutRoutine | null = storedRoutine ? JSON.parse(storedRoutine) : null;
-      if (localRoutine) {
-        setActiveRoutine(localRoutine);
-      }
-      
-      const storedHistory = localStorage.getItem(`workout_history_${user.uid}`);
-      const localHistory: ExerciseLog[] = storedHistory ? JSON.parse(storedHistory) : [];
-      setExerciseHistory(localHistory);
-
-      if (localProfile) {
-        const freshFatigue = recalculateMuscleFatigue(localHistory, localRoutine);
-        localProfile.muscleFatigue = freshFatigue;
-        setWorkoutProfile(localProfile);
-        localStorage.setItem(`workout_profile_${user.uid}`, JSON.stringify(localProfile));
-      }
-      return;
-    }
-
     let uwp: UserWorkoutProfile | null = null;
     try {
-      const profRef = doc(db, 'workout_profiles', user.uid);
-      const profSnap = await getDoc(profRef);
-      if (profSnap.exists()) {
-        uwp = profSnap.data() as UserWorkoutProfile;
+      const res = await fetch(getApiUrl(`/api/workout_profiles/${user.uid}`));
+      if (res.ok) {
+        uwp = await res.json();
       }
     } catch (err) {
-      console.error("Erro ao carregar perfil de treino no Firebase:", err);
-      handleFirestoreError(err, OperationType.GET, `workout_profiles/${user.uid}`);
+      console.error("Erro ao carregar perfil de treino na API:", err);
     }
     if (!uwp) {
       const storedProfile = localStorage.getItem(`workout_profile_${user.uid}`);
@@ -343,16 +318,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     let r: WorkoutRoutine | null = null;
     try {
-      const routineRef = doc(db, 'workout_routines', user.uid);
-      const routineSnap = await getDoc(routineRef);
-      if (routineSnap.exists()) {
-        r = routineSnap.data() as WorkoutRoutine;
+      const res = await fetch(getApiUrl(`/api/workout_routines/${user.uid}`));
+      if (res.ok) {
+        r = await res.json();
         setActiveRoutine(r);
         localStorage.setItem(`workout_routine_${user.uid}`, JSON.stringify(r));
       }
     } catch (err) {
-      console.error("Erro ao carregar rotina de treino no Firebase:", err);
-      handleFirestoreError(err, OperationType.GET, `workout_routines/${user.uid}`);
+      console.error("Erro ao carregar rotina de treino na API:", err);
     }
     if (!r) {
       const storedRoutine = localStorage.getItem(`workout_routine_${user.uid}`);
@@ -364,17 +337,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     let hist: ExerciseLog[] = [];
     try {
-      const logsCol = collection(db, 'exercise_logs');
-      const q = query(logsCol, where('user_id', '==', user.uid));
-      const qSnap = await getDocs(q);
-      qSnap.forEach((d) => {
-        hist.push({ id: d.id, ...d.data() } as ExerciseLog);
-      });
-      setExerciseHistory(hist);
-      localStorage.setItem(`workout_history_${user.uid}`, JSON.stringify(hist));
+      const res = await fetch(getApiUrl(`/api/exercise_logs/${user.uid}`));
+      if (res.ok) {
+        hist = await res.json();
+        setExerciseHistory(hist);
+        localStorage.setItem(`workout_history_${user.uid}`, JSON.stringify(hist));
+      }
     } catch (err) {
-      console.error("Erro ao carregar histórico de exercícios no Firebase:", err);
-      handleFirestoreError(err, OperationType.LIST, 'exercise_logs');
+      console.error("Erro ao carregar histórico de exercícios na API:", err);
       const storedHistory = localStorage.getItem(`workout_history_${user.uid}`);
       if (storedHistory) {
         hist = JSON.parse(storedHistory);
@@ -390,10 +360,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
       localStorage.setItem(`workout_profile_${user.uid}`, JSON.stringify(uwp));
       
       try {
-        const profRef = doc(db, 'workout_profiles', user.uid);
-        await setDoc(profRef, uwp);
+        await fetch(getApiUrl(`/api/workout_profiles/${user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(uwp)
+        });
       } catch (err) {
-        console.error("Erro ao salvar perfil atualizado pós-recálculo de fadiga:", err);
+        console.error("Erro ao salvar perfil atualizado pós-recálculo de fadiga na API:", err);
       }
     }
   };
@@ -407,14 +380,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
     };
     setWorkoutProfile(updatedProfile);
     localStorage.setItem(`workout_profile_${user.uid}`, JSON.stringify(updatedProfile));
-    if (isFirebaseConfigured) {
-      try {
-        const profRef = doc(db, 'workout_profiles', user.uid);
-        await setDoc(profRef, updatedProfile);
-      } catch (err) {
-         console.error("Erro ao salvar perfil de treino no Firebase:", err);
-         handleFirestoreError(err, OperationType.WRITE, `workout_profiles/${user.uid}`);
-      }
+    try {
+      await fetch(getApiUrl(`/api/workout_profiles/${user.uid}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedProfile)
+      });
+    } catch (err) {
+       console.error("Erro ao salvar perfil de treino na API:", err);
     }
   };
 
@@ -422,23 +395,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
     if (!user?.uid) return;
 
     let customExs: any[] = [];
-    if (isFirebaseConfigured) {
+    if (user?.uid) {
       try {
-        const snap = await getDocs(collection(db, 'admin_exercises'));
-        snap.forEach(docSnap => {
-          const d = docSnap.data();
-          customExs.push({
-            nome: d.name,
-            equipamento: d.equipment,
-            grupoPrincipal: d.mainGroup,
-            gruposSecundarios: d.secondaryGroups || [],
-            nivel: d.level,
-            tipo: d.type,
-            gifUrl: d.gifUrl || ''
+        const res = await fetch(getApiUrl(`/api/admin_exercises`));
+        if (res.ok) {
+          const snap = await res.json();
+          snap.forEach((d: any) => {
+            customExs.push({
+              nome: d.name,
+              equipamento: d.equipment,
+              grupoPrincipal: d.mainGroup,
+              gruposSecundarios: d.secondaryGroups || [],
+              nivel: d.level,
+              tipo: d.type,
+              gifUrl: d.gifUrl || ''
+            });
           });
-        });
+        }
       } catch (err) {
-        console.error("Erro ao carregar exercícios dinâmicos do admin:", err);
+        console.error("Erro ao carregar exercícios dinâmicos do admin da API:", err);
       }
     }
 
@@ -722,19 +697,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setExerciseHistory([]);
     localStorage.removeItem(`workout_history_${user.uid}`);
 
-    if (isFirebaseConfigured) {
+    if (user?.uid) {
       try {
-        const routineRef = doc(db, 'workout_routines', user.uid);
-        await setDoc(routineRef, newRoutine);
-
-        // Delete all user's historical exercise execution logs in Firestore as well
-        const q = query(collection(db, 'exercise_logs'), where('user_id', '==', user.uid));
-        const snap = await getDocs(q);
-        const batchPromises = snap.docs.map(d => deleteDoc(d.ref));
-        await Promise.all(batchPromises);
+        await fetch(getApiUrl(`/api/workout_routines/${user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newRoutine)
+        });
+        await fetch(getApiUrl(`/api/exercise_logs/user/${user.uid}`), {
+          method: 'DELETE'
+        });
       } catch (err) {
-        console.error("Erro ao salvar rotina de treino ou limpar histórico no Firebase:", err);
-        handleFirestoreError(err, OperationType.WRITE, `workout_routines/${user.uid}`);
+        console.error("Erro ao salvar rotina de treino ou limpar histórico na API:", err);
       }
     }
   };
@@ -744,13 +718,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setActiveRoutine(newRoutine);
     localStorage.setItem(`workout_routine_${user.uid}`, JSON.stringify(newRoutine));
 
-    if (isFirebaseConfigured) {
+    if (user?.uid) {
       try {
-        const routineRef = doc(db, 'workout_routines', user.uid);
-        await setDoc(routineRef, newRoutine);
+        await fetch(getApiUrl(`/api/workout_routines/${user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newRoutine)
+        });
       } catch (err) {
-        console.error("Erro ao salvar rotina de treino no Firebase:", err);
-        handleFirestoreError(err, OperationType.WRITE, `workout_routines/${user.uid}`);
+        console.error("Erro ao salvar rotina de treino na API:", err);
       }
     }
   };
@@ -758,23 +734,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const handleLogExercise = async (logPayload: Omit<ExerciseLog, 'id'>) => {
     if (!user?.uid) return;
 
-    const id = !isFirebaseConfigured 
-      ? `log_${Date.now()}`
-      : doc(collection(db, 'exercise_logs')).id;
+    const id = `log_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     
     const fullLog: ExerciseLog = { id, ...logPayload };
     const updatedHistory = [fullLog, ...exerciseHistory];
     setExerciseHistory(updatedHistory);
     localStorage.setItem(`workout_history_${user.uid}`, JSON.stringify(updatedHistory));
 
-    if (isFirebaseConfigured) {
-      try {
-        const logRef = doc(db, 'exercise_logs', id);
-        await setDoc(logRef, logPayload);
-      } catch (err) {
-        console.error("Erro ao salvar log de exercício no Firebase:", err);
-        handleFirestoreError(err, OperationType.WRITE, `exercise_logs/${id}`);
-      }
+    try {
+      await fetch(getApiUrl(`/api/exercise_logs`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.uid, ...logPayload, id })
+      });
+    } catch (err) {
+      console.error("Erro ao salvar log de exercício na API:", err);
     }
 
     if (workoutProfile) {
@@ -787,14 +761,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
       setWorkoutProfile(updatedProfile);
       localStorage.setItem(`workout_profile_${user.uid}`, JSON.stringify(updatedProfile));
 
-      if (isFirebaseConfigured) {
-        try {
-          const profRef = doc(db, 'workout_profiles', user.uid);
-          await setDoc(profRef, updatedProfile);
-        } catch (err) {
-          console.error("Erro ao atualizar fadiga no Firebase:", err);
-          handleFirestoreError(err, OperationType.WRITE, `workout_profiles/${user.uid}`);
-        }
+      try {
+        await fetch(getApiUrl(`/api/workout_profiles/${user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedProfile)
+        });
+      } catch (err) {
+        console.error("Erro ao atualizar fadiga na API:", err);
       }
     }
 
@@ -818,13 +792,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
       const finalXP = (profile.xp || 0) + rewardNC;
       const updatedProg = { ...profile, xp: finalXP };
       setProfile(updatedProg);
-      if (isFirebaseConfigured) {
-        try {
-          const profileRef = doc(db, 'profiles', user.uid);
-          await updateDoc(profileRef, { xp: finalXP });
-        } catch (err) {
-          console.error("Erro ao atualizar NC do treino:", err);
-        }
+      try {
+        await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ xp: finalXP })
+        });
+      } catch (err) {
+        console.error("Erro ao atualizar NC do treino:", err);
       }
     }
 
@@ -847,14 +822,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setExerciseHistory(updated);
     localStorage.setItem(`workout_history_${user.uid}`, JSON.stringify(updated));
 
-    if (isFirebaseConfigured) {
-      try {
-        const logRef = doc(db, 'exercise_logs', id);
-        await deleteDoc(logRef);
-      } catch (err) {
-        console.error("Erro ao deletar log no Firebase:", err);
-        handleFirestoreError(err, OperationType.DELETE, `exercise_logs/${id}`);
-      }
+    try {
+      await fetch(getApiUrl(`/api/exercise_logs/${id}`), {
+        method: 'DELETE'
+      });
+    } catch (err) {
+      console.error("Erro ao deletar log na API:", err);
     }
 
     if (workoutProfile) {
@@ -867,13 +840,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
       setWorkoutProfile(updatedProfile);
       localStorage.setItem(`workout_profile_${user.uid}`, JSON.stringify(updatedProfile));
 
-      if (isFirebaseConfigured) {
-        try {
-          const profRef = doc(db, 'workout_profiles', user.uid);
-          await setDoc(profRef, updatedProfile);
-        } catch (err) {
-          console.error("Erro ao salvar perfil atualizado pós-deleção de log:", err);
-        }
+      try {
+        await fetch(getApiUrl(`/api/workout_profiles/${user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedProfile)
+        });
+      } catch (err) {
+        console.error("Erro ao salvar perfil atualizado pós-deleção de log na API:", err);
       }
     }
   };
@@ -974,13 +948,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [profile]);
 
   useEffect(() => {
-    if (!profile || !isFirebaseConfigured || allFoodLogs.length === 0) return;
+    if (!profile || allFoodLogs.length === 0) return;
     const realStreak = calculateStreakFromLogs(allFoodLogs);
     if (profile.streak !== realStreak) {
       const updateStreakDb = async () => {
         try {
-          const profileRef = doc(db, 'profiles', user.uid);
-          await updateDoc(profileRef, { streak: realStreak });
+          await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ streak: realStreak })
+          });
           setProfile(prev => prev ? { ...prev, streak: realStreak } : null);
           console.log(`Streak updated automatically from food logs: ${realStreak}`);
         } catch (err) {
@@ -989,7 +966,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       };
       updateStreakDb();
     }
-  }, [allFoodLogs, profile?.streak, isFirebaseConfigured, user.uid, setProfile]);
+  }, [allFoodLogs, profile?.streak, user.uid, setProfile]);
 
   // Dynamic Daily Water Goal Calibration based on User weight (35ml of water per kg of bodyweight)
   useEffect(() => {
@@ -999,10 +976,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [profile?.user_data?.weight, userData?.weight]);
 
   const updateXP = async (amount: number) => {
-    if (!profile || !isFirebaseConfigured) return;
+    if (!profile) return;
     try {
-      const profileRef = doc(db, 'profiles', user.uid);
-      await updateDoc(profileRef, { xp: (profile.xp || 0) + amount });
+      await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ xp: (profile.xp || 0) + amount })
+      });
       setProfile(prev => prev ? { ...prev, xp: (prev.xp || 0) + amount } : null);
     } catch (err) {
       console.error('Error updating XP:', err);
@@ -1013,10 +993,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setCustomMeals(newMeals);
     if (onSaveCustomMeals) {
       await onSaveCustomMeals(newMeals);
-    } else if (isFirebaseConfigured) {
+    } else {
       try {
-        const profileRef = doc(db, 'profiles', user.uid);
-        await updateDoc(profileRef, { custom_meals: newMeals });
+        await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ custom_meals: newMeals })
+        });
       } catch (err) {
         console.error('Error saving meals:', err);
       }
@@ -1024,15 +1007,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const handleDeleteLog = async (id: string) => {
-    if (!isFirebaseConfigured) {
-      setFoodLogs(prev => prev.filter(log => log.id !== id));
-      setAllFoodLogs(prev => prev.filter(log => log.id !== id));
-      return;
-    }
-
     try {
-      const logRef = doc(db, 'food_logs', id);
-      await deleteDoc(logRef);
+      await fetch(getApiUrl(`/api/food_logs/${id}`), {
+        method: 'DELETE'
+      });
       setFoodLogs(prev => {
         const next = prev.filter(log => log.id !== id);
         const today = getLocalDateString();
@@ -1045,7 +1023,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         return next;
       });
     } catch (err) {
-      console.warn('Error deleting food log from Firebase (offline fallback applied):', err);
+      console.warn('Error deleting food log from API (offline fallback applied):', err);
       setFoodLogs(prev => {
         const next = prev.filter(log => log.id !== id);
         const today = getLocalDateString();
@@ -1112,22 +1090,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
       return [];
     };
 
-    if (!isFirebaseConfigured) {
-      const bots = generateBotsForLeague(userLeague);
-      setRanking([
-        ...bots,
-        { id: user.uid, username: profile?.username || 'Você', xp: userXP, league: userLeague, streak: profile?.streak || 0, avatar_url: profile?.avatar_url }
-      ].sort((a, b) => b.xp - a.xp));
-      return;
+    const data: Profile[] = [];
+
+    if (user?.uid) {
+      try {
+        const res = await fetch(getApiUrl(`/api/profiles?league=${userLeague}`));
+        if (res.ok) {
+          const fetchedData = await res.json();
+          const limited = fetchedData.slice(0, 10);
+          limited.forEach((d: any) => {
+            data.push(d as Profile);
+          });
+        }
+      } catch (err) {
+         console.error('Error fetching real profiles API in simulation:', err);
+      }
     }
-    try {
-      const profilesCol = collection(db, 'profiles');
-      const q = query(profilesCol, where('league', '==', userLeague), orderBy('xp', 'desc'), limit(10));
-      const querySnapshot = await getDocs(q);
-      const data: Profile[] = [];
-      querySnapshot.forEach((doc) => {
-        data.push(doc.data() as Profile);
-      });
       
       if (data.length < 10) {
         const bots = generateBotsForLeague(userLeague);
@@ -1154,14 +1132,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         } as Profile);
       }
       setRanking(data.sort((a, b) => b.xp - a.xp));
-    } catch (err) {
-      console.error('Error fetching ranking:', err);
-      const bots = generateBotsForLeague(userLeague);
-      setRanking([
-        ...bots,
-        { id: user.uid, username: profile?.username || 'Você', xp: userXP, league: userLeague, streak: profile?.streak || 0, avatar_url: profile?.avatar_url }
-      ].sort((a, b) => b.xp - a.xp));
-    }
   };
 
   const onCropComplete = useCallback((_croppedArea: any, croppedAreaPixels: any) => {
@@ -1283,20 +1253,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       setUsernameStatus('checking');
 
-      if (!isFirebaseConfigured) {
-        setTimeout(() => {
-          setUsernameStatus('available');
-        }, 500);
-        return;
-      }
-
       try {
-        const profilesCol = collection(db, 'profiles');
-        const q = query(profilesCol, where('username', '==', editForm.username));
-        const querySnapshot = await getDocs(q);
-        setUsernameStatus(!querySnapshot.empty ? 'taken' : 'available');
+        const res = await fetch(getApiUrl(`/api/profiles?username=${encodeURIComponent(editForm.username)}`));
+        if (res.ok) {
+           const matches = await res.json();
+           setUsernameStatus(matches.length > 0 ? 'taken' : 'available');
+        } else {
+           setUsernameStatus('idle');
+        }
       } catch (err) {
-        console.error('Error checking username:', err);
+        console.error('Error checking username API:', err);
         setUsernameStatus('idle');
       }
     };
@@ -1339,13 +1305,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const fetchLogs = async () => {
-    if (!isFirebaseConfigured) {
-      setFoodLogs([]);
-      setAllFoodLogs([]);
-      setWaterLogs([]);
-      setWaterAmount(0);
-      return;
-    }
     // Fetch food and water logs for today starting from local midnight
     const localTodayStr = getLocalDateString();
     const startOfLocalDay = new Date();
@@ -1353,46 +1312,36 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const startOfLocalDayISO = startOfLocalDay.toISOString();
 
     try {
-      const foodLogsCol = collection(db, 'food_logs');
-      const qFood = query(foodLogsCol, where('user_id', '==', user.uid), where('logged_at', '>=', startOfLocalDayISO));
-      const foodSnap = await getDocs(qFood);
-      const foodData: FoodLog[] = [];
-      foodSnap.forEach((doc) => {
-        const item = doc.data() as FoodLog;
-        item.meal_type = normalizeMealType(item.meal_type);
-        foodData.push(item);
-      });
-      setFoodLogs(foodData);
-      localStorage.setItem(`food_logs_${user.uid}_${localTodayStr}`, JSON.stringify(foodData));
-
       // Fetch all food logs for current user to track real calendar streaks
-      const qAllFood = query(foodLogsCol, where('user_id', '==', user.uid));
-      const allFoodSnap = await getDocs(qAllFood);
-      const allFoodData: FoodLog[] = [];
-      allFoodSnap.forEach((doc) => {
-        const item = doc.data() as FoodLog;
-        item.meal_type = normalizeMealType(item.meal_type);
-        allFoodData.push(item);
-      });
+      const allFoodRes = await fetch(getApiUrl(`/api/food_logs/${user.uid}`));
+      let allFoodData: FoodLog[] = [];
+      if (allFoodRes.ok) {
+        allFoodData = await allFoodRes.json();
+        allFoodData = allFoodData.map(item => ({ ...item, meal_type: normalizeMealType(item.meal_type) }));
+      }
       setAllFoodLogs(allFoodData);
       localStorage.setItem(`all_food_logs_${user.uid}`, JSON.stringify(allFoodData));
 
-      const waterLogsCol = collection(db, 'water_logs');
-      const qWater = query(waterLogsCol, where('user_id', '==', user.uid), where('logged_at', '>=', startOfLocalDayISO));
-      const waterSnap = await getDocs(qWater);
+      // Filter local today data from all logs for dashboard
+      const todayDateStr = startOfLocalDayISO.split('T')[0];
+      const foodData = allFoodData.filter(log => log.logged_at >= startOfLocalDayISO || log.logged_at.startsWith(todayDateStr));
+      setFoodLogs(foodData);
+      localStorage.setItem(`food_logs_${user.uid}_${localTodayStr}`, JSON.stringify(foodData));
+
+      const waterRes = await fetch(getApiUrl(`/api/water_logs/${user.uid}?date=${todayDateStr}`));
+      let waterData: WaterLog[] = [];
       let total = 0;
-      const waterData: WaterLog[] = [];
-      waterSnap.forEach((doc) => {
-        const data = doc.data() as WaterLog;
-        total += data.amount_ml;
-        waterData.push(data);
-      });
-      waterData.sort((a, b) => new Date(b.logged_at).getTime() - new Date(a.logged_at).getTime());
+      if (waterRes.ok) {
+        waterData = await waterRes.json();
+        waterData.forEach(item => total += item.amount_ml);
+        waterData.sort((a, b) => new Date(b.logged_at).getTime() - new Date(a.logged_at).getTime());
+      }
+      
       setWaterLogs(waterData);
       setWaterAmount(total);
       localStorage.setItem(`water_logs_${user.uid}_${localTodayStr}`, JSON.stringify(waterData));
     } catch (err) {
-      console.error('Error fetching logs from Firebase, trying local storage fallback:', err);
+      console.error('Error fetching logs from API, trying local storage fallback:', err);
       const cachedFoods = localStorage.getItem(`food_logs_${user.uid}_${localTodayStr}`);
       const cachedAllFoods = localStorage.getItem(`all_food_logs_${user.uid}`);
       const cachedWater = localStorage.getItem(`water_logs_${user.uid}_${localTodayStr}`);
@@ -1454,14 +1403,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
       }
     }
 
-    if (!isFirebaseConfigured) {
-      setWaterLogs(prev => [newLog, ...prev]);
-      setWaterAmount(newAmount);
-      return;
-    }
     try {
-      const waterRef = doc(db, 'water_logs', waterId);
-      await setDoc(waterRef, newLog);
+      await fetch(getApiUrl(`/api/water_logs`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user.uid, amount: amountMl, logged_at: newLog.logged_at }) // Using new logged_at logic
+      });
       setWaterLogs(prev => {
         const next = [newLog, ...prev];
         localStorage.setItem(`water_logs_${user.uid}_${today}`, JSON.stringify(next));
@@ -1469,7 +1416,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       });
       setWaterAmount(newAmount);
     } catch (err) {
-      console.warn('Error adding water to Firebase (using fallback):', err);
+      console.warn('Error adding water to API (using fallback):', err);
       setWaterLogs(prev => {
         const next = [newLog, ...prev];
         localStorage.setItem(`water_logs_${user.uid}_${today}`, JSON.stringify(next));
@@ -1486,15 +1433,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const newAmount = Math.max(0, waterAmount - logToDelete.amount_ml);
     const today = getLocalDateString();
 
-    if (!isFirebaseConfigured) {
-      setWaterLogs(prev => prev.filter(log => log.id !== id));
-      setWaterAmount(newAmount);
-      return;
-    }
-
     try {
-      const waterRef = doc(db, 'water_logs', id);
-      await deleteDoc(waterRef);
+      await fetch(getApiUrl(`/api/water_logs/${id}`), {
+        method: 'DELETE'
+      });
       setWaterLogs(prev => {
         const next = prev.filter(log => log.id !== id);
         localStorage.setItem(`water_logs_${user.uid}_${today}`, JSON.stringify(next));
@@ -1502,7 +1444,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       });
       setWaterAmount(newAmount);
     } catch (err) {
-      console.warn('Error deleting water doc from Firebase (using fallback):', err);
+      console.warn('Error deleting water doc from API (using fallback):', err);
       setWaterLogs(prev => {
         const next = prev.filter(log => log.id !== id);
         localStorage.setItem(`water_logs_${user.uid}_${today}`, JSON.stringify(next));
@@ -1527,33 +1469,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
       return;
     }
 
-    if (!isFirebaseConfigured) {
-      setProfile(prev => prev ? { 
-        ...prev, 
-        username: editForm.username, 
-        avatar_url: editForm.avatar_url,
-        full_name: editForm.full_name,
-        cpf: editForm.cpf,
-        whatsapp: editForm.whatsapp
-      } : null);
-      setSaveStatus('success');
-      setTimeout(() => {
-        setIsEditingProfile(false);
-        setSaveStatus('idle');
-      }, 2000);
-      return;
-    }
     try {
       setSaveStatus('loading');
       
-      // Update profile in Firestore
-      const profileRef = doc(db, 'profiles', user.uid);
-      await updateDoc(profileRef, { 
-        username: editForm.username, 
-        avatar_url: editForm.avatar_url,
-        full_name: editForm.full_name,
-        cpf: editForm.cpf,
-        whatsapp: editForm.whatsapp
+      await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: editForm.username, 
+          avatar_url: editForm.avatar_url,
+          full_name: editForm.full_name,
+          cpf: editForm.cpf,
+          whatsapp: editForm.whatsapp
+        })
       });
       
       if (editForm.email !== user.email) {
@@ -1584,7 +1512,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     } catch (err: any) {
       setSaveStatus('error');
       setTimeout(() => setSaveStatus('idle'), 3000);
-      alert('Erro ao atualizar perfil: ' + err.message);
+      alert('Erro ao atualizar perfil na API: ' + err.message);
     }
   };
   const handleAddFood = async (input: string) => {
@@ -1622,17 +1550,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
           };
         });
 
-        if (!isFirebaseConfigured) {
-          setFoodLogs(prev => [...prev, ...newLogs]);
-          setAllFoodLogs(prev => [...prev, ...newLogs]);
-          setShowAddFood(false);
-          return;
-        }
-
         try {
           const promises = newLogs.map(async (newLog) => {
-            const logRef = doc(db, 'food_logs', newLog.id);
-            await setDoc(logRef, newLog);
+            await fetch(getApiUrl(`/api/food_logs`), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...newLog, // Contains portion amounts and names
+                user_id: user.uid,
+                meal_type: newLog.meal_type,
+                date: newLog.logged_at.split('T')[0], // API requires 'date' string
+                portion_amount: newLog.amount,
+                measure_unit: newLog.unit
+              })
+            });
           });
           await Promise.all(promises);
 
@@ -1649,7 +1580,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           });
           setShowAddFood(false);
         } catch (err) {
-          console.warn('Error adding food to Firebase (offline fallback applied):', err);
+          console.warn('Error adding food to API (offline fallback applied):', err);
           setFoodLogs(prev => {
             const next = [...prev, ...newLogs];
             const today = getLocalDateString();
@@ -1704,11 +1635,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
         
         newFoodLogs.push(newLog);
         
-        if (isFirebaseConfigured) {
+        if (user?.uid) {
           try {
-            await setDoc(doc(db, 'food_logs', logId), newLog);
+            await fetch(getApiUrl(`/api/food_logs`), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...newLog,
+                user_id: user.uid,
+                meal_type: newLog.meal_type,
+                date: newLog.logged_at.split('T')[0],
+                portion_amount: newLog.amount,
+                measure_unit: newLog.unit
+              })
+            });
           } catch (e) {
-            console.error("Error setting doc directly in assistant execution:", e);
+            console.error("Error setting doc directly in assistant execution API:", e);
           }
         }
       } 
@@ -1731,11 +1673,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
         
         if (matchLogs.length > 0) {
           for (const m of matchLogs) {
-            if (isFirebaseConfigured) {
+            if (user?.uid) {
               try {
-                await deleteDoc(doc(db, 'food_logs', m.id));
+                await fetch(getApiUrl(`/api/food_logs/${m.id}`), {
+                  method: 'DELETE'
+                });
               } catch (e) {
-                console.error("Error deleting doc in assistant execution:", e);
+                console.error("Error deleting doc in assistant execution API:", e);
               }
             }
           }
@@ -1846,15 +1790,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
         rewarded_goals_today: newRewardedState
       };
       
-      if (isFirebaseConfigured) {
+      if (user?.uid) {
         try {
-          const profileRef = doc(db, 'profiles', user.uid);
-          await updateDoc(profileRef, {
-            xp: finalXP,
-            rewarded_goals_today: newRewardedState
+          await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              xp: finalXP,
+              rewarded_goals_today: newRewardedState
+            })
           });
         } catch (err) {
-          console.error("Error saving daily goal reward:", err);
+          console.error("Error saving daily goal reward API:", err);
         }
       }
       setProfile(updatedProfile);

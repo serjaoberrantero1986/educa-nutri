@@ -293,9 +293,12 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
     };
 
     try {
-      if (user && isFirebaseConfigured) {
-        const ref = doc(db, 'profiles', user.uid);
-        await updateDoc(ref, updatedProfileFields);
+      if (user) {
+        await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedProfileFields)
+        });
       }
       if (setProfile) {
         setProfile((prev: any) => prev ? { ...prev, ...updatedProfileFields } : null);

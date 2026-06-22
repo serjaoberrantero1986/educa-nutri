@@ -158,11 +158,16 @@ export const RecipesTab: React.FC<RecipesTabProps> = ({
         recipe_generations: filteredGenerations
       };
       
-      if (isFirebaseConfigured && user) {
-        const profileRef = doc(db, 'profiles', user.uid);
-        updateDoc(profileRef, {
-          recipe_generations: filteredGenerations
-        }).catch(err => console.error("Error auto-cleaning old recipes:", err));
+      if (user) {
+        try {
+          fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ recipe_generations: filteredGenerations })
+          });
+        } catch (err) {
+          console.error("Error auto-cleaning old recipes API:", err);
+        }
       }
       setProfile(updatedProfile);
     }
@@ -229,12 +234,19 @@ export const RecipesTab: React.FC<RecipesTabProps> = ({
         recipes_access_until: twentyFourHoursFromNow
       };
 
-      if (isFirebaseConfigured && user) {
-        const profileRef = doc(db, 'profiles', user.uid);
-        await updateDoc(profileRef, {
-          xp: finalCoins,
-          recipes_access_until: twentyFourHoursFromNow
-        });
+      if (user) {
+        try {
+          await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              xp: finalCoins,
+              recipes_access_until: twentyFourHoursFromNow
+            })
+          });
+        } catch(err) {
+          console.error("Error API:", err);
+        }
       }
       setProfile(updatedProfile);
       alert('Passe de Receitas Inteligentes 24h ativado com sucesso! Aproveite.');
@@ -266,14 +278,17 @@ export const RecipesTab: React.FC<RecipesTabProps> = ({
       recipe_favorites: updatedFavorites
     };
 
-    if (isFirebaseConfigured && user) {
+    if (user) {
       try {
-        const profileRef = doc(db, 'profiles', user.uid);
-        await updateDoc(profileRef, {
-          recipe_favorites: updatedFavorites
+        await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recipe_favorites: updatedFavorites
+          })
         });
       } catch (err) {
-        console.error("Erro ao favoritar receita:", err);
+        console.error("Erro ao favoritar receita API:", err);
       }
     }
     setProfile(updatedProfile);
@@ -354,12 +369,19 @@ export const RecipesTab: React.FC<RecipesTabProps> = ({
         recipes_generated_today: updatedTracker
       };
 
-      if (isFirebaseConfigured && user) {
-        const profileRef = doc(db, 'profiles', user.uid);
-        await updateDoc(profileRef, {
-          recipe_generations: updatedGenerations,
-          recipes_generated_today: updatedTracker
-        });
+      if (user) {
+        try {
+          await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              recipe_generations: updatedGenerations,
+              recipes_generated_today: updatedTracker
+            })
+          });
+        } catch(err) {
+          console.error("error API:", err);
+        }
       }
       setProfile(updatedProfile);
       setExpandedRecipeId(newId);
@@ -404,12 +426,19 @@ export const RecipesTab: React.FC<RecipesTabProps> = ({
         recipes_generated_today: updatedTracker
       };
 
-      if (isFirebaseConfigured && user) {
-        const profileRef = doc(db, 'profiles', user.uid);
-        await updateDoc(profileRef, {
-          recipe_generations: updatedGenerations,
-          recipes_generated_today: updatedTracker
-        });
+      if (user) {
+        try {
+          await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              recipe_generations: updatedGenerations,
+              recipes_generated_today: updatedTracker
+            })
+          });
+        } catch(err) {
+          console.error("error API:", err);
+        }
       }
       setProfile(updatedProfile);
       setExpandedRecipeId(newId);
@@ -428,11 +457,18 @@ export const RecipesTab: React.FC<RecipesTabProps> = ({
       ...profile,
       recipe_generations: []
     };
-    if (isFirebaseConfigured && user) {
-      const profileRef = doc(db, 'profiles', user.uid);
-      await updateDoc(profileRef, {
-        recipe_generations: []
-      });
+    if (user) {
+      try {
+        await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recipe_generations: []
+          })
+        });
+      } catch(err) {
+        console.error("error fallback API:", err);
+      }
     }
     setProfile(updatedProfile);
   };
