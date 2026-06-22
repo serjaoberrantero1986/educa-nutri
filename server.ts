@@ -887,7 +887,7 @@ app.use((req, res, next) => {
   } else {
     res.header("Access-Control-Allow-Origin", "*");
   }
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, x-ai-provider, x-ai-api-key, x-ai-model");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   res.header("Access-Control-Allow-Credentials", "true");
   res.header("Access-Control-Max-Age", "86400");
@@ -1434,10 +1434,10 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any): Promise<any> {
       const bestLocalWrap = scoredMatches[0];
       const bestLocal = bestLocalWrap.food;
 
-      // Se for alimento comercial/marca cadastrada e possuir score fraco (< 10000), ou qualquer alimento com score fraco (< 8500), pulamos a calibração genérica
+      // Se for alimento comercial/marca cadastrada e possuir score fraco (< 10000), ou qualquer alimento com score fraco (< 9500), pulamos a calibração genérica
       // Isso impede que estimativas dinâmicas corretas da IA para pratos específicos (como Carne de Panela) virem alimentos de referência genéricos distantes (como Carne Moída)
       const isBrandFood = isCommercialOrIndustrialized(cleanTerm);
-      if ((isBrandFood && bestLocalWrap.score < 10000) || bestLocalWrap.score < 8500) {
+      if ((isBrandFood && bestLocalWrap.score < 10000) || bestLocalWrap.score < 9500) {
         console.log(`[AI-Enrichment] Força de correspondência insuficiente (${bestLocalWrap.score}) para calibração com "${bestLocal.name}". Mantendo estimativa nutricional online da IA.`);
       } else {
         console.log(`[AI-Enrichment] Matched AI food "${name}" with database reference "${bestLocal.name}" (${bestLocal.calories} kcal)`);
@@ -2697,8 +2697,10 @@ Instruções para cálculo de macros/alimentos adicionados:
     - Pão Francês: 1 unidade = 50g (~135 kcal, 4.5g P, 28g C, 1g G).
     - Presunto/Apresuntado/Queijo: 1 fatia = 15g a 20g (ex: presunto/apresuntado a ~20 kcal cada fatia, queijo prato/mussarela a ~60 kcal cada fatia, queijo branco/minas a ~50 kcal cada fatia de 30g).
     - Café com Leite: 1 xícara = 200ml a 240ml (Integral com açúcar: ~120 kcal, 6g P, 14g C, 5g G; Desnatado sem açúcar: ~70 kcal).
-- QUANTIDADE E UNIDADE CORRETA:
-  O campo "amount" DEVE refletir perfeitamente a quantidade dita ou implícita pelo usuário para cada alimento individualmente (ex: se o usuário diz que comeu "4 fatias", registre amount: 4, unit: "fatia", grams_per_unit: 25. Se disser que bebeu "1 xícara", registre amount: 1, unit: "copo" ou "xícara", grams_per_unit: 240. Se expressar em gramas ou ml diretos como "comi 150g", coloque amount: 150, unit: "gramas", grams_per_unit: 1. NUNCA resuma fatias ou unidades múltiplas colocando amount: 1 e unit: "unidade" de 1g, pois isso quebra o box de revisão do usuário!).
+- QUANTIDADE E UNIDADE CORRETA (RECONHEÇA A UNIDADE DIGITALIZADA):
+  O campo "amount" DEVE refletir perfeitamente a quantidade numérica dita ou implícita pelo usuário, e o campo "unit" DEVE ser exatamente a unidade de medida digitada/mencionada pelo usuário (como "concha", "unidade", "gramas", "mililitros", "fatia", "colher de sopa", "copo", "colher de arroz"). NUNCA substitua ou altere a unidade digitada pelo usuário por conveniência (ex: se o usuário diz que comeu "1 concha", use unit: "concha" e amount: 1; se ele dita "1 colher de arroz", use unit: "colher de arroz" e amount: 1; se diz "1 fatia", use unit: "fatia", etc.). Configure o campo grams_per_unit de acordo com o peso de referência correspondente a essa unidade específica.
+- REGISTRE APENAS QUANDO SOLICITADO:
+  Você DEVE apenas cadastrar/adicionar alimentos e preencher o array "added_foods" quando o usuário ordenar ou pedir explicitamente para registrar, salvar ou declarar o consumo real ("comi", "adicione", "lance no diário", "bebi", "consumi"). Se o usuário estiver tirando dúvidas teóricas, fazendo suposições, pedindo receitas ou perguntando quantos macros tem uma comida sem relatar consumo ("quanto de proteína tem na carne de panela?"), você NÃO DEVE preencher o array "added_foods"! Apenas responda a dúvida na propriedade "response".
 - DETERMINAÇÃO DA REFEIÇÃO PARA CADA ALIMENTO INDIVIDUAL (MUITO CRÍTICO):
   - Analise cada alimento individual contido na mensagem separadamente.
   - Se o usuário especificou em qual refeição consumiu determinado alimento (ex: no café da manhã comi pão, no almoço arroz com feijão, de lanche da tarde whey, de jantar frango), você DEVE obrigatoriamente atribuir o 'meal_type' correto e correspondente de forma totalmente INDEPENDENTE para cada alimento criado na lista 'added_foods'! Jamais junte ou classifique alimentos de refeições distintas sob uma mesma refeição.
@@ -2821,7 +2823,8 @@ Retorne SOMENTE o JSON estruturado completo em Português do Brasil. Sem usar as
             }
           },
           required: ["response", "added_foods", "added_waters", "deleted_foods"]
-        }
+        },
+        tools: [{ googleSearch: {} }]
       }, req);
       if (completionTextObj && completionTextObj.text) {
         aiResponse = completionTextObj;
