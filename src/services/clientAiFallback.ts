@@ -109,7 +109,12 @@ function getDeterministicGramsForFoodAndUnit(foodName: string, unit: string, fal
   if (normUnit === "copo" || normUnit === "xicara") return 200;
   if (normUnit === "colher de arroz") return 25;
   if (normUnit === "concha") return 100;
-  if (normUnit === "unidade") return 50;
+  if (normUnit === "unidade") {
+    if (fallbackGrams && fallbackGrams > 0 && fallbackGrams !== 100 && fallbackGrams !== 50) {
+      return fallbackGrams;
+    }
+    return 50;
+  }
 
   return fallbackGrams || 100;
 }
@@ -216,10 +221,15 @@ export function enrichFoodWithExactCaloriesAndMacrosClient(item: any): any {
       
       const originalUnit = helperNormalizeUnit(item.unit || "");
       let finalUnit = originalUnit;
-      let finalGramsPerUnit = getDeterministicGramsForFoodAndUnit(matchedFood.name, originalUnit, Number(item.grams_per_unit || 100));
+      let finalGramsPerUnit;
 
       if (["gramas", "mililitros", "unidade", "colher de sopa", "fatia", "copo", "colher de arroz", "concha"].includes(originalUnit)) {
         finalUnit = originalUnit;
+        if (originalUnit === "unidade" && matchedFood.grams_per_unit) {
+          finalGramsPerUnit = matchedFood.grams_per_unit;
+        } else {
+          finalGramsPerUnit = getDeterministicGramsForFoodAndUnit(matchedFood.name, originalUnit, matchedFood.grams_per_unit || Number(item.grams_per_unit || 100));
+        }
       } else {
         finalUnit = helperNormalizeUnit(matchedFood.measure_unit) || "unidade";
         finalGramsPerUnit = getDeterministicGramsForFoodAndUnit(matchedFood.name, finalUnit, matchedFood.grams_per_unit || 100);

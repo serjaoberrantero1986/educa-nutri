@@ -115,6 +115,11 @@ export default function AdminTab({
   const [savingCredentials, setSavingCredentials] = useState(false);
   const [credentialsSuccessMessage, setCredentialsSuccessMessage] = useState<string | null>(null);
 
+  // Search Mode Config States
+  const [foodSearchMode, setFoodSearchMode] = useState<'apis' | 'web'>('web');
+  const [savingSearchMode, setSavingSearchMode] = useState(false);
+  const [searchModeSuccessMessage, setSearchModeSuccessMessage] = useState<string | null>(null);
+
   // Active sub-tab inside Admin Panel page
   const [activeAdminSubTab, setActiveAdminSubTab] = useState<'users' | 'pricing' | 'connections' | 'foods' | 'logs'>('users');
 
@@ -392,6 +397,7 @@ export default function AdminTab({
       }
       setAiApiKey(storeConfig.ai_api_key || '');
       setAiModel(storeConfig.ai_model || '');
+      setFoodSearchMode(storeConfig.food_search_mode || 'web');
     }
   }, [storeConfig]);
 
@@ -412,7 +418,8 @@ export default function AdminTab({
         whatsapp_instance: whatsappInstance.trim(),
         ai_provider: finalProvider || 'Google Gemini',
         ai_api_key: aiApiKey.trim(),
-        ai_model: aiModel.trim()
+        ai_model: aiModel.trim(),
+        food_search_mode: foodSearchMode
       };
       await saveStoreConfig(updatedConfig);
       if (onStoreConfigUpdated) {
@@ -445,7 +452,8 @@ export default function AdminTab({
         whatsapp_instance: whatsappInstance.trim(),
         ai_provider: finalProvider || 'Google Gemini',
         ai_api_key: aiApiKey.trim(),
-        ai_model: aiModel.trim()
+        ai_model: aiModel.trim(),
+        food_search_mode: foodSearchMode
       };
       await saveStoreConfig(updatedConfig);
       if (onStoreConfigUpdated) {
@@ -478,7 +486,8 @@ export default function AdminTab({
         whatsapp_instance: whatsappInstance.trim(),
         ai_provider: finalProvider || 'Google Gemini',
         ai_api_key: aiApiKey.trim(),
-        ai_model: aiModel.trim()
+        ai_model: aiModel.trim(),
+        food_search_mode: foodSearchMode
       };
       await saveStoreConfig(updatedConfig);
       if (onStoreConfigUpdated) {
@@ -491,6 +500,40 @@ export default function AdminTab({
       alert('Falha ao salvar provedor de inteligência artificial.');
     } finally {
       setSavingAiConfig(false);
+    }
+  };
+
+  const handleSaveSearchMode = async () => {
+    setSavingSearchMode(true);
+    setSearchModeSuccessMessage(null);
+    try {
+      const finalProvider = aiProvider === 'Outra' ? customAiProvider.trim() : aiProvider;
+      const updatedConfig: StoreConfig = {
+        streak_freeze_cost: Math.max(0, parseInt(String(streakFreezeCost)) || 0),
+        premium_pass_cost: Math.max(0, parseInt(String(premiumPassCost)) || 0),
+        assistant_pass_cost: Math.max(0, parseInt(String(assistantPassCost)) || 0),
+        whatsapp_pass_cost: Math.max(0, parseInt(String(whatsappPassCost)) || 0),
+        recipes_pass_cost: Math.max(0, parseInt(String(recipesPassCost)) || 0),
+        monthly_premium_price: Math.max(0, parseFloat(String(monthlyPremiumPrice)) || 0),
+        whatsapp_api_url: whatsappApiUrl.trim(),
+        whatsapp_api_key: whatsappApiKey.trim(),
+        whatsapp_instance: whatsappInstance.trim(),
+        ai_provider: finalProvider || 'Google Gemini',
+        ai_api_key: aiApiKey.trim(),
+        ai_model: aiModel.trim(),
+        food_search_mode: foodSearchMode
+      };
+      await saveStoreConfig(updatedConfig);
+      if (onStoreConfigUpdated) {
+        onStoreConfigUpdated();
+      }
+      setSearchModeSuccessMessage('Modo de pesquisa de alimentos salvo com sucesso!');
+      setTimeout(() => setSearchModeSuccessMessage(null), 4000);
+    } catch (e) {
+      console.error(e);
+      alert('Falha ao salvar modo de pesquisa de alimentos.');
+    } finally {
+      setSavingSearchMode(false);
     }
   };
   
@@ -570,7 +613,8 @@ export default function AdminTab({
         if (data.paid_premium) {
           realPaidSalesCount++;
         }
-        if (data.role === 'admin' || data.email === 'edsonricardosouza@gmail.com') {
+        const dEmail = (data.email || "").toLowerCase().trim();
+        if (data.role === 'admin' || dEmail === 'edsonricardosouza@gmail.com') {
           activeAdminsCount++;
         }
 
@@ -1710,6 +1754,86 @@ export default function AdminTab({
               ) : (
                 <>
                   <Check size={14} /> Salvar Provedor IA
+                </>
+              )}
+            </motion.button>
+          </div>
+        </div>
+
+        {/* Nutri Search Mode Switch Config Box */}
+        <div className="border-t border-slate-100 dark:border-slate-800 pt-6 space-y-4">
+          <div className="space-y-1">
+            <h4 className="font-bold text-slate-800 dark:text-slate-200 text-xs flex items-center gap-1.5 px-0.5">
+              <Sparkles size={14} className="text-violet-500" /> Modo de Pesquisa de Alimentos
+            </h4>
+            <p className="text-[11px] text-slate-400">
+              Decida se deseja que as calibrações de nutrientes busquem somente por APIs oficiais integradas (FatSecret / OFF) ou totalmente online via pesquisa Web dinâmica.
+            </p>
+          </div>
+
+          <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-3xl border border-slate-150 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1 max-w-xl">
+              <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                Seleção de Provedor de Busca Nutricional:
+              </p>
+              <p className="text-[11px] text-slate-500">
+                APIs utiliza bancos oficiais de alta precisão (como FatSecret e códigos de barras). Web realiza buscas em tempo real em todas as bases indexadas na internet de forma abrangente.
+              </p>
+            </div>
+
+            <div className="flex bg-slate-200 dark:bg-slate-800 p-1.5 rounded-2xl gap-1 shrink-0 relative">
+              <button
+                type="button"
+                id="search-mode-apis-btn"
+                onClick={() => setFoodSearchMode('apis')}
+                className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+                  foodSearchMode === 'apis'
+                    ? 'bg-gradient-to-r from-violet-500 to-violet-600 text-white shadow-sm font-extrabold'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                APIs
+              </button>
+              
+              <button
+                type="button"
+                id="search-mode-web-btn"
+                onClick={() => setFoodSearchMode('web')}
+                className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+                  foodSearchMode === 'web'
+                    ? 'bg-gradient-to-r from-violet-500 to-violet-600 text-white shadow-sm font-extrabold'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                Web
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-2 gap-2">
+            <div>
+              {searchModeSuccessMessage && (
+                <span className="text-xs text-violet-600 dark:text-violet-400 font-bold bg-violet-50 dark:bg-violet-950/20 px-3 py-1.5 rounded-xl border border-violet-100/20 block">
+                  {searchModeSuccessMessage}
+                </span>
+              )}
+            </div>
+            
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              id="save-search-mode-btn"
+              onClick={handleSaveSearchMode}
+              disabled={savingSearchMode}
+              className="px-6 py-2.5 rounded-2xl bg-gradient-to-r from-violet-500 to-violet-600 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-violet-500/10 disabled:opacity-55"
+            >
+              {savingSearchMode ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" /> Salvando...
+                </>
+              ) : (
+                <>
+                  <Check size={14} /> Salvar Modo de Busca
                 </>
               )}
             </motion.button>

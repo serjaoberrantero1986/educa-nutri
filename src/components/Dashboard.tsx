@@ -282,7 +282,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   appMode = 'diet',
   setAppMode
 }) => {
-  const isAdmin = user?.email === 'edsonricardosouza@gmail.com' || profile?.role === 'admin';
+  const normDashboardEmail = (user?.email || "").toLowerCase().trim();
+  const isAdmin = normDashboardEmail === 'edsonricardosouza@gmail.com' || profile?.role === 'admin';
   const [activePlanDay, setActivePlanDay] = useState<string>(['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'][new Date().getDay() === 0 ? 6 : new Date().getDay() - 1]);
   const [showStreakModal, setShowStreakModal] = useState(false);
   const [streakTab, setStreakTab] = useState<'week' | 'month'>('week');

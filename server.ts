@@ -1339,7 +1339,12 @@ function getDeterministicGramsForFoodAndUnit(foodName: string, unit: string, fal
   if (normUnit === "copo" || normUnit === "xicara") return 200;
   if (normUnit === "colher de arroz") return 25;
   if (normUnit === "concha") return 100;
-  if (normUnit === "unidade") return 50;
+  if (normUnit === "unidade") {
+    if (fallbackGrams && fallbackGrams > 0 && fallbackGrams !== 100 && fallbackGrams !== 50) {
+      return fallbackGrams;
+    }
+    return 50;
+  }
 
   return fallbackGrams || 100;
 }
@@ -1354,8 +1359,9 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any): Promise<any> {
 
     const termNormalized = cleanTerm.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-    // 1. PRIORIDADE ABSOLUTA: Pesquisa Grounded via IA Web Search para marcas e produtos industriais comerciais do Brasil
-    if (isCommercialOrIndustrialized(cleanTerm) && !isEgressBlocked) {
+    // 1. PRIORIDADE ABSOLUTA: Pesquisa Grounded via IA Web Search para marcas e produtos industriais comerciais do Brasil (apenas se o modo de pesquisa for web)
+    const searchMode = process.env.FOOD_SEARCH_MODE || "web";
+    if (searchMode === "web" && isCommercialOrIndustrialized(cleanTerm) && !isEgressBlocked) {
       console.log(`[AI-Enrichment] Alimento industrializado detectado: "${cleanTerm}". Iniciando pesquisa web dinâmica prioritária no Google...`);
       try {
         const webResults = await searchFoodOnlineUnified(cleanTerm);
@@ -1519,10 +1525,15 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any): Promise<any> {
         
         const originalUnit = helperNormalizeUnit(item.unit || "");
         let finalUnit = originalUnit;
-        let finalGramsPerUnit = getDeterministicGramsForFoodAndUnit(bestLocal.name, originalUnit, Number(item.grams_per_unit || 100));
+        let finalGramsPerUnit;
 
         if (["gramas", "mililitros", "unidade", "colher de sopa", "fatia", "copo", "colher de arroz", "concha"].includes(originalUnit)) {
           finalUnit = originalUnit;
+          if (originalUnit === "unidade" && bestLocal.grams_per_unit) {
+            finalGramsPerUnit = bestLocal.grams_per_unit;
+          } else {
+            finalGramsPerUnit = getDeterministicGramsForFoodAndUnit(bestLocal.name, originalUnit, bestLocal.grams_per_unit || Number(item.grams_per_unit || 100));
+          }
         } else {
           finalUnit = helperNormalizeUnit(bestLocal.measure_unit) || "unidade";
           finalGramsPerUnit = getDeterministicGramsForFoodAndUnit(bestLocal.name, finalUnit, bestLocal.grams_per_unit || 100);
@@ -1607,8 +1618,8 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any): Promise<any> {
       }
     }
 
-    // If not found in SQLite and FatSecret, let's do an AI Online Search Grounding to calibrate!
-    if (!isEgressBlocked) {
+    // If not found in SQLite and FatSecret, let's do an AI Online Search Grounding to calibrate if web mode is enabled!
+    if (searchMode === "web" && !isEgressBlocked) {
       console.log(`[AI-Enrichment] Running Google Search Grounding for unresolved item "${cleanTerm}"...`);
       const webResults = await searchFoodOnlineUnified(cleanTerm);
       if (webResults && webResults.length > 0) {
@@ -2031,11 +2042,6 @@ app.get("/api/foods", async (req, res) => {
         }
       }
 
-      // Safe fallback if offline or request failed
-      if (!offMapped || offMapped.length === 0) {
-        offMapped = generateOfflineOpenFoodFacts(originalTerm, localFiltered);
-      }
-
       // 4. Search FatSecret by term (if credentials are provided)
       let fatSecretMapped: any[] = [];
       if (fsToken && !isEgressBlocked) {
@@ -2107,21 +2113,16 @@ app.get("/api/foods", async (req, res) => {
             }
           } else {
             console.log("FatSecret api search skipped: API returned status", response.status);
-            fatSecretMapped = generateOfflineFatSecret(originalTerm, localFiltered);
           }
         } catch (err) {
           console.log("FatSecret search by term skipped or timed out due to sandboxed environment.");
-          fatSecretMapped = generateOfflineFatSecret(originalTerm, localFiltered);
         }
-      } else {
-        fatSecretMapped = generateOfflineFatSecret(originalTerm, localFiltered);
       }
 
-      // Se não houver correspondência local perfeita ou for um produto comercial de marca industrializado,
-      // rodamos a pesquisa dinâmica do Google em tempo real para obter valores 100% idênticos aos da internet.
+      // Se o modo selecionado for 'web', rodamos a pesquisa dinâmica do Google em tempo real.
       let googleSearchResults: any[] = [];
-      const isCommercial = isCommercialOrIndustrialized(originalTerm);
-      if ((localFiltered.length === 0 || isCommercial) && !isEgressBlocked) {
+      const searchMode = process.env.FOOD_SEARCH_MODE || "web";
+      if (searchMode === "web" && !isEgressBlocked) {
         try {
           googleSearchResults = await searchFoodOnlineUnified(originalTerm);
         } catch (searchErr) {
@@ -2129,8 +2130,8 @@ app.get("/api/foods", async (req, res) => {
         }
       }
 
-      // Merge and limit to 50 results, with highly precise web-searched products prepended
-      const merged = [...googleSearchResults, ...localFiltered, ...offlineSupplements, ...offMapped, ...fatSecretMapped].slice(0, 50);
+      // Merge and limit to 50 results, with highly precise web-searched products prepended, without simulated guesses
+      const merged = [...googleSearchResults, ...localFiltered, ...offMapped, ...fatSecretMapped].slice(0, 50);
       return res.json(merged);
     }
     
@@ -4224,15 +4225,20 @@ Aguardo o seu desbloqueio para te ajudar a manter o foco! 💪🥗`;
 // Helper to verify if user is an administrator
 async function checkIsAdmin(userId: string, email?: string): Promise<boolean> {
   if (!userId) return false;
-  // Let's grant immediate admin access to the developer email
-  if (email === "edsonricardosouza@gmail.com") return true;
+  
+  const normEmail = (email || "").toLowerCase().trim();
+  // Let's grant immediate admin access to the developer email (case-insensitive & trimmed)
+  if (normEmail === "edsonricardosouza@gmail.com") return true;
+  if (userId === "demo-admin-uid") return true;
+
   try {
     const docSnap = await firestore.collection("profiles").doc(userId).get();
     if (docSnap.exists) {
       const data = docSnap.data();
+      const profileEmail = (data?.email || "").toLowerCase().trim();
       return (
         data?.role === "admin" ||
-        data?.email === "edsonricardosouza@gmail.com" ||
+        profileEmail === "edsonricardosouza@gmail.com" ||
         userId === "demo-admin-uid"
       );
     }
@@ -4258,6 +4264,7 @@ app.get("/api/admin/config", async (req, res) => {
     whatsapp_instance: process.env.EVOLUTION_INSTANCE || "sportnutri_bot",
     ai_provider: process.env.AI_PROVIDER || "Google Gemini",
     ai_model: process.env.AI_MODEL || "gemini-3.5-flash",
+    food_search_mode: process.env.FOOD_SEARCH_MODE || "web",
   };
 
   if (isAdmin) {
@@ -4294,7 +4301,8 @@ app.post("/api/admin/config", async (req, res) => {
     EVOLUTION_INSTANCE: config.whatsapp_instance ?? "sportnutri_bot",
     AI_PROVIDER: config.ai_provider ?? "Google Gemini",
     AI_API_KEY: config.ai_api_key ?? "",
-    AI_MODEL: config.ai_model ?? "gemini-3.5-flash"
+    AI_MODEL: config.ai_model ?? "gemini-3.5-flash",
+    FOOD_SEARCH_MODE: config.food_search_mode ?? "web"
   };
 
   const envPath = path.join(process.cwd(), ".env");
@@ -4340,7 +4348,8 @@ app.post("/api/admin/config", async (req, res) => {
       whatsapp_instance: config.whatsapp_instance ?? "sportnutri_bot",
       ai_provider: config.ai_provider ?? "Google Gemini",
       ai_api_key: config.ai_api_key ?? "",
-      ai_model: config.ai_model ?? "gemini-3.5-flash"
+      ai_model: config.ai_model ?? "gemini-3.5-flash",
+      food_search_mode: config.food_search_mode ?? "web"
     };
     await firestore.collection("configs").doc("store").set(firestoreConfig, { merge: true });
     

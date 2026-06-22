@@ -15,6 +15,7 @@ export interface StoreConfig {
   ai_provider?: string;
   ai_api_key?: string;
   ai_model?: string;
+  food_search_mode?: 'apis' | 'web';
 }
 
 export const DEFAULT_STORE_CONFIG: StoreConfig = {
@@ -30,6 +31,7 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   ai_provider: "Google Gemini",
   ai_api_key: "",
   ai_model: "gemini-3.5-flash",
+  food_search_mode: "web",
 };
 
 const CONFIG_PATH = "configs";
@@ -92,6 +94,7 @@ export async function getStoreConfig(): Promise<StoreConfig> {
           ai_provider: data.ai_provider || DEFAULT_STORE_CONFIG.ai_provider,
           ai_api_key: data.ai_api_key || DEFAULT_STORE_CONFIG.ai_api_key,
           ai_model: data.ai_model || DEFAULT_STORE_CONFIG.ai_model,
+          food_search_mode: data.food_search_mode || DEFAULT_STORE_CONFIG.food_search_mode || "web",
         };
         try {
           localStorage.setItem("sportnutri_store_config", JSON.stringify(cfg));
@@ -99,7 +102,8 @@ export async function getStoreConfig(): Promise<StoreConfig> {
 
         // Silently sync with backend to update environment memory variables for administrative logs and fallbacks
         const currentUser = auth.currentUser;
-        if (currentUser && currentUser.email === "edsonricardosouza@gmail.com") {
+        const normUserEmail = (currentUser?.email || "").toLowerCase().trim();
+        if (currentUser && normUserEmail === "edsonricardosouza@gmail.com") {
           fetch(getApiUrl("/api/admin/config"), {
             method: "POST",
             headers: {
@@ -142,6 +146,7 @@ export async function getStoreConfig(): Promise<StoreConfig> {
         ai_provider: data.ai_provider || DEFAULT_STORE_CONFIG.ai_provider,
         ai_api_key: data.ai_api_key || DEFAULT_STORE_CONFIG.ai_api_key,
         ai_model: data.ai_model || DEFAULT_STORE_CONFIG.ai_model,
+        food_search_mode: data.food_search_mode || DEFAULT_STORE_CONFIG.food_search_mode || "web",
       };
       try {
         localStorage.setItem("sportnutri_store_config", JSON.stringify(cfg));
