@@ -135,11 +135,16 @@ export default function AdminTab({
     setLoadingDiagnosticsLogs(true);
     setDiagnosticsLogsError(null);
     try {
-      const response = await fetch(`/api/admin/logs?adminUserId=${encodeURIComponent(user.uid)}&adminEmail=${encodeURIComponent(user.email || '')}`);
+      const queryParams = `adminUserId=${encodeURIComponent(user.uid)}&adminEmail=${encodeURIComponent(user.email || '')}&userId=${encodeURIComponent(user.uid)}&email=${encodeURIComponent(user.email || '')}`;
+      const response = await fetch(`/api/admin/logs?${queryParams}`);
       if (response.ok) {
         const data = await response.json();
-        setDiagnosticsLogsList(data.inMemoryLogs || []);
-        setDiagnosticsFileLogsList(data.fileLogs || []);
+        if (data.success === false) {
+          setDiagnosticsLogsError(data.error || "Erro ao carregar logs.");
+        } else {
+          setDiagnosticsLogsList(data.inMemoryLogs || []);
+          setDiagnosticsFileLogsList(data.fileLogs || []);
+        }
       } else {
         const errData = await response.json().catch(() => ({ error: "Erro desconhecido" }));
         setDiagnosticsLogsError(errData.error || "Erro ao carregar logs.");
@@ -159,13 +164,20 @@ export default function AdminTab({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           adminUserId: user.uid,
-          adminEmail: user.email || ''
+          adminEmail: user.email || '',
+          userId: user.uid,
+          email: user.email || ''
         })
       });
       if (response.ok) {
-        setDiagnosticsLogsList([]);
-        setDiagnosticsFileLogsList([]);
-        alert("Logs limpos com sucesso!");
+        const data = await response.json().catch(() => ({}));
+        if (data.success === false) {
+          alert("Erro: " + (data.error || "Erro ao limpar logs."));
+        } else {
+          setDiagnosticsLogsList([]);
+          setDiagnosticsFileLogsList([]);
+          alert("Logs limpos com sucesso!");
+        }
       } else {
         alert("Erro ao limpar logs.");
       }

@@ -4532,46 +4532,60 @@ app.post("/api/admin/users/update", async (req, res) => {
 
 // ADDED SYSTEM LOGS DIAGNOSTIC ENDPOINTS
 app.get("/api/admin/logs", async (req, res) => {
-  const { adminUserId, adminEmail } = req.query;
-  const isAdmin = await checkIsAdmin(adminUserId as string, adminEmail as string);
-  if (!isAdmin) {
-    return res.status(403).json({ error: "Acesso negado. Apenas administradores." });
-  }
-
-  let fileLogs: string[] = [];
   try {
-    if (fs.existsSync("/tmp/sportnutri_system.log")) {
-      const content = fs.readFileSync("/tmp/sportnutri_system.log", "utf8");
-      fileLogs = content.split("\n").filter(Boolean).slice(-300);
-    }
-  } catch (err) {
-    // bypass
-  }
+    const adminUserId = (req.query.adminUserId || req.query.userId) as string;
+    const adminEmail = (req.query.adminEmail || req.query.email) as string;
 
-  return res.json({ 
-    success: true, 
-    inMemoryLogs: serverLogs,
-    fileLogs: fileLogs
-  });
+    const isAdmin = await checkIsAdmin(adminUserId, adminEmail);
+    if (!isAdmin) {
+      // Return 200 OK with success: false to bypass proxy/CDN HTML error page overrides on 403 Forbidden
+      return res.status(200).json({ success: false, error: "Acesso negado. Apenas administradores." });
+    }
+
+    let fileLogs: string[] = [];
+    try {
+      if (fs.existsSync("/tmp/sportnutri_system.log")) {
+        const content = fs.readFileSync("/tmp/sportnutri_system.log", "utf8");
+        fileLogs = content.split("\n").filter(Boolean).slice(-300);
+      }
+    } catch (err) {
+      // bypass
+    }
+
+    return res.json({ 
+      success: true, 
+      inMemoryLogs: serverLogs,
+      fileLogs: fileLogs
+    });
+  } catch (err: any) {
+    return res.status(200).json({ success: false, error: "Erro interno no servidor de logs: " + err.message });
+  }
 });
 
 app.post("/api/admin/logs/clear", async (req, res) => {
-  const { adminUserId, adminEmail } = req.body;
-  const isAdmin = await checkIsAdmin(adminUserId, adminEmail);
-  if (!isAdmin) {
-    return res.status(403).json({ error: "Acesso negado. Apenas administradores." });
-  }
-
-  serverLogs.length = 0;
   try {
-    if (fs.existsSync("/tmp/sportnutri_system.log")) {
-      fs.writeFileSync("/tmp/sportnutri_system.log", "", "utf8");
-    }
-  } catch (err) {
-    // bypass
-  }
+    const adminUserId = (req.body.adminUserId || req.body.userId) as string;
+    const adminEmail = (req.body.adminEmail || req.body.email) as string;
 
-  return res.json({ success: true, message: "Logs apagados com sucesso de todo o site!" });
+    const isAdmin = await checkIsAdmin(adminUserId, adminEmail);
+    if (!isAdmin) {
+      // Return 200 OK with success: false to bypass proxy/CDN HTML error page overrides on 403 Forbidden
+      return res.status(200).json({ success: false, error: "Acesso negado. Apenas administradores." });
+    }
+
+    serverLogs.length = 0;
+    try {
+      if (fs.existsSync("/tmp/sportnutri_system.log")) {
+        fs.writeFileSync("/tmp/sportnutri_system.log", "", "utf8");
+      }
+    } catch (err) {
+      // bypass
+    }
+
+    return res.json({ success: true, message: "Logs apagados com sucesso de todo o site!" });
+  } catch (err: any) {
+    return res.status(200).json({ success: false, error: "Erro interno ao apagar logs: " + err.message });
+  }
 });
 
 // 4. GET /api/admin/foods
