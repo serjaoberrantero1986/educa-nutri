@@ -4492,9 +4492,51 @@ app.get("/api/admin/users", async (req, res) => {
     console.log("Using default sandbox user accounts.");
     return res.json({
       users: [
-        { id: "demo-admin-uid", username: "Edson Souza (Admin)", email: "edsonricardosouza@gmail.com", whatsapp: "5511999999999", xp: 1500, streak: 12, role: "admin", league: "Elite", created_at: new Date().toISOString() },
-        { id: "demo-user-1", username: "Daniel Ramos", email: "daniel@sportnutri.com", whatsapp: "5511988888888", xp: 320, streak: 5, role: "user", league: "Prata", created_at: new Date().toISOString() },
-        { id: "demo-user-2", username: "Clara Mendes", email: "clara@sportnutri.com", whatsapp: "5511977777777", xp: 640, streak: 8, role: "user", league: "Ouro", created_at: new Date().toISOString() }
+        { 
+          id: "demo-admin-uid", 
+          username: "Edson Souza (Admin)", 
+          email: "edsonricardosouza@gmail.com", 
+          whatsapp: "5511999999999", 
+          xp: 1500, 
+          streak: 12, 
+          role: "admin", 
+          premium_access_until: null,
+          whatsapp_access_until: null,
+          avatar_url: "",
+          league: "Elite", 
+          last_activity_date: new Date().toISOString(),
+          created_at: new Date().toISOString() 
+        },
+        { 
+          id: "demo-user-1", 
+          username: "Daniel Ramos", 
+          email: "daniel@sportnutri.com", 
+          whatsapp: "5511988888888", 
+          xp: 320, 
+          streak: 5, 
+          role: "user", 
+          premium_access_until: null,
+          whatsapp_access_until: null,
+          avatar_url: "",
+          league: "Prata", 
+          last_activity_date: new Date().toISOString(),
+          created_at: new Date().toISOString() 
+        },
+        { 
+          id: "demo-user-2", 
+          username: "Clara Mendes", 
+          email: "clara@sportnutri.com", 
+          whatsapp: "5511977777777", 
+          xp: 640, 
+          streak: 8, 
+          role: "user", 
+          premium_access_until: null,
+          whatsapp_access_until: null,
+          avatar_url: "",
+          league: "Ouro", 
+          last_activity_date: new Date().toISOString(),
+          created_at: new Date().toISOString() 
+        }
       ]
     });
   }
