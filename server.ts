@@ -66,17 +66,7 @@ import { paymentService } from "./src/services/payment/PaymentService";
 import { GoogleGenAI, Type } from "@google/genai";
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
-
-// Load Firebase Config safely via FS to avoid relative CJS/ESM issues
-let firebaseConfig: any = {};
-try {
-  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-  if (fs.existsSync(configPath)) {
-    firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  }
-} catch (e) {
-  console.log("firebase-applet-config.json read bypassed, using environment variables");
-}
+import firebaseConfig from "./firebase-applet-config.json";
 
 const firebaseProjectId = process.env.VITE_FIREBASE_PROJECT_ID || firebaseConfig.projectId;
 const firebaseDatabaseId = process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || firebaseConfig.firestoreDatabaseId;

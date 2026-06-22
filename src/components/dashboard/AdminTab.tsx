@@ -146,11 +146,25 @@ export default function AdminTab({
           setDiagnosticsFileLogsList(data.fileLogs || []);
         }
       } else {
-        const errData = await response.json().catch(() => ({ error: "Erro desconhecido" }));
-        setDiagnosticsLogsError(errData.error || "Erro ao carregar logs.");
+        const textContent = await response.text().catch(() => "");
+        let errorMsg = `Erro HTTP ${response.status} (${response.statusText || "status nulo"})`;
+        try {
+          const parsed = JSON.parse(textContent);
+          if (parsed.error) {
+            errorMsg = parsed.error;
+          } else if (parsed.message) {
+            errorMsg = parsed.message;
+          }
+        } catch (e) {
+          if (textContent) {
+            const snippet = textContent.trim();
+            errorMsg += ": " + (snippet.length > 150 ? snippet.slice(0, 150) + "..." : snippet);
+          }
+        }
+        setDiagnosticsLogsError(errorMsg);
       }
     } catch (err: any) {
-      setDiagnosticsLogsError("Erro na requisição dos logs: " + (err.message || err));
+      setDiagnosticsLogsError("Erro na requisição / de rede: " + (err.message || String(err)));
     } finally {
       setLoadingDiagnosticsLogs(false);
     }
