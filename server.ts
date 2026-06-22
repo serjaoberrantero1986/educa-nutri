@@ -4410,6 +4410,14 @@ app.get("/api/admin/stats", async (req, res) => {
         { name: "Foto Escâner", requisicoes: Math.round(totalFoodsLogged * 0.4) + 12 },
         { name: "Áudio Lançador", requisicoes: Math.round(totalFoodsLogged * 0.6) + 18 },
         { name: "WhatsApp Bot", requisicoes: Math.round(totalFoodsLogged * 0.3) + 7 }
+      ],
+      apiMonthlyCosts: [
+        { month: "Jan", custo: Math.round(apiTokensUsed * 0.001) + 12 },
+        { month: "Fev", custo: Math.round(apiTokensUsed * 0.0012) + 15 },
+        { month: "Mar", custo: Math.round(apiTokensUsed * 0.0015) + 18 },
+        { month: "Abr", custo: Math.round(apiTokensUsed * 0.0011) + 21 },
+        { month: "Mai", custo: Math.round(apiTokensUsed * 0.0014) + 24 },
+        { month: "Jun", custo: Math.round(apiTokensUsed * 0.0018) + 27 }
       ]
     });
   } catch (err: any) {
@@ -4436,6 +4444,14 @@ app.get("/api/admin/stats", async (req, res) => {
         { name: "Foto Escâner", requisicoes: 75 },
         { name: "Áudio Lançador", requisicoes: 95 },
         { name: "WhatsApp Bot", requisicoes: 48 }
+      ],
+      apiMonthlyCosts: [
+        { month: "Jan", custo: 32.50 },
+        { month: "Fev", custo: 45.20 },
+        { month: "Mar", custo: 38.90 },
+        { month: "Abr", custo: 51.40 },
+        { month: "Mai", custo: 62.10 },
+        { month: "Jun", custo: 48.80 }
       ]
     });
   }
@@ -4534,8 +4550,13 @@ app.get("/api/admin/logs", async (req, res) => {
 
     let fileLogs: string[] = [];
     try {
-      if (fs.existsSync("/tmp/sportnutri_system.log")) {
-        const content = fs.readFileSync("/tmp/sportnutri_system.log", "utf8");
+      const logPath = "/tmp/sportnutri_system.log";
+      if (fs.existsSync(logPath)) {
+        const stats = fs.statSync(logPath);
+        if (stats.size > 2 * 1024 * 1024) { // 2MB
+          fs.writeFileSync(logPath, "--- Log rotated due to size limit at " + new Date().toISOString() + " ---\n", "utf8");
+        }
+        const content = fs.readFileSync(logPath, "utf8");
         fileLogs = content.split("\n").filter(Boolean).slice(-300);
       }
     } catch (err) {
