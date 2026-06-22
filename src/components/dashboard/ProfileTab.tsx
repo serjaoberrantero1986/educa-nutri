@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { getApiUrl } from '../../utils';
 import { 
   Camera, 
   Eye, 
@@ -305,28 +304,34 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   const handleDeleteAccount = async () => {
     setIsDeleting(true);
     try {
-      if (auth.currentUser) {
+      if (isFirebaseConfigured && auth.currentUser) {
         const userId = auth.currentUser.uid;
 
-        // 1. Delete food logs from API
+        // 1. Delete food logs from Firestore
         try {
-          await fetch(getApiUrl(`/api/food_logs/user/${userId}`), { method: 'DELETE' });
+          const foodQuery = query(collection(db, 'food_logs'), where('user_id', '==', userId));
+          const foodSnap = await getDocs(foodQuery);
+          const foodDeletes = foodSnap.docs.map(docSnap => deleteDoc(docSnap.ref));
+          await Promise.all(foodDeletes);
         } catch (e) {
           console.error("Erro ao apagar registros de refeição:", e);
         }
 
-        // 2. Delete water logs from API
+        // 2. Delete water logs from Firestore
         try {
-          await fetch(getApiUrl(`/api/water_logs/user/${userId}`), { method: 'DELETE' });
+          const waterQuery = query(collection(db, 'water_logs'), where('user_id', '==', userId));
+          const waterSnap = await getDocs(waterQuery);
+          const waterDeletes = waterSnap.docs.map(docSnap => deleteDoc(docSnap.ref));
+          await Promise.all(waterDeletes);
         } catch (e) {
           console.error("Erro ao apagar registros de água:", e);
         }
 
-        // 3. Delete Profile from API
+        // 3. Delete Profile from Firestore
         try {
-          await fetch(getApiUrl(`/api/profiles/${userId}`), { method: 'DELETE' });
+          await deleteDoc(doc(db, 'profiles', userId));
         } catch (e) {
-          console.error("Erro ao apagar perfil na API:", e);
+          console.error("Erro ao apagar perfil:", e);
         }
 
         // 4. Delete Auth user from Firebase Authentication
@@ -587,17 +592,12 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     };
 
     try {
-      try {
-        await fetch(getApiUrl(`/api/profiles/${profile.id}`), {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            claimed_achievements: updatedClaimed,
-            xp: updatedXP
-          })
+      if (isFirebaseConfigured) {
+        const ref = doc(db, 'profiles', profile.id);
+        await updateDoc(ref, {
+          claimed_achievements: updatedClaimed,
+          xp: updatedXP
         });
-      } catch (e) {
-        console.error("Erro API badge update", e);
       }
 
       // Save locally

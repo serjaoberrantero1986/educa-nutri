@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Clock, Trophy, ShieldAlert, ArrowUpCircle, ArrowDownCircle, Sparkles, Award, Star, Lock, CheckCircle, RefreshCcw, HelpCircle, Flame, Loader2 } from 'lucide-react';
 import { Profile } from '../../types';
-import { getApiUrl } from '../../utils';
 import { db, isFirebaseConfigured } from '../../lib/firebase';
 import { doc, updateDoc, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import confetti from 'canvas-confetti';
@@ -154,18 +153,15 @@ export const RankingTab: React.FC<RankingTabProps> = ({
       league: newLeague,
     };
 
-    if (user?.uid) {
+    if (isFirebaseConfigured) {
       try {
-        await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            xp: finalCoins,
-            league: newLeague
-          })
+        const profileRef = doc(db, 'profiles', user.uid);
+        await updateDoc(profileRef, {
+          xp: finalCoins,
+          league: newLeague
         });
       } catch (err) {
-        console.error('Error saving weekly simulation state API:', err);
+        console.error('Error saving weekly simulation state:', err);
       }
     }
 
@@ -173,18 +169,19 @@ export const RankingTab: React.FC<RankingTabProps> = ({
     
     // Query actual profiles from Firestore to display in rankings
     let realProfiles: Profile[] = [];
-    if (user?.uid) {
+    if (isFirebaseConfigured) {
       try {
-        const res = await fetch(getApiUrl(`/api/profiles?league=${newLeague}`));
-        const fullRanking = await res.json();
-        const limited = fullRanking.slice(0, 10);
-        limited.forEach((d: any) => {
+        const profilesCol = collection(db, 'profiles');
+        const q = query(profilesCol, where('league', '==', newLeague), orderBy('xp', 'desc'), limit(10));
+        const querySnapshot = await getDocs(q);
+        querySnapshot.forEach((docSnap) => {
+          const d = docSnap.data() as Profile;
           if (d.id !== user.uid) {
             realProfiles.push(d);
           }
         });
       } catch (err) {
-        console.error('Error fetching real profiles API in simulation:', err);
+        console.error('Error fetching real profiles in simulation:', err);
       }
     }
 

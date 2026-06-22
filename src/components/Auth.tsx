@@ -1,9 +1,14 @@
 import React, { useState } from 'react';
+import { auth, db, isFirebaseConfigured } from '../lib/firebase';
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signInWithPopup, 
+  GoogleAuthProvider 
+} from 'firebase/auth';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { motion } from 'motion/react';
 import { Mail, Lock, User, Chrome, ArrowRight, Loader2, AlertCircle, X } from 'lucide-react';
-import { getApiUrl } from '../utils';
-import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { auth, isFirebaseConfigured } from '../lib/firebase';
 
 interface AuthProps {
   onSuccess: () => void;
@@ -42,8 +47,6 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, onClose }) => {
   });
   const [username, setUsername] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [googleLoading, setGoogleLoading] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,172 +61,101 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, onClose }) => {
       eraseCookie('remembered_password');
     }
     
+    if (!isFirebaseConfigured) {
+      // In demo mode, just succeed
+      onSuccess();
+      return;
+    }
+
     setLoading(true);
     setError(null);
-    setSuccessMessage(null);
 
     try {
       if (isSignUp) {
-        const response = await fetch(getApiUrl('/api/auth/register'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, username })
-        });
-        
-        const text = await response.text();
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch (e) {
-          throw new Error(`Erro do servidor (${response.status}): Servidor indisponível ou bloqueado por CORS.`);
-        }
-        
-        if (!response.ok) {
-          throw new Error(data.error || 'Erro ao cadastrar');
-        }
+        // Create user in Firebase Auth
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
 
-        // Auto-login after registration
-        localStorage.setItem('token', data.token);
-        
-        // Setup initial user profile preferences
-        const mockProfileData = {
-          xp: 150,
+        // Initialize user profile in Firestore
+        const profileRef = doc(db, 'profiles', user.uid);
+        await setDoc(profileRef, {
+          id: user.uid,
+          username: username || email.split('@')[0],
+          email: email,
+          xp: 150, // Initial starter XP, matching previous session's profile state
           streak: 1,
           league: 'Bronze',
           role: 'user',
-          avatar_url: `https://i.pravatar.cc/150?u=${data.user.id}`
-        };
-        
-        await fetch(getApiUrl(`/api/profiles/${data.user.id}`), {
-          method: 'PUT',
-          headers: { 
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(mockProfileData)
+          premium_access_until: null,
+          whatsapp_access_until: null,
+          avatar_url: `https://i.pravatar.cc/150?u=${user.uid}`,
+          created_at: new Date().toISOString()
         });
 
-        setSuccessMessage('Cadastro realizado com sucesso! Inicializando seu painel...');
-        setTimeout(() => {
-          window.location.reload();
-        }, 1500);
+        alert('Cadastro realizado com sucesso!');
+        onSuccess();
       } else {
-        const response = await fetch(getApiUrl('/api/auth/login'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
-        });
-        
-        const text = await response.text();
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch (e) {
-          throw new Error(`Erro do servidor (${response.status}): Servidor indisponível ou bloqueado por CORS.`);
-        }
-        
-        if (!response.ok) {
-          throw new Error(data.error || 'Erro ao fazer login');
-        }
-
-        localStorage.setItem('token', data.token);
-        setSuccessMessage('Login realizado com sucesso! Redirecionando...');
-        setTimeout(() => {
-          window.location.reload();
-        }, 1500);
+        // Sign in with Firebase Auth
+        await signInWithEmailAndPassword(auth, email, password);
+        onSuccess();
       }
     } catch (err: any) {
       console.error('Auth error:', err);
-      setError(err.message || 'Erro de autenticação');
+      let message = err.message;
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+        message = 'E-mail ou senha inválidos';
+      } else if (err.code === 'auth/email-already-in-use') {
+        message = 'Usuário já cadastrado com este e-mail';
+      } else if (err.code === 'auth/weak-password') {
+        message = 'A senha deve ter pelo menos 6 caracteres';
+      } else if (err.code === 'auth/invalid-email') {
+        message = 'Formato de e-mail inválido';
+      }
+      setError(message);
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleLogin = async () => {
-    if (googleLoading || loading) return;
-    setGoogleLoading(true);
+    if (!isFirebaseConfigured) {
+      onSuccess();
+      return;
+    }
+    setLoading(true);
     setError(null);
-    setSuccessMessage(null);
-
     try {
-      if (!isFirebaseConfigured) {
-        // Fallback or simulated mode
-        const demoEmail = "demo-google@example.com";
-        const demoUid = "demo-google-uid";
-        const demoName = "Usuário Google Demo";
-
-        const response = await fetch(getApiUrl('/api/auth/google'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: demoEmail, uid: demoUid, username: demoName })
-        });
-
-        const text = await response.text();
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch (e) {
-          throw new Error(`Erro do servidor (${response.status}): Resposta inválida. Certifique-se de configurar a variável VITE_API_URL no Vercel.`);
-        }
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Erro ao processar login com Google');
-        }
-
-        localStorage.setItem('token', data.token);
-        setSuccessMessage('Login simulador Google realizado com sucesso!');
-        setTimeout(() => {
-          onSuccess();
-          window.location.reload();
-        }, 1500);
-        return;
-      }
-
       const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
-      
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
+      // Use signInWithPopup as instructed by SKILL.md
+      const userCredential = await signInWithPopup(auth, provider);
+      const user = userCredential.user;
 
-      if (!user) {
-        throw new Error("Não foi possível obter dados do usuário do Google.");
+      // Check if profile exists already, if not create it
+      const profileRef = doc(db, 'profiles', user.uid);
+      const profileSnap = await getDoc(profileRef);
+
+      if (!profileSnap.exists()) {
+        await setDoc(profileRef, {
+          id: user.uid,
+          username: user.displayName || email.split('@')[0] || 'User',
+          email: user.email || '',
+          xp: 150,
+          streak: 1,
+          league: 'Bronze',
+          role: 'user',
+          premium_access_until: null,
+          whatsapp_access_until: null,
+          avatar_url: user.photoURL || `https://i.pravatar.cc/150?u=${user.uid}`,
+          created_at: new Date().toISOString()
+        });
       }
 
-      // Sincroniza usuário com o backend SQLite
-      const response = await fetch(getApiUrl('/api/auth/google'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: user.email,
-          uid: user.uid,
-          username: user.displayName || user.email?.split('@')[0] || 'Usuário Google'
-        })
-      });
-
-      const text = await response.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        throw new Error(`Erro de sincronização (${response.status}): Servidor indisponível ou bloqueado por CORS. Por favor, configure a variável VITE_API_URL no Vercel apontando para o seu backend oficial.`);
-      }
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Erro ao sincronizar login com o servidor');
-      }
-
-      localStorage.setItem('token', data.token);
-      setSuccessMessage('Login com Google realizado com sucesso! Redirecionando...');
-      setTimeout(() => {
-        onSuccess();
-        window.location.reload();
-      }, 1500);
-
+      onSuccess();
     } catch (err: any) {
-      console.error('Google Auth error:', err);
-      setError(err.message || 'Erro ao fazer login com o Google. Por favor, tente novamente.');
+      console.error('Google login error:', err);
+      setError(err.message || 'Erro ao realizar login com o Google.');
     } finally {
-      setGoogleLoading(false);
+      setLoading(false);
     }
   };
 
@@ -244,6 +176,13 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, onClose }) => {
         <p className="text-slate-500 dark:text-slate-400">
           {isSignUp ? 'Comece sua jornada fitness hoje' : 'Acesse sua conta para continuar'}
         </p>
+        
+        {!isFirebaseConfigured && (
+          <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl flex items-center gap-3 text-amber-700 dark:text-amber-400 text-xs font-medium text-left">
+            <AlertCircle size={16} className="shrink-0" />
+            <span>Modo de Demonstração: O banco de dados Firebase não está configurado. Você pode entrar com qualquer e-mail/senha.</span>
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleAuth} className="space-y-4">
@@ -308,19 +247,15 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, onClose }) => {
         </div>
 
         {error && (
-          <p className="text-red-500 text-sm text-center font-medium bg-red-50 dark:bg-red-950/20 p-3 rounded-xl border border-red-100 dark:border-red-900/30">{error}</p>
-        )}
-
-        {successMessage && (
-          <p className="text-green-500 text-sm text-center font-medium bg-green-50 dark:bg-green-950/20 p-3 rounded-xl border border-green-100 dark:border-green-900/30">{successMessage}</p>
+          <p className="text-red-500 text-sm text-center font-medium">{error}</p>
         )}
 
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           type="submit"
-          disabled={loading || googleLoading}
-          className="w-full py-4 bg-purple-cyan text-white font-bold rounded-2xl shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+          disabled={loading}
+          className="w-full py-4 bg-purple-cyan text-white font-bold rounded-2xl shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
         >
           {loading ? (
             <Loader2 className="animate-spin" size={20} />
@@ -344,17 +279,10 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, onClose }) => {
       <motion.button
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
-        disabled={loading || googleLoading}
         onClick={handleGoogleLogin}
-        className="w-full py-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-slate-700 dark:text-white font-bold rounded-2xl flex items-center justify-center gap-3 shadow-sm disabled:opacity-50 cursor-pointer"
+        className="w-full py-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-slate-700 dark:text-white font-bold rounded-2xl flex items-center justify-center gap-3 shadow-sm"
       >
-        {googleLoading ? (
-          <Loader2 className="animate-spin text-purple-600" size={20} />
-        ) : (
-          <>
-            <Chrome size={20} className="text-red-500" /> Google
-          </>
-        )}
+        <Chrome size={20} className="text-red-500" /> Google
       </motion.button>
 
       <p className="mt-8 text-center text-sm text-slate-500 dark:text-slate-400">

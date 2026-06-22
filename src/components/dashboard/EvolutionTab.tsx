@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { getApiUrl } from '../../utils';
 import { 
   TrendingUp, 
   Trash2, 
@@ -441,12 +440,9 @@ export const EvolutionTab: React.FC<EvolutionTabProps> = ({
     const sanitizedProfile = cleanUndefined(updatedProfile);
 
     try {
-      if (user) {
-        await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(sanitizedProfile)
-        });
+      if (user && isFirebaseConfigured) {
+        const ref = doc(db, 'profiles', user.uid);
+        await updateDoc(ref, sanitizedProfile);
       }
 
       setProfile(prev => prev ? { ...prev, ...sanitizedProfile } : null);
@@ -478,12 +474,9 @@ export const EvolutionTab: React.FC<EvolutionTabProps> = ({
     };
 
     try {
-      if (user) {
-        await fetch(getApiUrl(`/api/profiles/${user.uid}`), {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updatedProfile)
-        });
+      if (user && isFirebaseConfigured) {
+        const ref = doc(db, 'profiles', user.uid);
+        await updateDoc(ref, updatedProfile);
       }
       setProfile(prev => prev ? { ...prev, ...updatedProfile } : null);
     } catch (err) {

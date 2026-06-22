@@ -1,22 +1,9 @@
 import { UserData, DietPlan, Food, Meal } from "./types";
 
 export const getApiUrl = (path: string): string => {
-  if (typeof window === "undefined") {
-    return path;
-  }
-
-  const hostname = window.location.hostname;
-  const isCapacitor = (window as any).Capacitor !== undefined || window.location.protocol === "capacitor:";
+  const isCapacitor = typeof window !== "undefined" && ((window as any).Capacitor !== undefined || window.location.protocol === "capacitor:");
   
-  // Se estivermos em um ambiente web externo (como Vercel ou domínio próprio),
-  // o servidor Express personalizado não está rodando no mesmo host de forma relativa.
-  // Devemos apontar para a URL absoluta do backend na Cloud Run.
-  const isExternalWeb = hostname && 
-    !hostname.includes("localhost") && 
-    !hostname.includes("127.0.0.1") && 
-    !hostname.includes("run.app");
-  
-  if (isCapacitor || isExternalWeb) {
+  if (isCapacitor) {
     // For mobile or external hosts (like Vercel), target the absolute live full-stack backend address.
     const customApiUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_APP_URL;
     if (customApiUrl) {
