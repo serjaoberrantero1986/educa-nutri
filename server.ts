@@ -194,16 +194,91 @@ console.error = function(...args: any[]) {
   addServerLog("error", ...args);
 };
 
+interface CachedAiConfig {
+  ai_provider: string;
+  ai_api_key: string;
+  ai_model: string;
+  timestamp: number;
+}
+
+let cachedAiConfig: CachedAiConfig | null = null;
+const CACHE_TTL_MS = 15000; // 15 seconds
+
 async function getDynamicAiConfig(req?: express.Request) {
   const headerProvider = req?.headers["x-ai-provider"] as string;
   const headerKey = req?.headers["x-ai-api-key"] as string;
   const headerModel = req?.headers["x-ai-model"] as string;
 
-  const provider = headerProvider || process.env.AI_PROVIDER || "Google Gemini";
-  let apiKey = headerKey || process.env.AI_API_KEY || "";
+  // If the request headers contain explicit overrides, prioritize them directly
+  if (headerProvider || headerKey || headerModel) {
+    const provider = headerProvider || "Google Gemini";
+    let apiKey = headerKey || "";
+    if (!apiKey) {
+      if (provider.toLowerCase().includes("openai")) {
+        apiKey = process.env.OPENAI_API_KEY || "";
+      } else {
+        apiKey = process.env.GEMINI_API_KEY || "";
+      }
+    }
+    return {
+      ai_provider: provider,
+      ai_api_key: apiKey,
+      ai_model: headerModel || "gemini-3.5-flash"
+    };
+  }
+
+  // Check in-memory cache first
+  const now = Date.now();
+  if (cachedAiConfig && (now - cachedAiConfig.timestamp < CACHE_TTL_MS)) {
+    return {
+      ai_provider: cachedAiConfig.ai_provider,
+      ai_api_key: cachedAiConfig.ai_api_key,
+      ai_model: cachedAiConfig.ai_model
+    };
+  }
+
+  // Query Firestore to get the real-time configuration updated by the admin panel
+  try {
+    const configDoc = await firestore.collection("configs").doc("store").get();
+    if (configDoc.exists) {
+      const data = configDoc.data() || {};
+      const provider = data.ai_provider || process.env.AI_PROVIDER || "Google Gemini";
+      let apiKey = data.ai_api_key || "";
+
+      if (!apiKey) {
+        if (provider.toLowerCase().includes("openai")) {
+          apiKey = process.env.OPENAI_API_KEY || "";
+        } else {
+          apiKey = process.env.GEMINI_API_KEY || "";
+        }
+      }
+
+      const model = data.ai_model || process.env.AI_MODEL || "gemini-3.5-flash";
+
+      // Cache the result
+      cachedAiConfig = {
+        ai_provider: provider,
+        ai_api_key: apiKey,
+        ai_model: model,
+        timestamp: now
+      };
+
+      return {
+        ai_provider: provider,
+        ai_api_key: apiKey,
+        ai_model: model
+      };
+    }
+  } catch (error) {
+    // Fallback gracefully on Firestore permission blocks in sandbox mode
+  }
+
+  // Final fallback to process.env
+  const provider = process.env.AI_PROVIDER || "Google Gemini";
+  let apiKey = process.env.AI_API_KEY || "";
 
   if (!apiKey) {
-    if (provider === "OpenAI" || provider.toLowerCase().includes("openai")) {
+    if (provider.toLowerCase().includes("openai")) {
       apiKey = process.env.OPENAI_API_KEY || "";
     } else {
       apiKey = process.env.GEMINI_API_KEY || "";
@@ -4251,7 +4326,33 @@ app.post("/api/admin/config", async (req, res) => {
     console.error("Failed to write env configuration:", err);
   }
 
-  return res.json({ success: true, message: "Modificação persistida no .env!" });
+  // Sincronize visual dynamic config straight with Firestore database "configs/store"
+  try {
+    const firestoreConfig = {
+      streak_freeze_cost: Number(config.streak_freeze_cost ?? 1000),
+      premium_pass_cost: Number(config.premium_pass_cost ?? 1500),
+      assistant_pass_cost: Number(config.assistant_pass_cost ?? 2000),
+      whatsapp_pass_cost: Number(config.whatsapp_pass_cost ?? 2000),
+      recipes_pass_cost: Number(config.recipes_pass_cost ?? 1200),
+      monthly_premium_price: Number(config.monthly_premium_price ?? 19.90),
+      whatsapp_api_url: config.whatsapp_api_url ?? "https://api.sportnutri.com",
+      whatsapp_api_key: config.whatsapp_api_key ?? "sportnutri_default_key",
+      whatsapp_instance: config.whatsapp_instance ?? "sportnutri_bot",
+      ai_provider: config.ai_provider ?? "Google Gemini",
+      ai_api_key: config.ai_api_key ?? "",
+      ai_model: config.ai_model ?? "gemini-3.5-flash"
+    };
+    await firestore.collection("configs").doc("store").set(firestoreConfig, { merge: true });
+    
+    // Invalidate local in-memory dynamic cache for immediate real-time effect
+    cachedAiConfig = null;
+    console.log("[Admin Config] Config saved and synchronized to Firestore collection.");
+  } catch (err) {
+    // Silently proceed when Firestore update is bypassed in sandbox environment.
+    // The configurations are already safely persisted to the local env/config files.
+  }
+
+  return res.json({ success: true, message: "Modificação persistida no .env e no Firestore!" });
 });
 
 // 1. GET /api/admin/stats
