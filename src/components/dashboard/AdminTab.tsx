@@ -129,6 +129,8 @@ export default function AdminTab({
   const [diagnosticsFileLogsList, setDiagnosticsFileLogsList] = useState<string[]>([]);
   const [loadingDiagnosticsLogs, setLoadingDiagnosticsLogs] = useState(false);
   const [diagnosticsLogsError, setDiagnosticsLogsError] = useState<string | null>(null);
+  const [diagnosticsLogsSuccessMessage, setDiagnosticsLogsSuccessMessage] = useState<string | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [diagnosticsLogsFilter, setDiagnosticsLogsFilter] = useState<'all' | 'info' | 'warn' | 'error'>('all');
   const [diagnosticsLogsSearchText, setDiagnosticsLogsSearchText] = useState('');
 
@@ -172,7 +174,9 @@ export default function AdminTab({
   };
 
   const handleClearLogs = async () => {
-    if (!window.confirm("Deseja realmente limpar todos os logs do site em tempo real? Esta operação limpará os buffers em memória e em arquivo temporário.")) return;
+    setShowClearConfirm(false);
+    setDiagnosticsLogsError(null);
+    setDiagnosticsLogsSuccessMessage(null);
     try {
       const response = await fetch(getApiUrl('/api/admin/logs/clear'), {
         method: 'POST',
@@ -187,17 +191,20 @@ export default function AdminTab({
       if (response.ok) {
         const data = await response.json().catch(() => ({}));
         if (data.success === false) {
-          alert("Erro: " + (data.error || "Erro ao limpar logs."));
+          setDiagnosticsLogsError("Erro: " + (data.error || "Erro ao limpar logs."));
         } else {
           setDiagnosticsLogsList([]);
           setDiagnosticsFileLogsList([]);
-          alert("Logs limpos com sucesso!");
+          setDiagnosticsLogsSuccessMessage("Logs limpos com sucesso!");
+          setTimeout(() => {
+            setDiagnosticsLogsSuccessMessage(null);
+          }, 4000);
         }
       } else {
-        alert("Erro ao limpar logs.");
+        setDiagnosticsLogsError("Erro ao limpar logs.");
       }
     } catch (err: any) {
-      alert("Erro ao limpar logs: " + err.message);
+      setDiagnosticsLogsError("Erro ao limpar logs: " + err.message);
     }
   };
 
@@ -2025,13 +2032,31 @@ export default function AdminTab({
                 Atualizar Logs
               </button>
 
-              <button
-                onClick={handleClearLogs}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950 text-red-600 dark:text-red-400 font-extrabold text-xs cursor-pointer border-0 transition-all shrink-0"
-              >
-                <Trash2 size={12} />
-                Limpar Logs
-              </button>
+              {showClearConfirm ? (
+                <div className="flex items-center gap-1.5 bg-red-100/60 dark:bg-red-950/40 p-1 rounded-2xl border border-red-200 dark:border-red-900/50 animate-in fade-in-50 duration-200 shrink-0">
+                  <span className="text-[10px] text-red-700 dark:text-red-400 font-extrabold px-1.5 uppercase tracking-wide">Limpar tudo?</span>
+                  <button
+                    onClick={handleClearLogs}
+                    className="px-2.5 py-1 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-[10px] cursor-pointer border-0 transition-all uppercase"
+                  >
+                    Sim
+                  </button>
+                  <button
+                    onClick={() => setShowClearConfirm(false)}
+                    className="px-2.5 py-1 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 font-extrabold text-[10px] cursor-pointer border-0 transition-all uppercase"
+                  >
+                    Não
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowClearConfirm(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950 text-red-600 dark:text-red-400 font-extrabold text-xs cursor-pointer border-0 transition-all shrink-0"
+                >
+                  <Trash2 size={12} />
+                  Limpar Logs
+                </button>
+              )}
             </div>
           </div>
 
@@ -2079,6 +2104,12 @@ export default function AdminTab({
           {diagnosticsLogsError && (
             <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-2xl text-xs text-red-600 dark:text-red-400 font-medium font-bold">
               {diagnosticsLogsError}
+            </div>
+          )}
+
+          {diagnosticsLogsSuccessMessage && (
+            <div className="p-4 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 rounded-2xl text-xs text-emerald-600 dark:text-emerald-400 font-medium font-bold">
+              {diagnosticsLogsSuccessMessage}
             </div>
           )}
 
