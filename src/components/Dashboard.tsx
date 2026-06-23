@@ -882,7 +882,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const getWeekDayDate = (dayNum: number) => {
     const today = new Date();
     const currentDayOfWeek = today.getDay(); // 0 is Sunday
-    const diff = dayNum - currentDayOfWeek;
+    // Map standard weekday numbers (0-6) to Saturday-first relative indices (0-6)
+    const getSatFirstIndex = (d: number) => (d === 6 ? 0 : d + 1);
+    const todaySatFirstIndex = getSatFirstIndex(currentDayOfWeek);
+    const targetSatFirstIndex = getSatFirstIndex(dayNum);
+    const diff = targetSatFirstIndex - todaySatFirstIndex;
     const d = new Date(today);
     d.setDate(today.getDate() + diff);
     return d;

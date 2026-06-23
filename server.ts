@@ -2750,11 +2750,14 @@ DIRETRIZ DE HUMOR E DUPLO SENTIDO (FIT-PIADAS):
 
 Você deve responder rigorosamente no formato JSON com as seguintes propriedades:
 1. "response" (string): Uma mensagem calorosa, super engraçada (com trocadilhos/duplo sentido saudáveis sobre fitness) em Português do Brasil de acordo com as instruções acima. IMPORTANTE: ZERO ASTERISCOS, ZERO DE VERBO NO PASSADO SOBRE LANÇAR alimentos.
-2. "added_foods" (array_de_objetos): Alimentos a serem exibidos para confirmação.
-3. "added_waters" (array_de_objetos): Porções de água.
+2. "added_foods" (array_de_objetos): Alimentos e bebidas nutritivas / com calorias a serem exibidos para confirmação.
+3. "added_waters" (array_de_objetos): Porções de água pura. ATENÇÃO: NUNCA coloque leite (leite de vaca, de amêndoas, etc.), café, sucos, refrigerantes ou shakes de proteína neste array! Qualquer outra bebida que não seja água pura possui macronutrientes/calorias e DEVE ser colocada exclusivamente no array "added_foods".
 4. "deleted_foods" (array_de_objetos): Pedidos de exclusão.
 
 Instruções para cálculo de macros/alimentos adicionados:
+- DISTINÇÃO ENTRE ÁGUA E BEBIDAS NUTRITIVAS:
+  - ÁGUA PURA: Deve ir no array "added_waters".
+  - LEITE, SUCOS, CAFÉ, REFRIGERANTES, SHAKES, WHEY: Possuem calorias e macros, portanto DEVEM ir obrigatoriamente no array "added_foods" como alimentos, utilizando a unidade "mililitros", "copo" ou "xícara". Nunca os classifique como água pura.
 - REQUISITO CRÍTICO DE ESTIMATIVA INTELIGENTE E AUTOMÁTICA (NÃO FAÇA PERGUNTAS DESNECESSÁRIAS):
   Você NUNCA deve fazer perguntas repetitivas ou burocráticas sobre peso em gramas das fatias, mililitros de copos/xícaras ou detalhes exaustivos de modo de preparação (como ovo frito vs cozido vs mexido; pão branco vs integral, etc.). Para isso que o sistema possui inteligência integrada: adote sempre porções padrão saudáveis brasileiras, tome a decisão e monte as estimativas imediatamente! Se o preparo não for dito, assuma a versão mais comum/saudável correspondente (ex: cozido ou grelhado).
   - Exemplos de padrões brasileiros:
@@ -2807,7 +2810,7 @@ Retorne SOMENTE o JSON estruturado completo em Português do Brasil. Sem usar as
             },
             added_foods: {
               type: Type.ARRAY,
-              description: "Lista de alimentos a serem adicionados ao diário do usuário. IMPORTANTE: Crie registros separados para cada alimento individual, nunca junte vários em uma só ação.",
+              description: "Lista de alimentos ou de bebidas nutricionais (como leite, refrigerante, suco, shake, whey, iogurte, cerveja) a serem adicionados ao diário do usuário. IMPORTANTE: Crie registros separados para cada alimento, nunca junte vários em uma só ação.",
               items: {
                 type: Type.OBJECT,
                 properties: {
@@ -2817,7 +2820,7 @@ Retorne SOMENTE o JSON estruturado completo em Português do Brasil. Sem usar as
                   },
                   food_name: {
                     type: Type.STRING,
-                    description: "Nome claro legível do alimento em português (ex: Ovo Cozido, Pão Francês, Arroz Branco, Presunto)"
+                    description: "Nome claro legível do alimento em português (ex: Ovo Cozido, Pão Francês, Arroz Branco, Presunto, Leite de Vaca, Suco de Laranja)"
                   },
                   amount: {
                     type: Type.NUMBER,
@@ -2825,27 +2828,27 @@ Retorne SOMENTE o JSON estruturado completo em Português do Brasil. Sem usar as
                   },
                   unit: {
                     type: Type.STRING,
-                    description: "Unidade de medida em português (ex: 'unidade', 'fatia', 'colher de sopa', 'gramas', 'copo', 'xícara', etc)"
+                    description: "Unidade de medida em português (ex: 'unidade', 'fatia', 'colher de sopa', 'gramas', 'copo', 'xícara', 'mililitros', etc)"
                   },
                   grams_per_unit: {
                     type: Type.NUMBER,
-                    description: "Peso estimado da porção/unidade em gramas (ex: 50 para ovo cozido, 15 para fatia de queijo/presunto, 50 para pão francês, 1 para gramas)."
+                    description: "Peso estimado da porção/unidade em gramas (ex: 50 para ovo cozido, 15 para fatia, 50 para pão francês, 1 para mililitros)."
                   },
                   calories_per_100: {
                     type: Type.NUMBER,
-                    description: "Densidade de calorias a cada 100g do alimento."
+                    description: "Densidade de calorias a cada 100g ou 100ml do alimento/bebida."
                   },
                   protein_per_100: {
                     type: Type.NUMBER,
-                    description: "Gramas de proteína a cada 100g."
+                    description: "Gramas de proteína a cada 100g ou 100ml."
                   },
                   carbs_per_100: {
                     type: Type.NUMBER,
-                    description: "Gramas de carboidrato a cada 100g."
+                    description: "Gramas de carboidrato a cada 100g ou 100ml."
                   },
                   fat_per_100: {
                     type: Type.NUMBER,
-                    description: "Gramas de gordura a cada 100g."
+                    description: "Gramas de gordura a cada 100g ou 100ml."
                   },
                   confidence_explanation: {
                     type: Type.STRING,
@@ -2861,13 +2864,13 @@ Retorne SOMENTE o JSON estruturado completo em Português do Brasil. Sem usar as
             },
             added_waters: {
               type: Type.ARRAY,
-              description: "Lista de porções de água para registrar em ml.",
+              description: "Lista de porções de água pura em ml. ATENÇÃO: Apenas água mineral pura deve ser registrada aqui! Leite, sucos, shakes e qualquer bebida nutritiva devem ir obrigatoriamente em added_foods como alimento.",
               items: {
                 type: Type.OBJECT,
                 properties: {
                   amount_ml: {
                     type: Type.NUMBER,
-                    description: "Quantidade de água adicionada em mililitros (ml) (ex: 350, 500)."
+                    description: "Quantidade de água pura adicionada em mililitros (ml) (ex: 350, 500)."
                   }
                 },
                 required: ["amount_ml"]
