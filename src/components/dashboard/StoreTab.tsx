@@ -19,7 +19,9 @@ import {
   Loader2,
   Bot,
   MessageSquare,
-  ChefHat
+  ChefHat,
+  Dumbbell,
+  Crown
 } from 'lucide-react';
 import { Profile } from '../../types';
 import { db, isFirebaseConfigured } from '../../lib/firebase';
@@ -105,6 +107,19 @@ export const StoreTab: React.FC<StoreTabProps> = ({
     if (isPremiumActive || profile?.whatsapp_access_until === 'unlimited') return 'Acesso Ilimitado';
     if (!profile?.whatsapp_access_until) return '';
     const diff = new Date(profile.whatsapp_access_until).getTime() - Date.now();
+    if (diff <= 0) return '';
+    const hours = Math.ceil(diff / (1000 * 60 * 60));
+    return `${hours}h restantes`;
+  };
+
+  const isSharedWorkoutsActive = isPremiumActive || 
+    (profile?.shared_workouts_pass_until === 'unlimited') || 
+    (typeof profile?.shared_workouts_pass_until === 'string' && new Date(profile.shared_workouts_pass_until).getTime() > Date.now());
+
+  const getSharedWorkoutsTimeLeft = () => {
+    if (isPremiumActive || profile?.shared_workouts_pass_until === 'unlimited') return 'Acesso Ilimitado';
+    if (!profile?.shared_workouts_pass_until) return '';
+    const diff = new Date(profile.shared_workouts_pass_until).getTime() - Date.now();
     if (diff <= 0) return '';
     const hours = Math.ceil(diff / (1000 * 60 * 60));
     return `${hours}h restantes`;
@@ -291,6 +306,44 @@ export const StoreTab: React.FC<StoreTabProps> = ({
     }
   };
 
+  const handleBuySharedWorkoutsPass = async () => {
+    if (!profile) return;
+    const cost = config.shared_workouts_pass_cost || 800;
+    if ((profile.xp || 0) < cost) {
+      alert('Seu saldo de NutriCoins é insuficiente!');
+      return;
+    }
+    if (isSharedWorkoutsActive) {
+      alert('Você já possui acesso ativo à biblioteca de treinos compartilhados!');
+      return;
+    }
+
+    setLoadingItem('shared_workouts_pass');
+    try {
+      const finalCoins = (profile.xp || 0) - cost;
+      const twentyFourHoursFromNow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const updatedProfile = {
+        ...profile,
+        xp: finalCoins,
+        shared_workouts_pass_until: twentyFourHoursFromNow
+      };
+
+      if (isFirebaseConfigured) {
+        const profileRef = doc(db, 'profiles', user.uid);
+        await updateDoc(profileRef, {
+          xp: finalCoins,
+          shared_workouts_pass_until: twentyFourHoursFromNow
+        });
+      }
+      setProfile(updatedProfile);
+      alert('Passe 24h Treinos Compartilhados ativado com sucesso! 🏋️‍♂️💪 Agora você pode navegar e importar treinos criados por profissionais e professores por 24 horas!');
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingItem(null);
+    }
+  };
+
   const handleCloseModal = () => {
     setPaymentModal(null);
     setPaymentError(null);
@@ -302,7 +355,7 @@ export const StoreTab: React.FC<StoreTabProps> = ({
     }
   };
 
-  const handleInitiatePayment = async (method: 'pix' | 'card') => {
+  const handleInitiatePayment = async (method: 'pix' | 'card', planType: 'premium' | 'professional' = 'premium') => {
     if (!profile || !user) return;
     
     setPaymentError(null);
@@ -322,9 +375,12 @@ export const StoreTab: React.FC<StoreTabProps> = ({
       const firstName = nameParts[0] || 'Nome';
       const lastName = nameParts.slice(1).join(' ') || 'Sobrenome';
 
+      const price = planType === 'professional' ? (config.monthly_professional_price || 39.90) : config.monthly_premium_price;
+      const desc = planType === 'professional' ? 'Acesso Mensal Profissional - SportNutri' : 'Acesso Mensal Premium - SportNutri';
+
       const payload = {
-        amount: config.monthly_premium_price,
-        description: 'Acesso Mensal Premium - SportNutri',
+        amount: price,
+        description: desc,
         email: user.email || 'usuario@sportnutri.com',
         firstName,
         lastName,
@@ -340,8 +396,8 @@ export const StoreTab: React.FC<StoreTabProps> = ({
       if (isAndroidApp) {
         console.log('[StoreTab] Executing local Google Play billing flow...');
         result = await paymentService.createPayment({
-          amount: config.monthly_premium_price,
-          description: 'Acesso Mensal Premium - SportNutri',
+          amount: price,
+          description: desc,
           email: user.email || 'usuario@sportnutri.com',
           firstName,
           lastName,
@@ -361,7 +417,11 @@ export const StoreTab: React.FC<StoreTabProps> = ({
 
       if (isAndroidApp) {
         if (result.status === 'approved' || result.statusDetail === 'sandbox_approved') {
-          await handleCompletePremiumPurchase();
+          if (planType === 'professional') {
+            await handleCompleteProfessionalPurchase();
+          } else {
+            await handleCompletePremiumPurchase();
+          }
         }
       } else if (method === 'pix' && result.id) {
         const interval = setInterval(async () => {
@@ -370,7 +430,11 @@ export const StoreTab: React.FC<StoreTabProps> = ({
             if (statusCheck.status === 'approved') {
               clearInterval(interval);
               setPollingIntervalId(null);
-              await handleCompletePremiumPurchase();
+              if (planType === 'professional') {
+                await handleCompleteProfessionalPurchase();
+              } else {
+                await handleCompletePremiumPurchase();
+              }
             }
           } catch (pollingErr) {
             console.log('Error verifying background payment status:', pollingErr);
@@ -412,6 +476,37 @@ export const StoreTab: React.FC<StoreTabProps> = ({
       }, 3000);
     } catch (err) {
       console.error('Error finalising premium subscription:', err);
+    }
+  };
+
+  const handleCompleteProfessionalPurchase = async () => {
+    if (!profile) return;
+    try {
+      setPaymentSuccess(true);
+      
+      const updatedProfile = {
+        ...profile,
+        role: 'professional',
+        professional_access_until: 'unlimited',
+        paid_professional: true
+      };
+
+      if (isFirebaseConfigured) {
+        const profileRef = doc(db, 'profiles', user.uid);
+        await updateDoc(profileRef, {
+          role: 'professional',
+          professional_access_until: 'unlimited',
+          paid_professional: true
+        });
+      }
+      setProfile(updatedProfile);
+      
+      setTimeout(() => {
+        handleCloseModal();
+        setPaymentSuccess(false);
+      }, 3000);
+    } catch (err) {
+      console.error('Error finalising professional subscription:', err);
     }
   };
 
@@ -641,6 +736,41 @@ export const StoreTab: React.FC<StoreTabProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Passe 24h Biblioteca de Treinos Compartilhados */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-5 shadow-sm flex flex-col justify-between space-y-4 hover:shadow-md transition-shadow">
+            <div className="flex gap-4">
+              <div className="w-12 h-12 bg-cyan-50 dark:bg-cyan-950/20 rounded-2xl flex items-center justify-center text-cyan-600 shrink-0">
+                <Dumbbell size={24} className="text-cyan-600 dark:text-cyan-400" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                  Passe 24h Biblioteca de Treinos
+                  {isSharedWorkoutsActive && <span className="text-[9px] bg-cyan-100 dark:bg-cyan-950/30 text-cyan-600 px-1.5 py-0.5 rounded-md">Ativo {getSharedWorkoutsTimeLeft() ? `(${getSharedWorkoutsTimeLeft()})` : ''}</span>}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Desbloqueie o acesso completo à biblioteca pública de treinos compartilhados por professores e profissionais por 24 horas consecutivas para importar e usar!
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center justify-between border-t border-slate-50 dark:border-slate-800/80 pt-4">
+              <span className="font-extrabold text-sm text-slate-700 dark:text-slate-300">🪙 {config.shared_workouts_pass_cost || 800} NC</span>
+              <button
+                disabled={isPremiumActive || isSharedWorkoutsActive || (profile?.xp || 0) < (config.shared_workouts_pass_cost || 800) || loadingItem !== null}
+                onClick={handleBuySharedWorkoutsPass}
+                className={`px-4 py-2 text-xs font-black rounded-xl transition-all uppercase tracking-wider ${
+                  (isPremiumActive || isSharedWorkoutsActive)
+                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                    : (profile?.xp || 0) < (config.shared_workouts_pass_cost || 800)
+                      ? 'bg-slate-50 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:brightness-105 active:scale-95'
+                }`}
+              >
+                {loadingItem === 'shared_workouts_pass' ? 'Ativando...' : (isPremiumActive || isSharedWorkoutsActive) ? 'Ativo' : 'Adquirir'}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -693,7 +823,7 @@ export const StoreTab: React.FC<StoreTabProps> = ({
             {typeof window !== "undefined" && (window as any).Capacitor && (window as any).Capacitor.getPlatform() === "android" ? (
               <button 
                 disabled={isCreatingPayment}
-                onClick={() => handleInitiatePayment('card')}
+                onClick={() => handleInitiatePayment('card', 'premium')}
                 className="w-full sm:w-auto px-6 py-3 bg-black hover:bg-slate-950 text-white text-xs font-black rounded-xl transition-all uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer border border-slate-800 shadow-lg shadow-black/30 disabled:opacity-55"
               >
                 <Sparkles size={14} className="text-yellow-400 animate-pulse" /> Pagar com Google Play / G Pay
@@ -702,15 +832,89 @@ export const StoreTab: React.FC<StoreTabProps> = ({
               <>
                 <button 
                   disabled={isCreatingPayment}
-                  onClick={() => handleInitiatePayment('pix')}
+                  onClick={() => handleInitiatePayment('pix', 'premium')}
                   className="flex-1 sm:flex-none px-4 py-3 bg-teal-500 hover:bg-teal-400 text-white text-xs font-black rounded-xl transition-all uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-teal-500/20 disabled:opacity-55"
                 >
                   PIX Instantâneo
                 </button>
                 <button 
                   disabled={isCreatingPayment}
-                  onClick={() => handleInitiatePayment('card')}
+                  onClick={() => handleInitiatePayment('card', 'premium')}
                   className="flex-1 sm:flex-none px-4 py-3 bg-white hover:bg-slate-100 text-purple-600 text-xs font-black rounded-xl transition-all uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-white/10 disabled:opacity-55"
+                >
+                  <CreditCard size={14} /> Cartão de Crédito
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Plano Profissional Subscription banner with Real Money */}
+      <div className="bg-gradient-to-r from-cyan-600 via-blue-600 to-cyan-700 rounded-3xl p-6 text-white shadow-xl space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 bg-yellow-400/20 backdrop-blur-sm text-yellow-300 text-[10px] px-2.5 py-1 rounded-full font-bold uppercase border border-yellow-400/30 w-fit">
+              <Crown size={10} className="text-yellow-400" /> Plano Profissional (Treinadores & Atletas)
+            </div>
+            <h3 className="text-xl font-black">Crie, Gerencie & Compartilhe Seus Treinos Públicos na Biblioteca Global!</h3>
+          </div>
+          <Crown size={36} className="text-yellow-300 shrink-0" />
+        </div>
+        
+         <p className="text-xs text-cyan-100 leading-relaxed">
+          Ideal para Professores, Personal Trainers, Atletas e Treinadores Avançados. Obtenha privilégios elevados para cadastrar e compartilhar seus treinos personalizados publicamente. Seus treinos exibem sua autoria, duração e distribuição muscular, permitindo que alunos e iniciantes clonem com um clique!
+        </p>
+
+        <ul className="text-xs space-y-2 text-cyan-100 font-medium">
+          <li className="flex items-start gap-2">
+            <CheckCircle2 size={14} className="text-yellow-300 shrink-0 mt-0.5" /> <span>Privilégio de Publicação de Treinos Públicos e Privados</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <CheckCircle2 size={14} className="text-yellow-300 shrink-0 mt-0.5" /> <span>Selo Profissional no Perfil do Usuário</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <CheckCircle2 size={14} className="text-yellow-300 shrink-0 mt-0.5" /> <span>Exibição de autoria com seu nome em todos os seus treinos compartilhados</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <CheckCircle2 size={14} className="text-yellow-300 shrink-0 mt-0.5" /> <span>Acesso ilimitado e imediato à Biblioteca Pública de Treinos</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <CheckCircle2 size={14} className="text-yellow-300 shrink-0 mt-0.5" /> <span>Todos os benefícios do plano Premium inclusos</span>
+          </li>
+        </ul>
+
+        <div className="flex flex-col sm:flex-row items-center justify-between pt-4 border-t border-cyan-500/50 gap-4">
+          <div>
+            <div className="text-xs text-cyan-200">Assinatura profissional por apenas:</div>
+            <div className="text-2xl font-black text-yellow-300">R$ {(config.monthly_professional_price || 39.90).toFixed(2).replace('.', ',')} <span className="text-xs font-semibold text-cyan-200">MENSAL</span></div>
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto">
+            {profile?.role === 'professional' ? (
+              <div className="px-6 py-3 bg-cyan-800 text-cyan-200 font-bold rounded-xl border border-cyan-700 text-xs uppercase">
+                Seu Plano Profissional Está Ativo!
+              </div>
+            ) : typeof window !== "undefined" && (window as any).Capacitor && (window as any).Capacitor.getPlatform() === "android" ? (
+              <button 
+                disabled={isCreatingPayment}
+                onClick={() => handleInitiatePayment('card', 'professional')}
+                className="w-full sm:w-auto px-6 py-3 bg-black hover:bg-slate-950 text-white text-xs font-black rounded-xl transition-all uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer border border-slate-800 shadow-lg shadow-black/30 disabled:opacity-55"
+              >
+                <Crown size={14} className="text-yellow-400 animate-pulse" /> Pagar com Google Play / G Pay
+              </button>
+            ) : (
+              <>
+                <button 
+                  disabled={isCreatingPayment}
+                  onClick={() => handleInitiatePayment('pix', 'professional')}
+                  className="flex-1 sm:flex-none px-4 py-3 bg-teal-500 hover:bg-teal-400 text-white text-xs font-black rounded-xl transition-all uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-teal-500/20 disabled:opacity-55"
+                >
+                  PIX Instantâneo
+                </button>
+                <button 
+                  disabled={isCreatingPayment}
+                  onClick={() => handleInitiatePayment('card', 'professional')}
+                  className="flex-1 sm:flex-none px-4 py-3 bg-white hover:bg-slate-100 text-cyan-600 text-xs font-black rounded-xl transition-all uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-white/10 disabled:opacity-55"
                 >
                   <CreditCard size={14} /> Cartão de Crédito
                 </button>

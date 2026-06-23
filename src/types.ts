@@ -114,7 +114,10 @@ export interface Profile {
   premium_access_until?: string | null;
   whatsapp_access_until?: string | null;
   recipes_access_until?: string | null;
+  shared_workouts_pass_until?: string | null;
+  professional_access_until?: string | null;
   paid_premium?: boolean;
+  paid_professional?: boolean;
   role?: string | null;
   rewarded_goals_today?: {
     calories?: boolean;
@@ -218,6 +221,11 @@ export interface WorkoutRoutine {
   createdAt: string;
   division: string; // 'ABC', 'ABCD', etc.
   days: WorkoutRoutineDay[];
+  isPrivate?: boolean; // Default true. Professional/Admin users can toggle this.
+  creatorName?: string; // Author's username.
+  creatorRole?: string; // Author's role.
+  downloads?: number; // Number of times cloned.
+  daysCount?: number; // How many days of training (3 days a,b,c or 4 days a,b,c,d, etc.)
 }
 
 export interface WorkoutSetRecord {

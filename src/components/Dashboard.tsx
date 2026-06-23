@@ -2604,6 +2604,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
             exerciseHistory={exerciseHistory}
             onDeleteLog={handleDeleteWorkoutLog}
             selectedDate={selectedDate}
+            currentRoutine={activeRoutine}
+            onUpdateWorkoutRoutine={handleUpdateWorkoutRoutine}
+            onUpdateProfile={setProfile}
           />
         )}
 

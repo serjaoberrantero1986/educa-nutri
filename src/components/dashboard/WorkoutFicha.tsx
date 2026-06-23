@@ -785,6 +785,66 @@ export const WorkoutFicha: React.FC<WorkoutFichaProps> = ({
               Editar Ficha
             </button>
           </div>
+
+          {/* Configuração de Compartilhamento do Treino (Privado/Público) */}
+          <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-1">
+                  {currentRoutine.isPrivate === false ? (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Treino Público (Visível na Biblioteca)
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                      Treino Privado (Apenas para Você)
+                    </>
+                  )}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                {currentRoutine.isPrivate === false 
+                  ? "Este treino está publicado e pode ser acessado, visualizado e clonado por iniciantes e alunos na biblioteca pública."
+                  : "Este treino é exclusivo e só você consegue ver. Compartilhe-o tornando-o público para alunos e outros usuários!"}
+              </p>
+            </div>
+            
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  const isProfessionalOrAdmin = profile?.role === 'professional' || profile?.role === 'admin';
+                  if (!isProfessionalOrAdmin) {
+                    alert('Esta função de compartilhamento está disponível apenas para Professores, Personal Trainers e Atletas com o Plano Profissional ativo! Adquira o Plano Profissional na aba Loja.');
+                    return;
+                  }
+                  if (onUpdateWorkoutRoutine) {
+                    const newIsPrivate = currentRoutine.isPrivate === false ? true : false;
+                    await onUpdateWorkoutRoutine({
+                      ...currentRoutine,
+                      isPrivate: newIsPrivate,
+                      creatorName: profile?.username || 'Professor',
+                      creatorRole: profile?.role === 'admin' ? 'Administrador' : 'Profissional',
+                      daysCount: currentRoutine.days.length
+                    });
+                    alert(newIsPrivate 
+                      ? 'Treino configurado como privado e removido da biblioteca de compartilhamento.'
+                      : 'Treino publicado com sucesso! Ele agora está disponível para alunos e usuários na Biblioteca Pública.'
+                    );
+                  }
+                }}
+                className={`px-3 py-1.5 font-extrabold text-[10px] uppercase rounded-xl transition-all cursor-pointer ${
+                  currentRoutine.isPrivate === false
+                    ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50'
+                    : 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-transparent'
+                }`}
+              >
+                {currentRoutine.isPrivate === false ? 'Tornar Privado' : 'Tornar Público'}
+              </button>
+            </div>
+          </div>
           
           <div className="space-y-4">
             {currentRoutine.days.map((day) => (

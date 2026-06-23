@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Flame, 
@@ -10,10 +10,324 @@ import {
   Info,
   RotateCcw,
   RotateCw,
-  User
+  User,
+  Search,
+  Lock,
+  Unlock,
+  Globe,
+  Award,
+  Shield,
+  Heart,
+  BookOpen,
+  Users,
+  Download,
+  CheckCircle2,
+  Crown,
+  Coins
 } from "lucide-react";
-import { Profile, UserWorkoutProfile, UserData, ExerciseLog } from "../../types";
+import { Profile, UserWorkoutProfile, UserData, ExerciseLog, WorkoutRoutine } from "../../types";
 import { WorkoutHistory } from "./WorkoutHistory";
+import { collection, query, where, getDocs, updateDoc, doc } from "firebase/firestore";
+import { db, isFirebaseConfigured } from "../../lib/firebase";
+
+// High-quality expert-made shared workouts to display out of the box or as fallbacks
+const presetRoutines: WorkoutRoutine[] = [
+  {
+    id: "preset_abc_hypertrophy",
+    user_id: "system_preset_1",
+    createdAt: new Date().toISOString(),
+    division: "ABC Clássico - Estética Masculina",
+    creatorName: "Prof. Anderson Silva (Personal)",
+    creatorRole: "Profissional",
+    isPrivate: false,
+    downloads: 1420,
+    daysCount: 3,
+    days: [
+      {
+        id: "A",
+        name: "Treino A - Peito e Tríceps",
+        exercises: [
+          {
+            id: "peito_1",
+            reposoSem: 90,
+            series: [{ carga: 20, reps: 10 }, { carga: 24, reps: 10 }, { carga: 28, reps: 8 }],
+            exercise: {
+              nome: "Supino Reto com Barra",
+              grupoPrincipal: "peito",
+              gruposSecundarios: ["triceps", "ombros"],
+              equipamento: "pesos_livres",
+              nivel: "intermediario",
+              tipo: "composto"
+            }
+          },
+          {
+            id: "peito_2",
+            reposoSem: 60,
+            series: [{ carga: 12, reps: 12 }, { carga: 14, reps: 10 }, { carga: 14, reps: 10 }],
+            exercise: {
+              nome: "Supino Inclinado com Halteres",
+              grupoPrincipal: "peito",
+              gruposSecundarios: ["ombros"],
+              equipamento: "pesos_livres",
+              nivel: "intermediario",
+              tipo: "composto"
+            }
+          },
+          {
+            id: "peito_3",
+            reposoSem: 60,
+            series: [{ carga: 30, reps: 12 }, { carga: 35, reps: 12 }, { carga: 40, reps: 10 }],
+            exercise: {
+              nome: "Pec Deck / Voador",
+              grupoPrincipal: "peito",
+              gruposSecundarios: [],
+              equipamento: "maquina",
+              nivel: "iniciante",
+              tipo: "isolador"
+            }
+          },
+          {
+            id: "triceps_1",
+            reposoSem: 60,
+            series: [{ carga: 15, reps: 12 }, { carga: 20, reps: 10 }, { carga: 20, reps: 10 }],
+            exercise: {
+              nome: "Tríceps Pulley Polia",
+              grupoPrincipal: "triceps",
+              gruposSecundarios: [],
+              equipamento: "polia",
+              nivel: "iniciante",
+              tipo: "isolador"
+            }
+          }
+        ]
+      },
+      {
+        id: "B",
+        name: "Treino B - Costas e Bíceps",
+        exercises: [
+          {
+            id: "costas_1",
+            reposoSem: 90,
+            series: [{ carga: 40, reps: 10 }, { carga: 45, reps: 10 }, { carga: 50, reps: 8 }],
+            exercise: {
+              nome: "Puxada Aberta Pulley",
+              grupoPrincipal: "costas",
+              gruposSecundarios: ["biceps"],
+              equipamento: "polia",
+              nivel: "iniciante",
+              tipo: "composto"
+            }
+          },
+          {
+            id: "costas_2",
+            reposoSem: 60,
+            series: [{ carga: 30, reps: 12 }, { carga: 35, reps: 10 }, { carga: 40, reps: 10 }],
+            exercise: {
+              nome: "Remada Curvada com Barra",
+              grupoPrincipal: "costas",
+              gruposSecundarios: ["biceps"],
+              equipamento: "pesos_livres",
+              nivel: "intermediario",
+              tipo: "composto"
+            }
+          },
+          {
+            id: "biceps_1",
+            reposoSem: 60,
+            series: [{ carga: 10, reps: 12 }, { carga: 12, reps: 10 }, { carga: 14, reps: 10 }],
+            exercise: {
+              nome: "Rosca Direta com Barra",
+              grupoPrincipal: "biceps",
+              gruposSecundarios: [],
+              equipamento: "pesos_livres",
+              nivel: "intermediario",
+              tipo: "isolador"
+            }
+          }
+        ]
+      },
+      {
+        id: "C",
+        name: "Treino C - Pernas e Ombros",
+        exercises: [
+          {
+            id: "pernas_1",
+            reposoSem: 90,
+            series: [{ carga: 40, reps: 10 }, { carga: 50, reps: 10 }, { carga: 60, reps: 8 }],
+            exercise: {
+              nome: "Agachamento Livre com Barra",
+              grupoPrincipal: "pernas",
+              gruposSecundarios: ["lombar"],
+              equipamento: "pesos_livres",
+              nivel: "avancado",
+              tipo: "composto"
+            }
+          },
+          {
+            id: "ombros_1",
+            reposoSem: 60,
+            series: [{ carga: 10, reps: 12 }, { carga: 12, reps: 10 }, { carga: 14, reps: 10 }],
+            exercise: {
+              nome: "Desenvolvimento de Ombros Halteres",
+              grupoPrincipal: "ombros",
+              gruposSecundarios: ["triceps"],
+              equipamento: "pesos_livres",
+              nivel: "intermediario",
+              tipo: "composto"
+            }
+          },
+          {
+            id: "ombros_2",
+            reposoSem: 60,
+            series: [{ carga: 8, reps: 12 }, { carga: 8, reps: 12 }, { carga: 10, reps: 10 }],
+            exercise: {
+              nome: "Elevação Lateral Halteres",
+              grupoPrincipal: "ombros",
+              gruposSecundarios: [],
+              equipamento: "pesos_livres",
+              nivel: "iniciante",
+              tipo: "isolador"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: "preset_abcd_power_volume",
+    user_id: "system_preset_2",
+    createdAt: new Date().toISOString(),
+    division: "ABCD - Foco em Definição e Volume",
+    creatorName: "Atleta Felipe Franco (Physique Pro)",
+    creatorRole: "Profissional",
+    isPrivate: false,
+    downloads: 2190,
+    daysCount: 4,
+    days: [
+      {
+        id: "A",
+        name: "Treino A - Peito e Ombros",
+        exercises: [
+          {
+            id: "abcd_p_1",
+            reposoSem: 90,
+            series: [{ carga: 30, reps: 10 }, { carga: 35, reps: 8 }, { carga: 40, reps: 6 }],
+            exercise: {
+              nome: "Supino Inclinado com Barra",
+              grupoPrincipal: "peito",
+              gruposSecundarios: ["ombros"],
+              equipamento: "pesos_livres",
+              nivel: "avancado",
+              tipo: "composto"
+            }
+          }
+        ]
+      },
+      {
+        id: "B",
+        name: "Treino B - Costas e Trapézio",
+        exercises: [
+          {
+            id: "abcd_c_1",
+            reposoSem: 90,
+            series: [{ carga: 50, reps: 10 }, { carga: 60, reps: 10 }, { carga: 70, reps: 8 }],
+            exercise: {
+              nome: "Remada Cavalinho Máquina",
+              grupoPrincipal: "costas",
+              gruposSecundarios: ["biceps"],
+              equipamento: "maquina",
+              nivel: "intermediario",
+              tipo: "composto"
+            }
+          }
+        ]
+      },
+      {
+        id: "C",
+        name: "Treino C - Pernas Completas",
+        exercises: [
+          {
+            id: "abcd_pe_1",
+            reposoSem: 90,
+            series: [{ carga: 60, reps: 10 }, { carga: 80, reps: 8 }, { carga: 100, reps: 6 }],
+            exercise: {
+              nome: "Agachamento Livre",
+              grupoPrincipal: "pernas",
+              gruposSecundarios: ["lombar"],
+              equipamento: "pesos_livres",
+              nivel: "avancado",
+              tipo: "composto"
+            }
+          }
+        ]
+      },
+      {
+        id: "D",
+        name: "Treino D - Bíceps, Tríceps & Abdomen",
+        exercises: [
+          {
+            id: "abcd_b_1",
+            reposoSem: 60,
+            series: [{ carga: 12, reps: 12 }, { carga: 14, reps: 10 }, { carga: 16, reps: 10 }],
+            exercise: {
+              nome: "Rosca Direta Halteres",
+              grupoPrincipal: "biceps",
+              gruposSecundarios: [],
+              equipamento: "pesos_livres",
+              nivel: "intermediario",
+              tipo: "isolador"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: "preset_fullbody_female",
+    user_id: "system_preset_3",
+    createdAt: new Date().toISOString(),
+    division: "Feminino Completo - Tonificação e Glúteos",
+    creatorName: "Dra. Carol Costa (Personal)",
+    creatorRole: "Profissional",
+    isPrivate: false,
+    downloads: 1845,
+    daysCount: 3,
+    days: [
+      {
+        id: "A",
+        name: "Treino A - Inferiores Foco Quad/Glúteo",
+        exercises: [
+          {
+            id: "fem_1",
+            reposoSem: 90,
+            series: [{ carga: 30, reps: 12 }, { carga: 40, reps: 10 }, { carga: 55, reps: 8 }],
+            exercise: {
+              nome: "Agachamento Sumô",
+              grupoPrincipal: "pernas",
+              gruposSecundarios: ["lombar"],
+              equipamento: "pesos_livres",
+              nivel: "intermediario",
+              tipo: "composto"
+            }
+          },
+          {
+            id: "fem_2",
+            reposoSem: 60,
+            series: [{ carga: 10, reps: 12 }, { carga: 14, reps: 10 }, { carga: 18, reps: 10 }],
+            exercise: {
+              nome: "Afundo com Halteres",
+              grupoPrincipal: "pernas",
+              gruposSecundarios: [],
+              equipamento: "pesos_livres",
+              nivel: "iniciante",
+              tipo: "composto"
+            }
+          }
+        ]
+      }
+    ]
+  }
+];
 
 interface WorkoutDashboardProps {
   profile: Profile | null;
@@ -23,6 +337,9 @@ interface WorkoutDashboardProps {
   exerciseHistory?: ExerciseLog[];
   onDeleteLog?: (id: string) => Promise<void>;
   selectedDate?: Date;
+  currentRoutine?: WorkoutRoutine | null;
+  onUpdateWorkoutRoutine?: (newRoutine: WorkoutRoutine) => Promise<void>;
+  onUpdateProfile?: (updated: Profile) => void;
 }
 
 type AngleView = "front" | "side_left" | "back" | "side_right";
@@ -34,8 +351,137 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
   onNavigateToTab,
   exerciseHistory = [],
   onDeleteLog,
-  selectedDate
+  selectedDate,
+  currentRoutine,
+  onUpdateWorkoutRoutine,
+  onUpdateProfile
 }) => {
+  const [subTab, setSubTab] = useState<"biometrics" | "library">("biometrics");
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [filterLevel, setFilterLevel] = useState<string>("all");
+  const [loadingLibrary, setLoadingLibrary] = useState<boolean>(false);
+  const [sharedRoutines, setSharedRoutines] = useState<WorkoutRoutine[]>([]);
+  const [activatingPass, setActivatingPass] = useState<boolean>(false);
+
+  // Check if access is active
+  const isPremiumActive = profile?.premium_access_until 
+    ? (profile.premium_access_until === 'unlimited' || new Date(profile.premium_access_until).getTime() > Date.now())
+    : false;
+
+  const isSharedWorkoutsActive = profile?.shared_workouts_pass_until
+    ? (new Date(profile.shared_workouts_pass_until).getTime() > Date.now())
+    : false;
+
+  const isProfessional = profile?.role === 'professional' || profile?.role === 'admin';
+
+  const hasLibraryAccess = isProfessional || isPremiumActive || isSharedWorkoutsActive;
+
+  // Load public shared workouts from firestore if firebase is configured
+  useEffect(() => {
+    const fetchSharedWorkouts = async () => {
+      if (!hasLibraryAccess) return;
+      setLoadingLibrary(true);
+      try {
+        if (isFirebaseConfigured) {
+          const q = query(collection(db, 'workout_routines'), where('isPrivate', '==', false));
+          const querySnapshot = await getDocs(q);
+          const routinesFromFirestore: WorkoutRoutine[] = [];
+          querySnapshot.forEach((doc) => {
+            const data = doc.data() as WorkoutRoutine;
+            // Prevent duplicate preset loading if we store them in DB as well
+            if (!data.id.startsWith("preset_")) {
+              routinesFromFirestore.push(data);
+            }
+          });
+          setSharedRoutines(routinesFromFirestore);
+        }
+      } catch (err) {
+        console.error("Erro ao carregar treinos públicos:", err);
+      } finally {
+        setLoadingLibrary(false);
+      }
+    };
+
+    fetchSharedWorkouts();
+  }, [subTab, hasLibraryAccess]);
+
+  const handleBuyLibraryPass = async () => {
+    if (!profile || !onUpdateProfile) return;
+    const cost = 800;
+    if ((profile.xp || 0) < cost) {
+      alert('Seu saldo de NutriCoins é insuficiente!');
+      return;
+    }
+
+    setActivatingPass(true);
+    try {
+      const finalCoins = (profile.xp || 0) - cost;
+      const twentyFourHoursFromNow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const updatedProfile = {
+        ...profile,
+        xp: finalCoins,
+        shared_workouts_pass_until: twentyFourHoursFromNow
+      };
+
+      if (isFirebaseConfigured) {
+        const profileRef = doc(db, 'profiles', profile.id);
+        await updateDoc(profileRef, {
+          xp: finalCoins,
+          shared_workouts_pass_until: twentyFourHoursFromNow
+        });
+      }
+      onUpdateProfile(updatedProfile);
+      alert('Passe 24h Treinos Compartilhados ativado com sucesso! 🏋️‍♂️💪 Agora você pode navegar, visualizar e importar todos os treinos da Biblioteca Pública!');
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setActivatingPass(false);
+    }
+  };
+
+  const handleCloneRoutine = async (routine: WorkoutRoutine) => {
+    if (!profile) return;
+    const confirmClone = window.confirm(
+      `Deseja clonar o treino "${routine.division}" de autoria de "${routine.creatorName || 'Profissional'}"? Isto irá substituir sua ficha de treino ativa atual.`
+    );
+    if (!confirmClone) return;
+
+    if (onUpdateWorkoutRoutine) {
+      try {
+        // Clone and adjust ids/user_id for local active routine
+        const cloned: WorkoutRoutine = {
+          ...routine,
+          id: profile.id, // Doc id in workout_routines is the user.uid
+          user_id: profile.id,
+          createdAt: new Date().toISOString(),
+          isPrivate: true, // Imported copy is private to user by default
+          downloads: (routine.downloads || 0) + 1
+        };
+
+        await onUpdateWorkoutRoutine(cloned);
+
+        // Increment downloads in Firestore if possible
+        if (isFirebaseConfigured && !routine.id.startsWith("preset_")) {
+          try {
+            const routineRef = doc(db, 'workout_routines', routine.user_id);
+            await updateDoc(routineRef, {
+              downloads: (routine.downloads || 0) + 1
+            });
+          } catch (e) {
+            console.error("Could not increment downloads:", e);
+          }
+        }
+
+        alert(`Treino de "${routine.creatorName}" clonado com sucesso! Agora você já pode iniciar seu treino na aba "Treinar".`);
+        // Navigate to the train tab or just stay on dashboard
+        onNavigateToTab("workout_today");
+      } catch (err) {
+        console.error("Erro ao clonar treino:", err);
+        alert("Ocorreu um erro ao clonar este treino. Tente novamente.");
+      }
+    }
+  };
+
   // Fatigue score mapping
   const fatigue = workoutProfile?.muscleFatigue || {
     peito: 0,
@@ -470,256 +916,496 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Brand-New Interactive 3D Muscular Fatigue Stage (Theme Compliant!) */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 text-slate-800 dark:text-white shadow-xl relative overflow-hidden">
-        {/* Design Accents */}
-        <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-80 h-80 bg-purple-500/5 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
-          {/* Controls & Descriptions Panel */}
-          <div className="lg:col-span-5 space-y-6">
-            <div className="space-y-2">
-              <span className="inline-flex items-center gap-1.5 bg-cyan-50 dark:bg-cyan-500/15 border border-cyan-100 dark:border-cyan-500/30 text-cyan-600 dark:text-cyan-400 text-[10px] font-black uppercase px-2.5 py-1 rounded-full tracking-wider leading-none">
-                <Flame size={12} className="animate-pulse" />
-                Mapeamento Biométrico
-              </span>
-              <h2 className="text-2xl lg:text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-none">
-                Estresse & Fadiga Muscular
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Visualização interativa da regeneração de fibras no modelo anatômico. Arraste horizontalmente (mouse ou toque) para girar o modelo em 360 graus e verificar o repouso.
-              </p>
-            </div>
-
-            {/* Gender Toggle Manual Override */}
-            <div className="bg-slate-50 dark:bg-slate-950 p-1.5 rounded-2xl border border-slate-100 dark:border-slate-850 flex items-center justify-between">
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-bold pl-3">Corpo Base</span>
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  onClick={() => setSelectedGender("male")}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border-0 ${
-                    selectedGender === "male"
-                      ? "bg-cyan-500 text-white shadow-md shadow-cyan-500/25"
-                      : "bg-transparent text-slate-400 hover:text-slate-800 dark:hover:text-white"
-                  }`}
-                >
-                  Masculino
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedGender("female")}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border-0 ${
-                    selectedGender === "female"
-                      ? "bg-cyan-500 text-white shadow-md shadow-cyan-500/25"
-                      : "bg-transparent text-slate-400 hover:text-slate-800 dark:hover:text-white"
-                  }`}
-                >
-                  Feminino
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Interactive Rotational 3D Stage */}
-          <div className="lg:col-span-7 flex flex-col items-center justify-center relative">
-            {/* Spinning Canvas Circle Base */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="w-[280px] h-[280px] rounded-full border border-dashed border-slate-200 dark:border-slate-800/70 animate-[spin_40s_linear_infinite]" />
-              <div className="w-[210px] h-[210px] rounded-full border border-slate-200/50 absolute" />
-            </div>
-
-            {/* Actual Vector Stage with Transitions */}
-            <div 
-              onMouseDown={onMouseDown}
-              onMouseMove={onMouseMove}
-              onMouseUp={onMouseUpOrLeave}
-              onMouseLeave={onMouseUpOrLeave}
-              onTouchStart={onTouchStart}
-              onTouchMove={onTouchMove}
-              onTouchEnd={onTouchEnd}
-              className="relative z-10 w-full flex items-center justify-center min-h-[360px] cursor-grab active:cursor-grabbing select-none"
-            >
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={`${selectedGender}_${activeView}`}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.2, ease: "easeInOut" }}
-                  className="w-full max-w-[220px]"
-                >
-                  {renderAnatomicalVector()}
-                </motion.div>
-              </AnimatePresence>
-            </div>
-
-            {/* Heat Gradient Bar Key */}
-            <div className="flex items-center justify-between w-full max-w-xs mt-4 text-[10px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/60">
-              <span className="font-bold">Regenerado (0%)</span>
-              <div className="h-2 w-28 rounded-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500" />
-              <span className="font-bold">Fadigado (100%)</span>
-            </div>
-
-            {/* Move Action Button right below */}
-            <motion.button
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => onNavigateToTab("workout_today")}
-              className="w-full max-w-xs bg-cyan-500 hover:bg-cyan-600 text-white font-black py-4 px-6 rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/15 cursor-pointer text-xs border-0 uppercase tracking-wider mt-6"
-            >
-              <Dumbbell size={16} />
-              Iniciar Treino do Dia
-            </motion.button>
-          </div>
-        </div>
+      {/* Subtab Selector */}
+      <div className="flex bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl w-full max-w-md mx-auto border border-slate-200/40 dark:border-slate-800/80">
+        <button
+          type="button"
+          onClick={() => setSubTab("biometrics")}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border-0 ${
+            subTab === "biometrics"
+              ? "bg-white dark:bg-slate-900 text-cyan-500 shadow-sm"
+              : "bg-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
+          }`}
+        >
+          <Dumbbell size={14} />
+          Painel de Biometria
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab("library")}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border-0 ${
+            subTab === "library"
+              ? "bg-white dark:bg-slate-900 text-cyan-500 shadow-sm"
+              : "bg-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
+          }`}
+        >
+          <Users size={14} />
+          Biblioteca Pública
+          {isProfessional && <span className="ml-1.5 bg-cyan-500 text-white text-[8px] px-1.5 py-0.5 rounded-md">Pro</span>}
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Muscle Score Card List (GRÁFICO ABAIXO QUE DEVERÁ SER MANTIDO) */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 space-y-6">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 text-sm sm:text-base">
-              <Sparkles className="text-purple-500 animate-pulse" size={18} />
-              Lista de Regeneração por Grupo
-            </h3>
-            <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold px-2 py-1 rounded-lg uppercase">
-              Atualizado em Tempo Real
-            </span>
-          </div>
+      {subTab === "biometrics" ? (
+        <>
+          {/* Brand-New Interactive 3D Muscular Fatigue Stage (Theme Compliant!) */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 text-slate-800 dark:text-white shadow-xl relative overflow-hidden">
+            {/* Design Accents */}
+            <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-80 h-80 bg-purple-500/5 rounded-full blur-3xl pointer-events-none" />
 
-          <div className="space-y-4">
-            {Object.entries(fatigue).map(([muscle, value]) => (
-              <div key={muscle} className="space-y-1.5">
-                <div className="flex justify-between text-xs font-bold">
-                  <span className="capitalize text-slate-700 dark:text-slate-300">
-                    {muscle === "ombros" ? "Ombros / Trapézio" : muscle === "peito" ? "Peito / Anterior" : muscle === "costas" ? "Costas / Posturas" : muscle === "pernas" ? "Pernas / Quadríceps" : muscle}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
+              {/* Controls & Descriptions Panel */}
+              <div className="lg:col-span-5 space-y-6">
+                <div className="space-y-2">
+                  <span className="inline-flex items-center gap-1.5 bg-cyan-50 dark:bg-cyan-500/15 border border-cyan-100 dark:border-cyan-500/30 text-cyan-600 dark:text-cyan-400 text-[10px] font-black uppercase px-2.5 py-1 rounded-full tracking-wider leading-none">
+                    <Flame size={12} className="animate-pulse" />
+                    Mapeamento Biométrico
                   </span>
-                  <span className={getRecoveryTextColorClass(value)}>
-                    {getRecoveryLabel(value)} ({100 - value}%)
-                  </span>
+                  <h2 className="text-2xl lg:text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-none">
+                    Estresse & Fadiga Muscular
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Visualização interativa da regeneração de fibras no modelo anatômico. Arraste horizontalmente (mouse ou toque) para girar o modelo em 360 graus e verificar o repouso.
+                  </p>
                 </div>
-                <div className="w-full bg-slate-100 dark:bg-slate-800 h-3 rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${100 - value}%` }}
-                    transition={{ duration: 0.8, ease: "easeOut" }}
-                    className={`h-full rounded-full ${getRecoveryColorClass(value)}`}
-                  />
+
+                {/* Gender Toggle Manual Override */}
+                <div className="bg-slate-50 dark:bg-slate-950 p-1.5 rounded-2xl border border-slate-100 dark:border-slate-850 flex items-center justify-between">
+                  <span className="text-xs text-slate-500 dark:text-slate-400 font-bold pl-3">Corpo Base</span>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedGender("male")}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border-0 ${
+                        selectedGender === "male"
+                          ? "bg-cyan-500 text-white shadow-md shadow-cyan-500/25"
+                          : "bg-transparent text-slate-400 hover:text-slate-800 dark:hover:text-white"
+                      }`}
+                    >
+                      Masculino
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedGender("female")}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border-0 ${
+                        selectedGender === "female"
+                          ? "bg-cyan-500 text-white shadow-md shadow-cyan-500/25"
+                          : "bg-transparent text-slate-400 hover:text-slate-800 dark:hover:text-white"
+                      }`}
+                    >
+                      Feminino
+                    </button>
+                  </div>
                 </div>
               </div>
-            ))}
+
+              {/* Interactive Rotational 3D Stage */}
+              <div className="lg:col-span-7 flex flex-col items-center justify-center relative">
+                {/* Spinning Canvas Circle Base */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="w-[280px] h-[280px] rounded-full border border-dashed border-slate-200 dark:border-slate-800/70 animate-[spin_40s_linear_infinite]" />
+                  <div className="w-[210px] h-[210px] rounded-full border border-slate-200/50 absolute" />
+                </div>
+
+                {/* Actual Vector Stage with Transitions */}
+                <div 
+                  onMouseDown={onMouseDown}
+                  onMouseMove={onMouseMove}
+                  onMouseUp={onMouseUpOrLeave}
+                  onMouseLeave={onMouseUpOrLeave}
+                  onTouchStart={onTouchStart}
+                  onTouchMove={onTouchMove}
+                  onTouchEnd={onTouchEnd}
+                  className="relative z-10 w-full flex items-center justify-center min-h-[360px] cursor-grab active:cursor-grabbing select-none"
+                >
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={`${selectedGender}_${activeView}`}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      transition={{ duration: 0.2, ease: "easeInOut" }}
+                      className="w-full max-w-[220px]"
+                    >
+                      {renderAnatomicalVector()}
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+
+                {/* Heat Gradient Bar Key */}
+                <div className="flex items-center justify-between w-full max-w-xs mt-4 text-[10px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/60">
+                  <span className="font-bold">Regenerado (0%)</span>
+                  <div className="h-2 w-28 rounded-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500" />
+                  <span className="font-bold">Fadigado (100%)</span>
+                </div>
+
+                {/* Move Action Button right below */}
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => onNavigateToTab("workout_today")}
+                  className="w-full max-w-xs bg-cyan-500 hover:bg-cyan-600 text-white font-black py-4 px-6 rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/15 cursor-pointer text-xs border-0 uppercase tracking-wider mt-6"
+                >
+                  <Dumbbell size={16} />
+                  Iniciar Treino do Dia
+                </motion.button>
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-start gap-2 text-xs bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-slate-500 dark:text-slate-400">
-            <Info size={14} className="text-cyan-500 shrink-0 mt-0.5" />
-            <p className="leading-relaxed text-[11px]">
-              O nível de fadiga aumenta quando você registra e conclui exercícios. O SportNutri decrementa de forma inteligente a fadiga diariamente de acordo com o seu tempo de descanso e nutrição ingerida.
-            </p>
-          </div>
-        </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Muscle Score Card List */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 text-sm sm:text-base">
+                  <Sparkles className="text-purple-500 animate-pulse" size={18} />
+                  Lista de Regeneração por Grupo
+                </h3>
+                <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold px-2 py-1 rounded-lg uppercase">
+                  Atualizado em Tempo Real
+                </span>
+              </div>
 
-        {/* Right side containers: Quick Info & Daily Stats */}
+              <div className="space-y-4">
+                {Object.entries(fatigue).map(([muscle, value]) => (
+                  <div key={muscle} className="space-y-1.5">
+                    <div className="flex justify-between text-xs font-bold">
+                      <span className="capitalize text-slate-700 dark:text-slate-300">
+                        {muscle === "ombros" ? "Ombros / Trapézio" : muscle === "peito" ? "Peito / Anterior" : muscle === "costas" ? "Costas / Posturas" : muscle === "pernas" ? "Pernas / Quadríceps" : muscle}
+                      </span>
+                      <span className={getRecoveryTextColorClass(value)}>
+                        {getRecoveryLabel(value)} ({100 - value}%)
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-100 dark:bg-slate-800 h-3 rounded-full overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${100 - value}%` }}
+                        transition={{ duration: 0.8, ease: "easeOut" }}
+                        className={`h-full rounded-full ${getRecoveryColorClass(value)}`}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-start gap-2 text-xs bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-slate-500 dark:text-slate-400">
+                <Info size={14} className="text-cyan-500 shrink-0 mt-0.5" />
+                <p className="leading-relaxed text-[11px]">
+                  O nível de fadiga aumenta quando você registra e conclui exercícios. O SportNutri decrementa de forma inteligente a fadiga diariamente de acordo com o seu tempo de descanso e nutrição ingerida.
+                </p>
+              </div>
+            </div>
+
+            {/* Right side containers: Quick Info & Daily Stats */}
+            <div className="space-y-6">
+              <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 space-y-4">
+                <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                  <Calendar className="text-cyan-500" size={18} />
+                  Meu Planejamento de Ficha de Treino
+                </h3>
+
+                {workoutProfile ? (
+                  <div className="space-y-4 text-sm mt-2">
+                    <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-950 rounded-xl">
+                      <span className="text-slate-500 text-xs">Divisão de Treinos</span>
+                      <span className="font-bold text-slate-800 dark:text-white text-xs">
+                        {workoutProfile.divisionType || "Full Body A/B"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-950 rounded-xl">
+                      <span className="text-slate-500 text-xs">Frequência Semanal</span>
+                      <span className="font-bold text-slate-800 dark:text-white text-xs">
+                        {workoutProfile.daysPerWeek === 1 ? "1 dia" : `${workoutProfile.daysPerWeek} dias`}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-950 rounded-xl">
+                      <span className="text-slate-500 text-xs">Tempo Limite Sugerido</span>
+                      <span className="font-bold text-slate-800 dark:text-white text-xs">
+                        {workoutProfile.workoutDuration} min/treino
+                      </span>
+                    </div>
+
+                    <motion.button
+                      whileHover={{ x: 4 }}
+                      onClick={() => onNavigateToTab("workout_ficha")}
+                      className="w-full flex items-center justify-between text-xs font-bold text-cyan-500 hover:text-cyan-600 dark:hover:text-cyan-400 p-2 border-0 bg-transparent cursor-pointer"
+                    >
+                      Ver Ficha Completa
+                      <ChevronRight size={14} />
+                    </motion.button>
+                  </div>
+                ) : (
+                  <div className="space-y-4 py-4 text-center">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-normal">
+                      Você ainda não possui uma ficha de treino gerada por IA.
+                    </p>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => onNavigateToTab("workout_ficha")}
+                      className="w-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold py-2.5 rounded-xl text-xs cursor-pointer border-0"
+                    >
+                      Configurar Meu Perfil e Gerar
+                    </motion.button>
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Stats Card */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 space-y-4">
+                <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                  <TrendingUp className="text-emerald-500" size={18} />
+                  Ganhos de NutriCoins
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-slate-50 dark:bg-slate-950 p-3.5 rounded-2xl text-center">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">NutriCoins de Treino</span>
+                    <p className="text-lg font-black text-cyan-500 mt-1">
+                      +{(() => {
+                        let total = 0;
+                        const logsPerDay: { [dateStr: string]: number } = {};
+                        exerciseHistory.forEach(log => {
+                          total += 15;
+                          if (log.loggedAt) {
+                            const dStr = log.loggedAt.split('T')[0];
+                            logsPerDay[dStr] = (logsPerDay[dStr] || 0) + 1;
+                          }
+                        });
+                        Object.values(logsPerDay).forEach(count => {
+                          if (count >= 4) {
+                            total += 50;
+                          }
+                        });
+                        return total;
+                      })()} NC
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-950 p-3.5 rounded-2xl text-center">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">Treinos Concluídos</span>
+                    <p className="text-lg font-black text-emerald-500 mt-1">
+                      {Array.from(new Set(exerciseHistory.map(log => log.loggedAt ? log.loggedAt.split('T')[0] : '').filter(Boolean))).length}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-100 dark:border-slate-800/80 my-8 pt-8">
+            <WorkoutHistory exerciseHistory={exerciseHistory} onDeleteLog={onDeleteLog} selectedDate={selectedDate} />
+          </div>
+        </>
+      ) : (
+        /* Biblioteca Pública de Treinos Tab */
         <div className="space-y-6">
-          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 space-y-4">
-            <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
-              <Calendar className="text-cyan-500" size={18} />
-              Meu Planejamento de Ficha de Treino
-            </h3>
-
-            {workoutProfile ? (
-              <div className="space-y-4 text-sm mt-2">
-                <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-950 rounded-xl">
-                  <span className="text-slate-500 text-xs">Divisão de Treinos</span>
-                  <span className="font-bold text-slate-800 dark:text-white text-xs">
-                    {workoutProfile.divisionType || "Full Body A/B"}
-                  </span>
+          {!hasLibraryAccess ? (
+            /* Bloqueio / Paywall para quem nao tem acesso */
+            <div className="bg-gradient-to-r from-cyan-600 via-blue-600 to-cyan-700 rounded-3xl p-6 text-white shadow-xl space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 bg-yellow-400/20 backdrop-blur-sm text-yellow-300 text-[10px] px-2.5 py-1 rounded-full font-bold uppercase border border-yellow-400/30 w-fit">
+                    <Lock size={10} /> Biblioteca de Treinos Compartilhados
+                  </div>
+                  <h3 className="text-xl font-black">Navegue e Importe Treinos de Profissionais & Atletas!</h3>
                 </div>
-
-                <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-950 rounded-xl">
-                  <span className="text-slate-500 text-xs">Frequência Semanal</span>
-                  <span className="font-bold text-slate-800 dark:text-white text-xs">
-                    {workoutProfile.daysPerWeek === 1 ? "1 dia" : `${workoutProfile.daysPerWeek} dias`}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-950 rounded-xl">
-                  <span className="text-slate-500 text-xs">Tempo Limite Sugerido</span>
-                  <span className="font-bold text-slate-800 dark:text-white text-xs">
-                    {workoutProfile.workoutDuration} min/treino
-                  </span>
-                </div>
-
-                <motion.button
-                  whileHover={{ x: 4 }}
-                  onClick={() => onNavigateToTab("workout_ficha")}
-                  className="w-full flex items-center justify-between text-xs font-bold text-cyan-500 hover:text-cyan-600 dark:hover:text-cyan-400 p-2 border-0 bg-transparent cursor-pointer"
-                >
-                  Ver Ficha Completa
-                  <ChevronRight size={14} />
-                </motion.button>
+                <Crown size={32} className="text-yellow-300 animate-pulse" />
               </div>
-            ) : (
-              <div className="space-y-4 py-4 text-center">
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-normal">
-                  Você ainda não possui uma ficha de treino gerada por IA.
-                </p>
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => onNavigateToTab("workout_ficha")}
-                  className="w-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold py-2.5 rounded-xl text-xs cursor-pointer border-0"
-                >
-                  Configurar Meu Perfil e Gerar
-                </motion.button>
-              </div>
-            )}
-          </div>
 
-          {/* Quick Stats Card */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 space-y-4">
-            <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
-              <TrendingUp className="text-emerald-500" size={18} />
-              Ganhos de NutriCoins
-            </h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-slate-50 dark:bg-slate-950 p-3.5 rounded-2xl text-center">
-                <span className="text-[10px] uppercase font-bold text-slate-400">NutriCoins de Treino</span>
-                <p className="text-lg font-black text-cyan-500 mt-1">
-                  +{(() => {
-                    let total = 0;
-                    const logsPerDay: { [dateStr: string]: number } = {};
-                    exerciseHistory.forEach(log => {
-                      total += 15;
-                      if (log.loggedAt) {
-                        const dStr = log.loggedAt.split('T')[0];
-                        logsPerDay[dStr] = (logsPerDay[dStr] || 0) + 1;
-                      }
-                    });
-                    Object.values(logsPerDay).forEach(count => {
-                      if (count >= 4) {
-                        total += 50;
-                      }
-                    });
-                    return total;
-                  })()} NC
+              <p className="text-xs text-cyan-100 leading-relaxed">
+                Desbloqueie o acesso à biblioteca pública de fichas de treino. Importe instantaneamente com apenas um clique treinos estruturados por personal trainers, fisiculturistas e atletas parceiros de acordo com a quantidade de dias e distribuição muscular ideal.
+              </p>
+
+              <div className="bg-cyan-950/20 p-4 rounded-2xl border border-cyan-500/30 space-y-2">
+                <h4 className="text-xs font-black uppercase text-yellow-300 tracking-wider">Como funciona o acesso?</h4>
+                <p className="text-[11px] text-cyan-150 leading-relaxed">
+                  Professores, Personal Trainers e Atletas com o Plano Profissional Mensal publicam seus treinos personalizados de forma pública. Qualquer usuário do SportNutri pode obter acesso completo por 24 horas usando suas moedas NutriCoins!
                 </p>
               </div>
-              <div className="bg-slate-50 dark:bg-slate-950 p-3.5 rounded-2xl text-center">
-                <span className="text-[10px] uppercase font-bold text-slate-400">Treinos Concluídos</span>
-                <p className="text-lg font-black text-emerald-500 mt-1">
-                  {Array.from(new Set(exerciseHistory.map(log => log.loggedAt ? log.loggedAt.split('T')[0] : '').filter(Boolean))).length}
-                </p>
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-cyan-500/40 pt-5">
+                <div className="text-center sm:text-left">
+                  <span className="text-xs text-cyan-200">Adquirir passe 24 horas na hora:</span>
+                  <p className="text-lg font-black text-yellow-300">800 NC (NutriCoins)</p>
+                </div>
+                
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    disabled={activatingPass || (profile?.xp || 0) < 800}
+                    onClick={handleBuyLibraryPass}
+                    className={`px-5 py-3 text-xs font-black rounded-xl uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer border-0 shadow-lg ${
+                      (profile?.xp || 0) < 800
+                        ? "bg-cyan-850 text-cyan-400 cursor-not-allowed"
+                        : "bg-yellow-400 hover:bg-yellow-300 text-slate-900 hover:brightness-105"
+                    }`}
+                  >
+                    {activatingPass ? "Ativando..." : "Ativar Passe (24h)"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onNavigateToTab("store")}
+                    className="px-5 py-3 bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-black rounded-xl uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1"
+                  >
+                    Ver Planos na Loja
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
+          ) : (
+            /* Acesso Concedido - Mostra a Biblioteca Completa */
+            <div className="space-y-6">
+              <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-emerald-500 tracking-wider bg-emerald-50 dark:bg-emerald-950/20 px-2.5 py-1 rounded-full border border-emerald-150">
+                      <Unlock size={10} /> Acesso Ativo
+                    </span>
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white mt-1">Biblioteca Pública de Treinos</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                      Navegue por treinos completos criados por profissionais e clique para importar diretamente para a sua ficha!
+                    </p>
+                  </div>
+                </div>
 
-      <div className="border-t border-slate-100 dark:border-slate-800/80 my-8 pt-8">
-        <WorkoutHistory exerciseHistory={exerciseHistory} onDeleteLog={onDeleteLog} selectedDate={selectedDate} />
-      </div>
+                {/* Search and filter bar */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-2">
+                  <div className="sm:col-span-8 relative">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                    <input
+                      type="text"
+                      placeholder="Buscar por divisao muscular (ex: ABC, Peito, Pernas)..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-bold text-slate-700 dark:text-white focus:ring-1 focus:ring-cyan-500 outline-none"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-4">
+                    <select
+                      value={filterLevel}
+                      onChange={(e) => setFilterLevel(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-bold text-slate-700 dark:text-white outline-none cursor-pointer"
+                    >
+                      <option value="all">Todos os Niveis</option>
+                      <option value="iniciante">Iniciante</option>
+                      <option value="intermediario">Intermediario</option>
+                      <option value="avancado">Avancado</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Grid of Workouts */}
+              {loadingLibrary ? (
+                <div className="text-center py-12 text-slate-500">Carregando treinos...</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {[...presetRoutines, ...sharedRoutines]
+                    .filter((routine) => {
+                      const matchesSearch = 
+                        routine.division.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        (routine.creatorName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        routine.days.some(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
+                      
+                      if (filterLevel === "all") return matchesSearch;
+                      
+                      const matchesLevel = routine.days.some(d => 
+                        d.exercises.some(e => e.exercise.nivel === filterLevel)
+                      );
+                      return matchesSearch && matchesLevel;
+                    })
+                    .map((routine) => {
+                      const muscles = Array.from(new Set(
+                        routine.days.flatMap(d => 
+                          d.exercises.flatMap(e => [
+                            e.exercise.grupoPrincipal, 
+                            ...(e.exercise.gruposSecundarios || [])
+                          ])
+                        )
+                      )).filter(Boolean);
+
+                      const formatMuscle = (m: string) => {
+                        const map: { [key: string]: string } = {
+                          peito: "Peito", costas: "Costas", pernas: "Pernas",
+                          biceps: "Biceps", triceps: "Triceps", ombros: "Ombros",
+                          abdome: "Abdomen", lombar: "Lombar"
+                        };
+                        return map[m] || m;
+                      };
+
+                      const totalExercises = routine.days.reduce((acc, d) => acc + d.exercises.length, 0);
+
+                      return (
+                        <div 
+                          key={routine.id}
+                          className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2rem] p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between space-y-4"
+                        >
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-cyan-600 bg-cyan-50 dark:bg-cyan-950/20 px-2 py-0.5 rounded-md border border-cyan-100/30">
+                                {routine.daysCount || routine.days.length} dias ({routine.days.map(d => d.id).join(", ")})
+                              </span>
+                              
+                              <span className="flex items-center gap-1 text-[10px] text-slate-400">
+                                <Download size={10} /> {routine.downloads || 0} imports
+                              </span>
+                            </div>
+
+                            <div className="space-y-1">
+                              <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                                {routine.division}
+                              </h4>
+                              
+                              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-bold">
+                                <div className="w-5 h-5 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center shrink-0">
+                                  <User size={10} className="text-slate-500" />
+                                </div>
+                                <span className="text-[11px] truncate">{routine.creatorName || "Profissional Parceiro"}</span>
+                                <span className="bg-yellow-400/20 text-yellow-500 dark:text-yellow-400 text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase border border-yellow-400/30">
+                                  {routine.creatorRole || "Profissional"}
+                                </span>
+                              </div>
+                            </div>
+
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                              Distribuicao muscular: {muscles.map(formatMuscle).join(", ") || "Geral"}
+                            </p>
+
+                            <div className="bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl space-y-2">
+                              <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Resumo do Cronograma:</span>
+                              <div className="text-[11px] text-slate-600 dark:text-slate-400 space-y-1 font-semibold leading-relaxed">
+                                {routine.days.map(d => (
+                                  <div key={d.id} className="flex justify-between">
+                                    <span>Treino {d.id}: {d.name}</span>
+                                    <span className="text-[9px] text-slate-400">{d.exercises.length} exs</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="border-t border-slate-50 dark:border-slate-800/80 pt-4 flex items-center justify-between">
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">{totalExercises} exercicios no total</span>
+                            <button
+                              type="button"
+                              onClick={() => handleCloneRoutine(routine)}
+                              className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:brightness-105 active:scale-95 text-white text-xs font-black rounded-xl uppercase tracking-wider cursor-pointer border-0 shadow-lg shadow-cyan-500/10 flex items-center gap-1"
+                            >
+                              <Download size={12} /> Clonar Treino
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

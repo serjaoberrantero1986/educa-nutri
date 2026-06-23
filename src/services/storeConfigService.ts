@@ -8,7 +8,9 @@ export interface StoreConfig {
   assistant_pass_cost: number;
   whatsapp_pass_cost: number;
   recipes_pass_cost: number;
+  shared_workouts_pass_cost?: number;
   monthly_premium_price: number;
+  monthly_professional_price?: number;
   whatsapp_api_url?: string;
   whatsapp_api_key?: string;
   whatsapp_instance?: string;
@@ -24,7 +26,9 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   assistant_pass_cost: 2000,
   whatsapp_pass_cost: 2000,
   recipes_pass_cost: 1200,
+  shared_workouts_pass_cost: 800,
   monthly_premium_price: 19.90,
+  monthly_professional_price: 39.90,
   whatsapp_api_url: "https://api.sportnutri.com",
   whatsapp_api_key: "sportnutri_default_key",
   whatsapp_instance: "sportnutri_bot",
@@ -87,7 +91,9 @@ export async function getStoreConfig(): Promise<StoreConfig> {
           assistant_pass_cost: typeof data.assistant_pass_cost === "number" ? data.assistant_pass_cost : DEFAULT_STORE_CONFIG.assistant_pass_cost,
           whatsapp_pass_cost: typeof data.whatsapp_pass_cost === "number" ? data.whatsapp_pass_cost : DEFAULT_STORE_CONFIG.whatsapp_pass_cost,
           recipes_pass_cost: typeof data.recipes_pass_cost === "number" ? data.recipes_pass_cost : DEFAULT_STORE_CONFIG.recipes_pass_cost,
+          shared_workouts_pass_cost: typeof data.shared_workouts_pass_cost === "number" ? data.shared_workouts_pass_cost : DEFAULT_STORE_CONFIG.shared_workouts_pass_cost,
           monthly_premium_price: typeof data.monthly_premium_price === "number" ? data.monthly_premium_price : DEFAULT_STORE_CONFIG.monthly_premium_price,
+          monthly_professional_price: typeof data.monthly_professional_price === "number" ? data.monthly_professional_price : DEFAULT_STORE_CONFIG.monthly_professional_price,
           whatsapp_api_url: data.whatsapp_api_url || DEFAULT_STORE_CONFIG.whatsapp_api_url,
           whatsapp_api_key: data.whatsapp_api_key || DEFAULT_STORE_CONFIG.whatsapp_api_key,
           whatsapp_instance: data.whatsapp_instance || DEFAULT_STORE_CONFIG.whatsapp_instance,
@@ -139,7 +145,9 @@ export async function getStoreConfig(): Promise<StoreConfig> {
         assistant_pass_cost: Number(data.assistant_pass_cost ?? DEFAULT_STORE_CONFIG.assistant_pass_cost),
         whatsapp_pass_cost: Number(data.whatsapp_pass_cost ?? DEFAULT_STORE_CONFIG.whatsapp_pass_cost),
         recipes_pass_cost: Number(data.recipes_pass_cost ?? DEFAULT_STORE_CONFIG.recipes_pass_cost),
+        shared_workouts_pass_cost: Number(data.shared_workouts_pass_cost ?? DEFAULT_STORE_CONFIG.shared_workouts_pass_cost),
         monthly_premium_price: Number(data.monthly_premium_price ?? DEFAULT_STORE_CONFIG.monthly_premium_price),
+        monthly_professional_price: Number(data.monthly_professional_price ?? DEFAULT_STORE_CONFIG.monthly_professional_price),
         whatsapp_api_url: data.whatsapp_api_url || DEFAULT_STORE_CONFIG.whatsapp_api_url,
         whatsapp_api_key: data.whatsapp_api_key || DEFAULT_STORE_CONFIG.whatsapp_api_key,
         whatsapp_instance: data.whatsapp_instance || DEFAULT_STORE_CONFIG.whatsapp_instance,

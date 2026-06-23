@@ -94,7 +94,9 @@ export default function AdminTab({
   const [assistantPassCost, setAssistantPassCost] = useState<number | string>(2000);
   const [whatsappPassCost, setWhatsappPassCost] = useState<number | string>(2000);
   const [recipesPassCost, setRecipesPassCost] = useState<number | string>(1200);
+  const [sharedWorkoutsPassCost, setSharedWorkoutsPassCost] = useState<number | string>(800);
   const [monthlyPremiumPrice, setMonthlyPremiumPrice] = useState<number | string>(19.90);
+  const [monthlyProfessionalPrice, setMonthlyProfessionalPrice] = useState<number | string>(39.90);
   const [whatsappApiUrl, setWhatsappApiUrl] = useState<string>('');
   const [whatsappApiKey, setWhatsappApiKey] = useState<string>('');
   const [whatsappInstance, setWhatsappInstance] = useState<string>('');
@@ -122,7 +124,7 @@ export default function AdminTab({
   const [searchModeSuccessMessage, setSearchModeSuccessMessage] = useState<string | null>(null);
 
   // Active sub-tab inside Admin Panel page
-  const [activeAdminSubTab, setActiveAdminSubTab] = useState<'users' | 'pricing' | 'connections' | 'foods' | 'logs'>('users');
+  const [activeAdminSubTab, setActiveAdminSubTab] = useState<'atletas' | 'vendas' | 'pricing' | 'connections' | 'foods' | 'logs'>('atletas');
 
   // Diagnostics server logs states
   const [diagnosticsLogsList, setDiagnosticsLogsList] = useState<any[]>([]);
@@ -409,7 +411,9 @@ export default function AdminTab({
       setAssistantPassCost(storeConfig.assistant_pass_cost);
       setWhatsappPassCost(storeConfig.whatsapp_pass_cost);
       setRecipesPassCost(storeConfig.recipes_pass_cost);
+      setSharedWorkoutsPassCost(storeConfig.shared_workouts_pass_cost || 800);
       setMonthlyPremiumPrice(storeConfig.monthly_premium_price);
+      setMonthlyProfessionalPrice(storeConfig.monthly_professional_price || 39.90);
       setWhatsappApiUrl(storeConfig.whatsapp_api_url || '');
       setWhatsappApiKey(storeConfig.whatsapp_api_key || '');
       setWhatsappInstance(storeConfig.whatsapp_instance || '');
@@ -446,7 +450,9 @@ export default function AdminTab({
         assistant_pass_cost: Math.max(0, parseInt(String(assistantPassCost)) || 0),
         whatsapp_pass_cost: Math.max(0, parseInt(String(whatsappPassCost)) || 0),
         recipes_pass_cost: Math.max(0, parseInt(String(recipesPassCost)) || 0),
+        shared_workouts_pass_cost: Math.max(0, parseInt(String(sharedWorkoutsPassCost)) || 800),
         monthly_premium_price: Math.max(0, parseFloat(String(monthlyPremiumPrice)) || 0),
+        monthly_professional_price: Math.max(0, parseFloat(String(monthlyProfessionalPrice)) || 0),
         whatsapp_api_url: whatsappApiUrl.trim(),
         whatsapp_api_key: whatsappApiKey.trim(),
         whatsapp_instance: whatsappInstance.trim(),
@@ -1168,15 +1174,27 @@ export default function AdminTab({
       {/* Modern Sub-Tab Navigation Bar */}
       <div className="flex border-b border-slate-155 dark:border-slate-800/80 gap-2 overflow-x-auto pb-1 select-none scrollbar-hide">
         <button
-          onClick={() => setActiveAdminSubTab('users')}
+          onClick={() => setActiveAdminSubTab('atletas')}
           className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-black text-xs transition-all border-0 cursor-pointer shrink-0 ${
-            activeAdminSubTab === 'users'
+            activeAdminSubTab === 'atletas'
               ? 'bg-gradient-to-r from-purple-600 to-purple-500 text-white shadow-md shadow-purple-500/10'
               : 'bg-slate-50 dark:bg-slate-900 text-slate-400 dark:text-slate-500 hover:text-slate-600'
           }`}
         >
           <Users size={14} />
-          Gestão de Atletas & Vendas
+          Atletas
+        </button>
+
+        <button
+          onClick={() => setActiveAdminSubTab('vendas')}
+          className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-black text-xs transition-all border-0 cursor-pointer shrink-0 ${
+            activeAdminSubTab === 'vendas'
+              ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white shadow-md shadow-emerald-500/10'
+              : 'bg-slate-50 dark:bg-slate-900 text-slate-400 dark:text-slate-500 hover:text-slate-600'
+          }`}
+        >
+          <TrendingUp size={14} />
+          Vendas
         </button>
 
         <button
@@ -1357,6 +1375,27 @@ export default function AdminTab({
             </div>
           </div>
 
+          {/* Passe 24h Biblioteca de Treinos Compartilhados */}
+          <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80 space-y-3">
+            <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+              <Dumbbell size={16} className="text-cyan-500" />
+              <span className="text-xs font-bold truncate">Passe 24h Treinos Compartilhados</span>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">Valor em NutriCoins</label>
+              <div className="relative">
+                <input 
+                  type="number"
+                  value={sharedWorkoutsPassCost}
+                  onChange={e => setSharedWorkoutsPassCost(e.target.value)}
+                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 pr-10 focus:ring-2 focus:ring-amber-500/50"
+                  min="0"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">NC</span>
+              </div>
+            </div>
+          </div>
+
           {/* Plano Premium Ilimitado Mensal (Real Money) */}
           <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80 space-y-3">
             <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
@@ -1371,6 +1410,28 @@ export default function AdminTab({
                   step="0.01"
                   value={monthlyPremiumPrice}
                   onChange={e => setMonthlyPremiumPrice(e.target.value)}
+                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 pr-10 focus:ring-2 focus:ring-amber-500/50"
+                  min="0"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">BRL</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Plano Profissional Mensal (Real Money) */}
+          <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80 space-y-3">
+            <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
+              <Crown size={16} className="text-cyan-500" />
+              <span className="text-xs font-bold truncate">Plano Profissional</span>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">Mensalidade em R$</label>
+              <div className="relative">
+                <input 
+                  type="number"
+                  step="0.01"
+                  value={monthlyProfessionalPrice}
+                  onChange={e => setMonthlyProfessionalPrice(e.target.value)}
                   className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 pr-10 focus:ring-2 focus:ring-amber-500/50"
                   min="0"
                 />
@@ -2196,8 +2257,8 @@ export default function AdminTab({
         </section>
       )}
 
-      {activeAdminSubTab === 'users' && (
-        <>
+      {activeAdminSubTab === 'vendas' && (
+        <div className="space-y-6 animate-fade-in">
           {stats && (
             <>
           {/* Bento-grid counters stats */}
@@ -2307,11 +2368,14 @@ export default function AdminTab({
               </div>
             </div>
           </section>
-        </>
+            </>
+          )}
+        </div>
       )}
 
-      {/* User administration list */}
-      <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden p-6 space-y-6">
+      {activeAdminSubTab === 'atletas' && (
+        /* User administration list */
+        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden p-6 space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="space-y-1">
             <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -2573,7 +2637,6 @@ export default function AdminTab({
           </table>
         </div>
       </div>
-        </>
       )}
 
       {/* Slide-over or Modal edit component */}
