@@ -22,6 +22,7 @@ interface WorkoutDashboardProps {
   onNavigateToTab: (tab: string) => void;
   exerciseHistory?: ExerciseLog[];
   onDeleteLog?: (id: string) => Promise<void>;
+  selectedDate?: Date;
 }
 
 type AngleView = "front" | "side_left" | "back" | "side_right";
@@ -32,7 +33,8 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
   userData,
   onNavigateToTab,
   exerciseHistory = [],
-  onDeleteLog
+  onDeleteLog,
+  selectedDate
 }) => {
   // Fatigue score mapping
   const fatigue = workoutProfile?.muscleFatigue || {
@@ -716,7 +718,7 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
       </div>
 
       <div className="border-t border-slate-100 dark:border-slate-800/80 my-8 pt-8">
-        <WorkoutHistory exerciseHistory={exerciseHistory} onDeleteLog={onDeleteLog} />
+        <WorkoutHistory exerciseHistory={exerciseHistory} onDeleteLog={onDeleteLog} selectedDate={selectedDate} />
       </div>
     </div>
   );

@@ -293,6 +293,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showStreakMenu, setShowStreakMenu] = useState(false);
+  const [weekOffset, setWeekOffset] = useState<number>(0);
+  const [confirmMealDeleteId, setConfirmMealDeleteId] = useState<string | null>(null);
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
+  const [touchEnd, setTouchEnd] = useState<{ x: number; y: number } | null>(null);
 
   const getLogDateWithCurrentTime = () => {
     const now = new Date();
@@ -916,6 +920,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const getWeekDayDate = (dayNum: number) => {
     const today = new Date();
+    today.setDate(today.getDate() + (weekOffset * 7));
     const currentDayOfWeek = today.getDay(); // 0 is Sunday
     // Map standard weekday numbers (0-6) to Saturday-first relative indices (0-6)
     const getSatFirstIndex = (d: number) => (d === 6 ? 0 : d + 1);
@@ -2074,89 +2079,155 @@ export const Dashboard: React.FC<DashboardProps> = ({
               {/* Weeks view / Months view inside a clean card */}
               <div className="w-full max-w-xl bg-slate-50/50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-[2rem] p-5 shadow-sm">
                 {streakTab === 'week' ? (
-                  <div className="flex justify-between items-center gap-2">
-                    {(() => {
-                      const todayIndex = new Date().getDay();
-                      const daysData = [
-                        { label: 'Sáb', dayNum: 6 },
-                        { label: 'Dom', dayNum: 0 },
-                        { label: 'Seg', dayNum: 1 },
-                        { label: 'Ter', dayNum: 2 },
-                        { label: 'Qua', dayNum: 3 },
-                        { label: 'Qui', dayNum: 4 },
-                        { label: 'Sex', dayNum: 5 }
-                      ];
-
-                      return daysData.map((day, idx) => {
-                        const cellDate = getWeekDayDate(day.dayNum);
-                        
-                        // Check if it's the selected date
-                        const isSelected = cellDate.getDate() === selectedDate.getDate() &&
-                                           cellDate.getMonth() === selectedDate.getMonth() &&
-                                           cellDate.getFullYear() === selectedDate.getFullYear();
-
-                        // Check if it's today
-                        const isToday = day.dayNum === todayIndex;
-                        
-                        let isCompleted = false;
-                        let isFuture = false;
-
-                        const todayRowIdx = daysData.findIndex(d => d.dayNum === todayIndex);
-                        
-                        if (idx > todayRowIdx) {
-                          isFuture = true;
-                        } else {
-                          isCompleted = allFoodLogs.some(log => {
-                            if (!log.logged_at) return false;
-                            const logDate = new Date(log.logged_at);
-                            logDate.setHours(0, 0, 0, 0);
-                            const cellDateTime = new Date(cellDate);
-                            cellDateTime.setHours(0, 0, 0, 0);
-                            return logDate.getTime() === cellDateTime.getTime();
-                          });
-                        }
-
-                        return (
-                          <div 
-                            key={idx} 
-                            onClick={() => setSelectedDate(cellDate)}
-                            className={`flex flex-col items-center gap-2 flex-1 cursor-pointer py-2 px-1 rounded-2xl transition-all ${
-                              isSelected 
-                                ? 'bg-orange-500/10 border border-orange-200/50' 
-                                : 'border border-transparent hover:bg-slate-100/50 dark:hover:bg-slate-800/30'
-                            }`}
-                          >
-                            <span className={`text-[10px] font-black tracking-wider uppercase ${
-                              isSelected 
-                                ? 'text-orange-500' 
-                                : isToday 
-                                  ? 'text-purple-600 dark:text-purple-400 font-extrabold' 
-                                  : isFuture 
-                                    ? 'text-slate-300 dark:text-slate-600' 
-                                    : 'text-slate-500 dark:text-slate-400'
-                            }`}>
-                              {day.label}
-                            </span>
-
-                            {isCompleted ? (
-                              <div className="w-9 h-9 relative flex items-center justify-center filter drop-shadow-md select-none">
-                                <Utensils 
-                                  size={34} 
-                                  style={{ fill: 'url(#shirt-grad)', stroke: '#ffffff', strokeWidth: 1.5 }} 
-                                />
-                                <div className="absolute inset-0 flex items-center justify-center pt-1 pointer-events-none">
-                                  <Check className="text-white fill-white stroke-[4]" size={10} />
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700/60">
-                                <div className="w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-700" />
-                              </div>
-                            )}
-                          </div>
-                        );
+                  <div 
+                    onTouchStart={(e) => {
+                      setTouchStart({
+                        x: e.targetTouches[0].clientX,
+                        y: e.targetTouches[0].clientY
                       });
-                    })()}
+                    }}
+                    onTouchMove={(e) => {
+                      setTouchEnd({
+                        x: e.targetTouches[0].clientX,
+                        y: e.targetTouches[0].clientY
+                      });
+                    }}
+                    onTouchEnd={() => {
+                      if (!touchStart || !touchEnd) return;
+                      const distanceX = touchStart.x - touchEnd.x;
+                      const distanceY = touchStart.y - touchEnd.y;
+                      
+                      // Check dominant horizontal swipe and threshold
+                      if (Math.abs(distanceX) > 40 && Math.abs(distanceX) > Math.abs(distanceY)) {
+                        if (distanceX > 0) {
+                          // Swipe left -> next week
+                          setWeekOffset(prev => prev + 1);
+                        } else {
+                          // Swipe right -> previous week
+                          setWeekOffset(prev => prev - 1);
+                        }
+                      }
+                      setTouchStart(null);
+                      setTouchEnd(null);
+                    }}
+                    className="overflow-hidden select-none touch-pan-y"
+                  >
+                    {/* Discreet Month Name Header for Week View */}
+                    <div className="text-center mb-4">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500/80">
+                        {(() => {
+                          const refDate = getWeekDayDate(2); // Tuesday as reference for the displayed week's month
+                          const mNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+                          return `${mNames[refDate.getMonth()]} de ${refDate.getFullYear()}`;
+                        })()}
+                      </span>
+                    </div>
+
+                    <motion.div
+                      key={weekOffset}
+                      initial={{ opacity: 0.3, x: touchStart && touchEnd ? (touchStart.x - touchEnd.x > 0 ? 20 : -20) : 0 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      className="flex justify-between items-center gap-2"
+                    >
+                      {(() => {
+                        const todayIndex = new Date().getDay();
+                        const daysData = [
+                          { label: 'Sáb', dayNum: 6 },
+                          { label: 'Dom', dayNum: 0 },
+                          { label: 'Seg', dayNum: 1 },
+                          { label: 'Ter', dayNum: 2 },
+                          { label: 'Qua', dayNum: 3 },
+                          { label: 'Qui', dayNum: 4 },
+                          { label: 'Sex', dayNum: 5 }
+                        ];
+
+                        return daysData.map((day, idx) => {
+                          const cellDate = getWeekDayDate(day.dayNum);
+                          
+                          // Check if it's the selected date
+                          const isSelected = cellDate.getDate() === selectedDate.getDate() &&
+                                             cellDate.getMonth() === selectedDate.getMonth() &&
+                                             cellDate.getFullYear() === selectedDate.getFullYear();
+
+                          // Check if it's today
+                          const isToday = cellDate.getDate() === new Date().getDate() &&
+                                           cellDate.getMonth() === new Date().getMonth() &&
+                                           cellDate.getFullYear() === new Date().getFullYear();
+                          
+                          let isCompleted = false;
+                          
+                          const realToday = new Date();
+                          realToday.setHours(0, 0, 0, 0);
+                          const cellDateTime = new Date(cellDate);
+                          cellDateTime.setHours(0, 0, 0, 0);
+                          
+                          const isFuture = cellDateTime.getTime() > realToday.getTime();
+                          
+                          if (!isFuture) {
+                            isCompleted = allFoodLogs.some(log => {
+                              if (!log.logged_at) return false;
+                              const logDate = new Date(log.logged_at);
+                              logDate.setHours(0, 0, 0, 0);
+                              return logDate.getTime() === cellDateTime.getTime();
+                            });
+                          }
+
+                          return (
+                            <div 
+                              key={idx} 
+                              onClick={() => setSelectedDate(cellDate)}
+                              className={`flex flex-col items-center gap-2 flex-1 cursor-pointer py-2 px-1 rounded-2xl transition-all ${
+                                isSelected 
+                                  ? 'bg-orange-500/10 border border-orange-200/50' 
+                                  : 'border border-transparent hover:bg-slate-100/50 dark:hover:bg-slate-800/30'
+                              }`}
+                            >
+                              <span className={`text-[10px] font-black tracking-wider uppercase ${
+                                isSelected 
+                                  ? 'text-orange-500' 
+                                  : isToday 
+                                    ? 'text-purple-600 dark:text-purple-400 font-extrabold' 
+                                    : isFuture 
+                                      ? 'text-slate-300 dark:text-slate-600' 
+                                      : 'text-slate-500 dark:text-slate-400'
+                              }`}>
+                                {day.label}
+                              </span>
+
+                              {isCompleted ? (
+                                <div className="w-9 h-9 relative flex items-center justify-center filter drop-shadow-md select-none">
+                                  <Utensils 
+                                    size={34} 
+                                    style={{ fill: 'url(#shirt-grad)', stroke: '#ffffff', strokeWidth: 1.5 }} 
+                                  />
+                                  <div className="absolute inset-0 flex items-center justify-center pt-1 pointer-events-none">
+                                    <Check className="text-white fill-white stroke-[4]" size={10} />
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700/60">
+                                  <div className="w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-700" />
+                                </div>
+                              )}
+
+                              {/* Numeric Day of Month */}
+                              <span className={`text-[11px] font-black ${
+                                isSelected 
+                                  ? 'text-orange-500' 
+                                  : isToday 
+                                    ? 'text-purple-600 dark:text-purple-400' 
+                                    : isFuture 
+                                      ? 'text-slate-300 dark:text-slate-600' 
+                                      : 'text-slate-600 dark:text-slate-400 font-bold'
+                              }`}>
+                                {cellDate.getDate()}
+                              </span>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </motion.div>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center">
@@ -2280,7 +2351,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </span>
               </div>
               <button
-                onClick={() => setSelectedDate(new Date())}
+                onClick={() => {
+                  setSelectedDate(new Date());
+                  setWeekOffset(0);
+                }}
                 className="text-xs font-black bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
               >
                 Voltar para Hoje
@@ -2399,13 +2473,38 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               <span className="text-xs font-black text-purple-600 dark:text-purple-400">
                                 {log.calories} kcal
                               </span>
-                              <button 
-                                onClick={() => handleDeleteLog(log.id)}
-                                className="text-slate-300 hover:text-red-500 transition-colors p-1"
-                                title="Excluir Registro"
-                              >
-                                <Trash2 size={13} />
-                              </button>
+                              {confirmMealDeleteId === log.id ? (
+                                <div className="flex items-center gap-1 bg-rose-500/10 border border-rose-200/20 px-2 py-0.5 rounded-xl shrink-0">
+                                  <span className="text-[9px] font-black uppercase text-rose-500 mr-1 select-none">Excluir?</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleDeleteLog(log.id);
+                                      setConfirmMealDeleteId(null);
+                                    }}
+                                    className="text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 p-1 rounded-lg border-0 bg-transparent cursor-pointer transition-all animate-pulse"
+                                    title="Confirmar exclusão"
+                                  >
+                                    <Check size={11} className="stroke-[3]" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmMealDeleteId(null)}
+                                    className="text-slate-400 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 p-1 rounded-lg border-0 bg-transparent cursor-pointer transition-all"
+                                    title="Cancelar"
+                                  >
+                                    <X size={11} className="stroke-[3]" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <button 
+                                  onClick={() => setConfirmMealDeleteId(log.id)}
+                                  className="text-slate-300 hover:text-red-500 transition-colors p-1 cursor-pointer"
+                                  title="Excluir Registro"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -2504,6 +2603,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             onNavigateToTab={setActiveTab}
             exerciseHistory={exerciseHistory}
             onDeleteLog={handleDeleteWorkoutLog}
+            selectedDate={selectedDate}
           />
         )}
 
@@ -2535,6 +2635,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <WorkoutHistory 
             exerciseHistory={exerciseHistory}
             onDeleteLog={handleDeleteWorkoutLog}
+            selectedDate={selectedDate}
           />
         )}
 

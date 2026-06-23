@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { Plus, ChevronDown, ChevronUp, Trash2, Check, X } from 'lucide-react';
 import { FoodLog } from '../../types';
 import { formatFoodName } from '../../utils';
 
@@ -21,6 +21,7 @@ export const MealCard: React.FC<MealCardProps> = ({
   onAddFood,
   onDeleteLog
 }) => {
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const mealCals = mealLogs.reduce((sum, log) => sum + log.calories, 0);
 
   return (
@@ -88,15 +89,48 @@ export const MealCard: React.FC<MealCardProps> = ({
                           <div className="font-black text-slate-700 dark:text-slate-300">{log.calories} kcal</div>
                           <div className="text-[10px] text-slate-400">P: {log.protein}g • C: {log.carbs}g • G: {log.fat}g</div>
                         </div>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteLog(log.id);
-                          }}
-                          className="text-slate-300 hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        {confirmDeleteId === log.id ? (
+                          <div 
+                            className="flex items-center gap-1 bg-rose-500/10 border border-rose-200/20 px-2 py-0.5 rounded-xl shrink-0"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <span className="text-[9px] font-black uppercase text-rose-500 mr-1 select-none">Excluir?</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteLog(log.id);
+                                setConfirmDeleteId(null);
+                              }}
+                              className="text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 p-1 rounded-lg border-0 bg-transparent cursor-pointer transition-all animate-pulse"
+                              title="Confirmar exclusão"
+                            >
+                              <Check size={11} className="stroke-[3]" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmDeleteId(null);
+                              }}
+                              className="text-slate-400 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 p-1 rounded-lg border-0 bg-transparent cursor-pointer transition-all"
+                              title="Cancelar"
+                            >
+                              <X size={11} className="stroke-[3]" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDeleteId(log.id);
+                            }}
+                            className="text-slate-300 hover:text-red-500 transition-colors p-1 cursor-pointer animate-fade-in"
+                            title="Excluir Registro"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}

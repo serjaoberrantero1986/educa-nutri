@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Droplets, Edit2, Save, Trash2, Trophy, Clock } from 'lucide-react';
+import { Droplets, Edit2, Save, Trash2, Trophy, Clock, Check, X } from 'lucide-react';
 import { WaterLog } from '../../types';
 
 interface WaterTrackerProps {
@@ -32,6 +32,7 @@ export const WaterTracker: React.FC<WaterTrackerProps> = ({
   const [isEditingWaterGoal, setIsEditingWaterGoal] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [tiltAngle, setTiltAngle] = useState(0);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const handleOrientation = (event: DeviceOrientationEvent) => {
     if (event.gamma !== null) {
@@ -327,13 +328,40 @@ export const WaterTracker: React.FC<WaterTrackerProps> = ({
                       +{log.amount_ml} ml
                     </span>
                     {onDeleteWater && (
-                      <button 
-                        onClick={() => onDeleteWater(log.id)}
-                        className="text-slate-300 hover:text-red-500 transition-colors p-1"
-                        title="Excluir Registro"
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      <div className="flex items-center">
+                        {confirmDeleteId === log.id ? (
+                          <div className="flex items-center gap-1 bg-rose-500/10 border border-rose-200/20 px-2 py-0.5 rounded-xl">
+                            <span className="text-[9px] font-black uppercase text-rose-500 mr-1">Excluir?</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onDeleteWater(log.id);
+                                setConfirmDeleteId(null);
+                              }}
+                              className="text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 p-1 rounded-lg border-0 bg-transparent cursor-pointer transition-all animate-pulse"
+                              title="Confirmar exclusão"
+                            >
+                              <Check size={11} className="stroke-[3]" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="text-slate-400 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 p-1 rounded-lg border-0 bg-transparent cursor-pointer transition-all"
+                              title="Cancelar"
+                            >
+                              <X size={11} className="stroke-[3]" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button 
+                            onClick={() => setConfirmDeleteId(log.id)}
+                            className="text-slate-300 hover:text-red-500 transition-colors p-1 cursor-pointer"
+                            title="Excluir Registro"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </motion.div>

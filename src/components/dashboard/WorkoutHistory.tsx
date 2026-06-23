@@ -10,7 +10,8 @@ import {
   Info, 
   Award,
   Search,
-  Filter
+  Filter,
+  X
 } from "lucide-react";
 import { 
   ResponsiveContainer, 
@@ -26,14 +27,17 @@ import { ExerciseLog } from "../../types";
 interface WorkoutHistoryProps {
   exerciseHistory: ExerciseLog[];
   onDeleteLog?: (id: string) => Promise<void>;
+  selectedDate?: Date;
 }
 
 export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
   exerciseHistory = [],
-  onDeleteLog
+  onDeleteLog,
+  selectedDate
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedExForChart, setSelectedExForChart] = useState<string>("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // Get unique exercise names that have logs for search drop or filter selection
   const uniqueExerciseNames = Array.from(
@@ -45,10 +49,21 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
     setSelectedExForChart(uniqueExerciseNames[0]);
   }
 
-  // Filter basic list by search term
-  const filteredLogs = exerciseHistory.filter(log => 
-    log.exercicio.toLowerCase().includes(searchTerm.toLowerCase())
-  ).sort((a, b) => new Date(b.loggedAt).getTime() - new Date(a.loggedAt).getTime());
+  // Filter basic list by search term and selectedDate
+  const filteredLogs = exerciseHistory.filter(log => {
+    const matchesSearch = log.exercicio.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    if (selectedDate) {
+      if (!log.loggedAt) return false;
+      const logDate = new Date(log.loggedAt);
+      const isSameDay = logDate.getDate() === selectedDate.getDate() &&
+                        logDate.getMonth() === selectedDate.getMonth() &&
+                        logDate.getFullYear() === selectedDate.getFullYear();
+      return matchesSearch && isSameDay;
+    }
+    
+    return matchesSearch;
+  }).sort((a, b) => new Date(b.loggedAt).getTime() - new Date(a.loggedAt).getTime());
 
   // Format datastream for recharts for the chosen chart exercise
   const chartData = exerciseHistory
@@ -193,51 +208,85 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
             </div>
 
             <div className="space-y-4">
-              {filteredLogs.map((log) => (
-                <div 
-                  key={log.id} 
-                  className="p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-3 relative group"
-                >
-                  <div className="flex justify-between items-start gap-4">
-                    <div>
-                      <h4 className="text-xs font-black text-slate-800 dark:text-white leading-tight">
-                        {log.exercicio}
-                      </h4>
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        Registrado em: {new Date(log.loggedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
-                      </p>
+              {filteredLogs.length === 0 ? (
+                <div className="p-8 text-center text-xs text-slate-400 dark:text-slate-500 bg-slate-50/50 dark:bg-slate-950/30 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
+                  Nenhum treino registrado para este dia.
+                </div>
+              ) : (
+                filteredLogs.map((log) => (
+                  <div 
+                    key={log.id} 
+                    className="p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-3 relative group"
+                  >
+                    <div className="flex justify-between items-start gap-4">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-xs font-black text-slate-800 dark:text-white leading-tight truncate">
+                          {log.exercicio}
+                        </h4>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          Registrado em: {new Date(log.loggedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                        </p>
+                      </div>
+
+                      {onDeleteLog && (
+                        <div className="shrink-0 flex items-center">
+                          {confirmDeleteId === log.id ? (
+                            <div className="flex items-center gap-1 bg-rose-500/10 border border-rose-200/20 px-2 py-1 rounded-xl">
+                              <span className="text-[9px] font-black uppercase text-rose-500 mr-1">Excluir?</span>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await onDeleteLog(log.id);
+                                  setConfirmDeleteId(null);
+                                }}
+                                className="text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 p-1 rounded-lg border-0 bg-transparent cursor-pointer transition-all"
+                                title="Confirmar exclusão"
+                              >
+                                <Check size={12} className="stroke-[3]" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteId(null)}
+                                className="text-slate-400 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 p-1 rounded-lg border-0 bg-transparent cursor-pointer transition-all"
+                                title="Cancelar"
+                              >
+                                <X size={12} className="stroke-[3]" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(log.id)}
+                              className="text-slate-400 dark:text-slate-500 hover:text-rose-500 dark:hover:text-rose-400 p-1.5 rounded-lg border border-transparent hover:border-slate-100 dark:hover:border-slate-800 bg-transparent cursor-pointer transition-all"
+                              title="Excluir treino"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
 
-                    {onDeleteLog && (
-                      <button
-                        type="button"
-                        onClick={() => onDeleteLog(log.id)}
-                        className="text-slate-300 hover:text-rose-500 p-1.5 rounded-lg border-0 bg-transparent cursor-pointer opacity-0 group-hover:opacity-100 transition-all"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                  </div>
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      {log.series.map((seriesRecord, sIdx) => (
+                        <span 
+                          key={sIdx} 
+                          className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 px-2.5 py-1 rounded-lg text-[10px] font-bold text-slate-600 dark:text-slate-300"
+                        >
+                          Série {sIdx+1}: <span className="font-mono text-cyan-600 dark:text-cyan-400">{seriesRecord.carga}kg</span> • {seriesRecord.reps} repetições
+                        </span>
+                      ))}
+                    </div>
 
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    {log.series.map((seriesRecord, sIdx) => (
-                      <span 
-                        key={sIdx} 
-                        className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 px-2.5 py-1 rounded-lg text-[10px] font-bold text-slate-600 dark:text-slate-300"
-                      >
-                        Série {sIdx+1}: <span className="font-mono text-cyan-600 dark:text-cyan-400">{seriesRecord.carga}kg</span> • {seriesRecord.reps} repetições
-                      </span>
-                    ))}
+                    <div className="flex items-center gap-4 text-[10px] font-bold text-slate-500 pt-1 border-t border-slate-100/50 dark:border-slate-800/50">
+                      <span>Subjetivo: <span className="text-cyan-500">{getRpeLabel(log.esforco)}</span></span>
+                      {log.observacoes && (
+                        <span className="truncate">Obs: <span className="italic text-slate-400 font-normal">{log.observacoes}</span></span>
+                      )}
+                    </div>
                   </div>
-
-                  <div className="flex items-center gap-4 text-[10px] font-bold text-slate-500 pt-1 border-t border-slate-100/50 dark:border-slate-800/50">
-                    <span>Subjetivo: <span className="text-cyan-500">{getRpeLabel(log.esforco)}</span></span>
-                    {log.observacoes && (
-                      <span className="truncate">Obs: <span className="italic text-slate-400 font-normal">{log.observacoes}</span></span>
-                    )}
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </>
