@@ -1,6 +1,6 @@
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getFirestore, doc, getDocFromServer, setLogLevel } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const envConfig = {
@@ -45,6 +45,9 @@ export const isFirebaseConfigured = !!envConfig && !!envConfig.apiKey && envConf
 
 const app = !getApps().length ? initializeApp(envConfig) : getApp();
 export const db = getFirestore(app, envConfig.firestoreDatabaseId);
+try {
+  setLogLevel('silent');
+} catch (e) {}
 export const auth = getAuth(app);
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
@@ -75,7 +78,7 @@ async function testConnection() {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration and internet connection.");
+      console.warn("Please check your Firebase configuration and internet connection. Running offline.");
     }
   }
 }

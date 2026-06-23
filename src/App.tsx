@@ -330,8 +330,13 @@ export default function App() {
         localStorage.setItem(`profile_${user.uid}`, JSON.stringify(newProfile));
         setProfile(newProfile);
       }
-    } catch (err) {
-      console.error('Error fetching profile from Firebase, trying local storage:', err);
+    } catch (err: any) {
+      const isOfflinePref = err instanceof Error && (err.message.toLowerCase().includes('offline') || err.message.toLowerCase().includes('unavailable') || !navigator.onLine);
+      if (isOfflinePref) {
+        console.warn('Firebase backend not reachable (offline/unavailable), utilizing local storage cache.');
+      } else {
+        console.error('Error fetching profile from Firebase, trying local storage:', err);
+      }
       const cached = localStorage.getItem(`profile_${user.uid}`);
       if (cached) {
         try {

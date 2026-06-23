@@ -291,6 +291,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [hoveredDayCalories, setHoveredDayCalories] = useState<number | null>(null);
   const [hoveredDayLabel, setHoveredDayLabel] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [showStreakMenu, setShowStreakMenu] = useState(false);
+
+  const getLogDateWithCurrentTime = () => {
+    const now = new Date();
+    const logDate = new Date(selectedDate);
+    logDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+    return logDate.toISOString();
+  };
 
   // Workout States & Handlers
   const [workoutProfile, setWorkoutProfile] = useState<UserWorkoutProfile | null>(null);
@@ -323,6 +332,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
       return;
     }
 
+    const isOfflineError = (err: any): boolean => {
+      const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+      return msg.includes('offline') || msg.includes('unavailable') || msg.includes('failed to get document') || !navigator.onLine;
+    };
+
     let uwp: UserWorkoutProfile | null = null;
     try {
       const profRef = doc(db, 'workout_profiles', user.uid);
@@ -330,9 +344,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
       if (profSnap.exists()) {
         uwp = profSnap.data() as UserWorkoutProfile;
       }
-    } catch (err) {
-      console.error("Erro ao carregar perfil de treino no Firebase:", err);
-      handleFirestoreError(err, OperationType.GET, `workout_profiles/${user.uid}`);
+    } catch (err: any) {
+      if (isOfflineError(err)) {
+        console.warn("Firestore offline - carregando perfil de treino da cache local.");
+      } else {
+        console.error("Erro ao carregar perfil de treino no Firebase:", err);
+        handleFirestoreError(err, OperationType.GET, `workout_profiles/${user.uid}`);
+      }
     }
     if (!uwp) {
       const storedProfile = localStorage.getItem(`workout_profile_${user.uid}`);
@@ -350,9 +368,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
         setActiveRoutine(r);
         localStorage.setItem(`workout_routine_${user.uid}`, JSON.stringify(r));
       }
-    } catch (err) {
-      console.error("Erro ao carregar rotina de treino no Firebase:", err);
-      handleFirestoreError(err, OperationType.GET, `workout_routines/${user.uid}`);
+    } catch (err: any) {
+      if (isOfflineError(err)) {
+        console.warn("Firestore offline - carregando rotina de treino da cache local.");
+      } else {
+        console.error("Erro ao carregar rotina de treino no Firebase:", err);
+        handleFirestoreError(err, OperationType.GET, `workout_routines/${user.uid}`);
+      }
     }
     if (!r) {
       const storedRoutine = localStorage.getItem(`workout_routine_${user.uid}`);
@@ -372,13 +394,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
       });
       setExerciseHistory(hist);
       localStorage.setItem(`workout_history_${user.uid}`, JSON.stringify(hist));
-    } catch (err) {
-      console.error("Erro ao carregar histórico de exercícios no Firebase:", err);
-      handleFirestoreError(err, OperationType.LIST, 'exercise_logs');
-      const storedHistory = localStorage.getItem(`workout_history_${user.uid}`);
-      if (storedHistory) {
-        hist = JSON.parse(storedHistory);
-        setExerciseHistory(hist);
+    } catch (err: any) {
+      if (isOfflineError(err)) {
+        console.warn("Firestore offline - carregando historico de exercicios da cache local.");
+        const storedHistory = localStorage.getItem(`workout_history_${user.uid}`);
+        if (storedHistory) {
+          hist = JSON.parse(storedHistory);
+          setExerciseHistory(hist);
+        }
+      } else {
+        console.error("Erro ao carregar histórico de exercícios no Firebase:", err);
+        handleFirestoreError(err, OperationType.LIST, 'exercise_logs');
+        const storedHistory = localStorage.getItem(`workout_history_${user.uid}`);
+        if (storedHistory) {
+          hist = JSON.parse(storedHistory);
+          setExerciseHistory(hist);
+        }
       }
     }
 
@@ -392,8 +423,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
       try {
         const profRef = doc(db, 'workout_profiles', user.uid);
         await setDoc(profRef, uwp);
-      } catch (err) {
-        console.error("Erro ao salvar perfil atualizado pós-recálculo de fadiga:", err);
+      } catch (err: any) {
+        if (isOfflineError(err)) {
+          console.warn("Firestore offline - salvando perfil atualizado de fadiga apenas na cache local.");
+        } else {
+          console.error("Erro ao salvar perfil atualizado pós-recálculo de fadiga:", err);
+        }
       }
     }
   };
@@ -1039,7 +1074,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       await deleteDoc(logRef);
       setFoodLogs(prev => {
         const next = prev.filter(log => log.id !== id);
-        const today = getLocalDateString();
+        const today = getLocalDateString(selectedDate);
         localStorage.setItem(`food_logs_${user.uid}_${today}`, JSON.stringify(next));
         return next;
       });
@@ -1052,7 +1087,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       console.warn('Error deleting food log from Firebase (offline fallback applied):', err);
       setFoodLogs(prev => {
         const next = prev.filter(log => log.id !== id);
-        const today = getLocalDateString();
+        const today = getLocalDateString(selectedDate);
         localStorage.setItem(`food_logs_${user.uid}_${today}`, JSON.stringify(next));
         return next;
       });
@@ -1076,6 +1111,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   useEffect(() => {
     if (!user?.uid) return;
     fetchLogs();
+  }, [user, selectedDate]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
     fetchRanking();
     fetchWorkoutData();
   }, [user]);
@@ -1350,15 +1389,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
       setWaterAmount(0);
       return;
     }
-    // Fetch food and water logs for today starting from local midnight
-    const localTodayStr = getLocalDateString();
-    const startOfLocalDay = new Date();
+    // Fetch food and water logs for the selectedDate starting from local midnight
+    const localTodayStr = getLocalDateString(selectedDate);
+    const startOfLocalDay = new Date(selectedDate);
     startOfLocalDay.setHours(0, 0, 0, 0);
     const startOfLocalDayISO = startOfLocalDay.toISOString();
 
+    const endOfLocalDay = new Date(selectedDate);
+    endOfLocalDay.setHours(23, 59, 59, 999);
+    const endOfLocalDayISO = endOfLocalDay.toISOString();
+
     try {
       const foodLogsCol = collection(db, 'food_logs');
-      const qFood = query(foodLogsCol, where('user_id', '==', user.uid), where('logged_at', '>=', startOfLocalDayISO));
+      const qFood = query(
+        foodLogsCol, 
+        where('user_id', '==', user.uid), 
+        where('logged_at', '>=', startOfLocalDayISO),
+        where('logged_at', '<=', endOfLocalDayISO)
+      );
       const foodSnap = await getDocs(qFood);
       const foodData: FoodLog[] = [];
       foodSnap.forEach((doc) => {
@@ -1382,7 +1430,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
       localStorage.setItem(`all_food_logs_${user.uid}`, JSON.stringify(allFoodData));
 
       const waterLogsCol = collection(db, 'water_logs');
-      const qWater = query(waterLogsCol, where('user_id', '==', user.uid), where('logged_at', '>=', startOfLocalDayISO));
+      const qWater = query(
+        waterLogsCol, 
+        where('user_id', '==', user.uid), 
+        where('logged_at', '>=', startOfLocalDayISO),
+        where('logged_at', '<=', endOfLocalDayISO)
+      );
       const waterSnap = await getDocs(qWater);
       let total = 0;
       const waterData: WaterLog[] = [];
@@ -1395,8 +1448,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
       setWaterLogs(waterData);
       setWaterAmount(total);
       localStorage.setItem(`water_logs_${user.uid}_${localTodayStr}`, JSON.stringify(waterData));
-    } catch (err) {
-      console.error('Error fetching logs from Firebase, trying local storage fallback:', err);
+    } catch (err: any) {
+      const isOfflineErr = err instanceof Error && (err.message.toLowerCase().includes('offline') || err.message.toLowerCase().includes('unavailable') || !navigator.onLine);
+      if (isOfflineErr) {
+        console.warn('Firebase backend not reachable (offline/unavailable), utilizing local storage backup for logs.');
+      } else {
+        console.error('Error fetching logs from Firebase, trying local storage fallback:', err);
+      }
       const cachedFoods = localStorage.getItem(`food_logs_${user.uid}_${localTodayStr}`);
       const cachedAllFoods = localStorage.getItem(`all_food_logs_${user.uid}`);
       const cachedWater = localStorage.getItem(`water_logs_${user.uid}_${localTodayStr}`);
@@ -1438,12 +1496,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
       id: waterId,
       user_id: user.uid,
       amount_ml: amount,
-      logged_at: new Date().toISOString(),
+      logged_at: getLogDateWithCurrentTime(),
       ...(addedVia ? { added_via: addedVia } : {})
     };
 
     const newAmount = waterAmount + amount;
-    const today = getLocalDateString();
+    const today = getLocalDateString(selectedDate);
 
     // Confetti blast when the goal is reached
     if (newAmount >= waterGoal && waterAmount < waterGoal) {
@@ -1488,7 +1546,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     if (!logToDelete) return;
 
     const newAmount = Math.max(0, waterAmount - logToDelete.amount_ml);
-    const today = getLocalDateString();
+    const today = getLocalDateString(selectedDate);
 
     if (!isFirebaseConfigured) {
       setWaterLogs(prev => prev.filter(log => log.id !== id));
@@ -1622,7 +1680,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             fat: Math.round(food.fat_per_100 * amountFactor),
             amount: food.amount || 1,
             unit: food.unit || 'gramas',
-            logged_at: new Date().toISOString()
+            logged_at: getLogDateWithCurrentTime()
           };
         });
 
@@ -1642,7 +1700,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           setFoodLogs(prev => {
             const next = [...prev, ...newLogs];
-            const today = getLocalDateString();
+            const today = getLocalDateString(selectedDate);
             localStorage.setItem(`food_logs_${user.uid}_${today}`, JSON.stringify(next));
             return next;
           });
@@ -1656,7 +1714,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           console.warn('Error adding food to Firebase (offline fallback applied):', err);
           setFoodLogs(prev => {
             const next = [...prev, ...newLogs];
-            const today = getLocalDateString();
+            const today = getLocalDateString(selectedDate);
             localStorage.setItem(`food_logs_${user.uid}_${today}`, JSON.stringify(next));
             return next;
           });
@@ -1678,7 +1736,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const executeAssistantActions = async (actions: any[], addedVia?: string) => {
     if (!actions || actions.length === 0) return;
     
-    const today = getLocalDateString();
+    const today = getLocalDateString(selectedDate);
     const newFoodLogs: FoodLog[] = [];
     
     for (const act of actions) {
@@ -1702,7 +1760,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           fat: Number(act.fat) || 0,
           amount: Number(act.amount) || 1,
           unit: act.unit || 'unidade',
-          logged_at: new Date().toISOString(),
+          logged_at: getLogDateWithCurrentTime(),
           added_via: addedVia || 'chat'
         };
         
@@ -1944,8 +2002,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <motion.button 
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => setShowStreakModal(true)}
-              className="flex items-center gap-1.5 text-orange-500 font-bold hover:bg-orange-50 dark:hover:bg-orange-950/20 px-3 py-1.5 rounded-full cursor-pointer transition-colors border border-transparent hover:border-orange-100 dark:hover:border-orange-950/40"
+              onClick={() => setShowStreakMenu(!showStreakMenu)}
+              className={`flex items-center gap-1.5 font-bold px-3 py-1.5 rounded-full cursor-pointer transition-colors border ${
+                showStreakMenu 
+                  ? 'bg-orange-100/80 dark:bg-orange-950/40 text-orange-600 dark:text-orange-450 border-orange-200/50 dark:border-orange-900/40' 
+                  : 'text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-950/20 border-transparent hover:border-orange-100/50 dark:hover:border-orange-950/40'
+              }`}
             >
               <Flame size={20} className="fill-orange-500 animate-pulse" />
               <span>{profile?.streak || 0} {profile?.streak === 1 ? 'dia' : 'dias'}</span>
@@ -1962,7 +2024,271 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </header>
 
+      {/* Streak Dropdown Menu */}
+      <AnimatePresence>
+        {showStreakMenu && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: "easeInOut" }}
+            className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-md relative z-30"
+          >
+            {/* Hidden SVG Definitions for shirt-grad */}
+            <svg width="0" height="0" className="absolute pointer-events-none">
+              <defs>
+                <linearGradient id="shirt-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#fbbf24" />
+                  <stop offset="100%" stopColor="#f97316" />
+                </linearGradient>
+              </defs>
+            </svg>
+
+            <div className="max-w-4xl mx-auto px-4 py-6 flex flex-col items-center gap-6">
+              {/* Segmented Control Selector */}
+              <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-full w-full max-w-[280px] relative">
+                <button
+                  type="button"
+                  onClick={() => setStreakTab('week')}
+                  className={`flex-1 py-1.5 text-xs font-black rounded-full transition-all relative z-10 cursor-pointer ${
+                    streakTab === 'week' 
+                      ? 'bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-300 shadow-sm' 
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                  }`}
+                >
+                  Semana
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStreakTab('month')}
+                  className={`flex-1 py-1.5 text-xs font-black rounded-full transition-all relative z-10 cursor-pointer ${
+                    streakTab === 'month' 
+                      ? 'bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-300 shadow-sm' 
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                  }`}
+                >
+                  Mês Completo
+                </button>
+              </div>
+
+              {/* Weeks view / Months view inside a clean card */}
+              <div className="w-full max-w-xl bg-slate-50/50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-[2rem] p-5 shadow-sm">
+                {streakTab === 'week' ? (
+                  <div className="flex justify-between items-center gap-2">
+                    {(() => {
+                      const todayIndex = new Date().getDay();
+                      const daysData = [
+                        { label: 'Sáb', dayNum: 6 },
+                        { label: 'Dom', dayNum: 0 },
+                        { label: 'Seg', dayNum: 1 },
+                        { label: 'Ter', dayNum: 2 },
+                        { label: 'Qua', dayNum: 3 },
+                        { label: 'Qui', dayNum: 4 },
+                        { label: 'Sex', dayNum: 5 }
+                      ];
+
+                      return daysData.map((day, idx) => {
+                        const cellDate = getWeekDayDate(day.dayNum);
+                        
+                        // Check if it's the selected date
+                        const isSelected = cellDate.getDate() === selectedDate.getDate() &&
+                                           cellDate.getMonth() === selectedDate.getMonth() &&
+                                           cellDate.getFullYear() === selectedDate.getFullYear();
+
+                        // Check if it's today
+                        const isToday = day.dayNum === todayIndex;
+                        
+                        let isCompleted = false;
+                        let isFuture = false;
+
+                        const todayRowIdx = daysData.findIndex(d => d.dayNum === todayIndex);
+                        
+                        if (idx > todayRowIdx) {
+                          isFuture = true;
+                        } else {
+                          isCompleted = allFoodLogs.some(log => {
+                            if (!log.logged_at) return false;
+                            const logDate = new Date(log.logged_at);
+                            logDate.setHours(0, 0, 0, 0);
+                            const cellDateTime = new Date(cellDate);
+                            cellDateTime.setHours(0, 0, 0, 0);
+                            return logDate.getTime() === cellDateTime.getTime();
+                          });
+                        }
+
+                        return (
+                          <div 
+                            key={idx} 
+                            onClick={() => setSelectedDate(cellDate)}
+                            className={`flex flex-col items-center gap-2 flex-1 cursor-pointer py-2 px-1 rounded-2xl transition-all ${
+                              isSelected 
+                                ? 'bg-orange-500/10 border border-orange-200/50' 
+                                : 'border border-transparent hover:bg-slate-100/50 dark:hover:bg-slate-800/30'
+                            }`}
+                          >
+                            <span className={`text-[10px] font-black tracking-wider uppercase ${
+                              isSelected 
+                                ? 'text-orange-500' 
+                                : isToday 
+                                  ? 'text-purple-600 dark:text-purple-400 font-extrabold' 
+                                  : isFuture 
+                                    ? 'text-slate-300 dark:text-slate-600' 
+                                    : 'text-slate-500 dark:text-slate-400'
+                            }`}>
+                              {day.label}
+                            </span>
+
+                            {isCompleted ? (
+                              <div className="w-9 h-9 relative flex items-center justify-center filter drop-shadow-md select-none">
+                                <Utensils 
+                                  size={34} 
+                                  style={{ fill: 'url(#shirt-grad)', stroke: '#ffffff', strokeWidth: 1.5 }} 
+                                />
+                                <div className="absolute inset-0 flex items-center justify-center pt-1 pointer-events-none">
+                                  <Check className="text-white fill-white stroke-[4]" size={10} />
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700/60">
+                                <div className="w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-700" />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center">
+                    {/* Month Selector header */}
+                    <div className="flex justify-between items-center w-full mb-4 px-1">
+                      <button
+                        type="button"
+                        onClick={() => setCalendarViewDate(new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() - 1, 1))}
+                        className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <span className="font-extrabold text-xs uppercase tracking-widest text-slate-800 dark:text-slate-200">
+                        {["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"][calendarViewDate.getMonth()]} {calendarViewDate.getFullYear()}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCalendarViewDate(new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() + 1, 1))}
+                        className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+
+                    {/* Calendar Grid Header */}
+                    <div className="grid grid-cols-7 gap-1 w-full text-center border-b border-slate-200 dark:border-slate-800/80 pb-2 mb-2">
+                      {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((lbl, i) => (
+                        <span key={i} className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase">
+                          {lbl}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Calendar Days */}
+                    <div className="grid grid-cols-7 gap-y-2 gap-x-1 w-full">
+                      {(() => {
+                        const year = calendarViewDate.getFullYear();
+                        const month = calendarViewDate.getMonth();
+                        const firstDayOfMonth = new Date(year, month, 1).getDay();
+                        const daysInMonth = new Date(year, month + 1, 0).getDate();
+                        
+                        const calendarDays = [];
+                        for (let i = 0; i < firstDayOfMonth; i++) {
+                          calendarDays.push(null);
+                        }
+                        for (let d = 1; d <= daysInMonth; d++) {
+                          calendarDays.push(d);
+                        }
+
+                        return calendarDays.map((d, idx) => {
+                          if (d === null) {
+                            return <div key={`empty-${idx}`} className="w-8 h-8" />;
+                          }
+                          
+                          const cellDate = new Date(year, month, d);
+                          cellDate.setHours(0, 0, 0, 0);
+
+                          const isSelected = cellDate.getDate() === selectedDate.getDate() &&
+                                             cellDate.getMonth() === selectedDate.getMonth() &&
+                                             cellDate.getFullYear() === selectedDate.getFullYear();
+
+                          const isCompleted = allFoodLogs.some(log => {
+                            if (!log.logged_at) return false;
+                            const logDate = new Date(log.logged_at);
+                            logDate.setHours(0, 0, 0, 0);
+                            return logDate.getTime() === cellDate.getTime();
+                          });
+
+                          return (
+                            <div 
+                              key={`day-${d}`} 
+                              onClick={() => setSelectedDate(cellDate)}
+                              className={`flex items-center justify-center w-8 h-8 relative cursor-pointer rounded-full transition-all ${
+                                isSelected 
+                                  ? 'bg-orange-500 text-white shadow-sm font-black' 
+                                  : isCompleted 
+                                    ? 'bg-orange-100 dark:bg-orange-950/20 text-orange-600 dark:text-orange-400 hover:bg-orange-200' 
+                                    : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-350'
+                              }`}
+                            >
+                              <span className="text-xs font-bold">{d}</span>
+                              {isCompleted && !isSelected && (
+                                <div className="absolute bottom-1 w-1 h-1 rounded-full bg-orange-500" />
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-8">
+        {/* Active Selected Date Banner */}
+        {(() => {
+          const today = new Date();
+          const isToday = selectedDate.getDate() === today.getDate() &&
+                          selectedDate.getMonth() === today.getMonth() &&
+                          selectedDate.getFullYear() === today.getFullYear();
+
+          if (isToday) return null;
+
+          return (
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-amber-800 dark:text-amber-250 rounded-2xl p-4 flex items-center justify-between shadow-sm"
+            >
+              <div className="flex items-center gap-2">
+                <CalendarIcon size={18} className="text-amber-600 dark:text-amber-400" />
+                <span className="text-sm font-medium">
+                  Você está visualizando e editando o dia{" "}
+                  <strong className="font-extrabold text-amber-700 dark:text-amber-300">
+                    {selectedDate.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  </strong>.
+                </span>
+              </div>
+              <button
+                onClick={() => setSelectedDate(new Date())}
+                className="text-xs font-black bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
+              >
+                Voltar para Hoje
+              </button>
+            </motion.div>
+          );
+        })()}
+
         {activeTab === 'dashboard' && (
           <>
             <SummaryHeader 
@@ -2519,391 +2845,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </motion.div>
         )}
 
-        {showStreakModal && (() => {
-          const todayIndex = new Date().getDay(); // 0 is Sunday, 1 is Monday, etc.
-          
-          const daysData = [
-            { label: 'Sáb', dayNum: 6 },
-            { label: 'Dom', dayNum: 0 },
-            { label: 'Seg', dayNum: 1 },
-            { label: 'Ter', dayNum: 2 },
-            { label: 'Qua', dayNum: 3 },
-            { label: 'Qui', dayNum: 4 },
-            { label: 'Sex', dayNum: 5 }
-          ];
 
-          const streakVal = profile?.streak || 0;
-
-          const year = calendarViewDate.getFullYear();
-          const month = calendarViewDate.getMonth();
-
-          const monthsNames = [
-            "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-            "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-          ];
-
-          const handlePrevMonth = () => {
-            setCalendarViewDate(new Date(year, month - 1, 1));
-          };
-
-          const handleNextMonth = () => {
-            setCalendarViewDate(new Date(year, month + 1, 1));
-          };
-
-          const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 = Sun, 1 = Mon, etc.
-          const daysInMonth = new Date(year, month + 1, 0).getDate();
-          
-          const calendarDays = [];
-          for (let i = 0; i < firstDayOfMonth; i++) {
-            calendarDays.push(null);
-          }
-          for (let d = 1; d <= daysInMonth; d++) {
-            calendarDays.push(d);
-          }
-
-          return (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
-              onClick={() => setShowStreakModal(false)}
-            >
-              {/* Hidden SVG Definitions for shirt-grad */}
-              <svg width="0" height="0" className="absolute pointer-events-none">
-                <defs>
-                  <linearGradient id="shirt-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" stopColor="#fbbf24" />
-                    <stop offset="100%" stopColor="#f97316" />
-                  </linearGradient>
-                </defs>
-              </svg>
-
-              <motion.div
-                initial={{ scale: 0.9, y: 30 }}
-                animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.9, y: 30 }}
-                transition={{ type: "spring", damping: 20, stiffness: 120 }}
-                className="bg-white dark:bg-[#182026] text-slate-800 dark:text-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative border-2 border-slate-100 dark:border-slate-800/80 text-center flex flex-col items-center select-none"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {/* Close Button */}
-                <button 
-                  onClick={() => setShowStreakModal(false)}
-                  className="absolute top-5 right-5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-white transition-colors cursor-pointer"
-                >
-                  <X size={20} />
-                </button>
-
-                {/* Duolingo style Flame */}
-                <motion.div 
-                  animate={{ scale: [1, 1.05, 1] }}
-                  transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-                  className="relative w-24 h-24 flex items-center justify-center mb-3 filter drop-shadow-[0_4px_12px_rgba(249,115,22,0.35)]"
-                >
-                  <svg className="w-20 h-20 overflow-visible" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <defs>
-                      <linearGradient id="duo-outside" x1="60" y1="10" x2="60" y2="110" gradientUnits="userSpaceOnUse">
-                        <stop offset="0%" stopColor="#ff9600" />
-                        <stop offset="100%" stopColor="#ff4b00" />
-                      </linearGradient>
-                      <linearGradient id="duo-inside" x1="60" y1="40" x2="60" y2="95" gradientUnits="userSpaceOnUse">
-                        <stop offset="0%" stopColor="#ffe600" />
-                        <stop offset="100%" stopColor="#ff9600" />
-                      </linearGradient>
-                    </defs>
-                    <path 
-                      d="M60 10 C40 35 25 55 25 78 C25 98 41 112 60 112 C79 112 95 98 95 78 C95 55 80 35 60 10 Z" 
-                      fill="url(#duo-outside)" 
-                      stroke="#ffffff" 
-                      strokeWidth="4"
-                      strokeLinejoin="round"
-                    />
-                    <path 
-                      d="M60 45 C52 58 45 70 45 80 C45 89 52 95 60 95 C68 95 75 89 75 80 C75 70 68 58 60 45 Z" 
-                      fill="url(#duo-inside)" 
-                    />
-                  </svg>
-                </motion.div>
-
-                {/* Big Streak Count */}
-                <h2 className="text-5xl font-black text-slate-900 dark:text-white mt-1 leading-none tracking-tight">
-                  {streakVal}
-                </h2>
-
-                {/* Subtitle */}
-                <p className="text-orange-500 dark:text-orange-400 font-extrabold text-md uppercase tracking-wider mt-1.5 mb-5">
-                  {streakVal === 1 ? 'dia na sequência!' : 'dias na sequência!'}
-                </p>
-
-                {/* Segmented Control Selector */}
-                <div className="flex p-1 bg-slate-100 dark:bg-slate-800/80 rounded-2xl w-full max-w-[260px] mb-5 relative">
-                  <button
-                    type="button"
-                    onClick={() => setStreakTab('week')}
-                    className={`flex-1 py-1.5 text-xs font-black rounded-xl transition-all relative z-10 cursor-pointer ${
-                      streakTab === 'week' 
-                        ? 'bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-400 shadow-md' 
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-                    }`}
-                  >
-                    Semana
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStreakTab('month')}
-                    className={`flex-1 py-1.5 text-xs font-black rounded-xl transition-all relative z-10 cursor-pointer ${
-                      streakTab === 'month' 
-                        ? 'bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-400 shadow-md' 
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-                    }`}
-                  >
-                    Mês Completo
-                  </button>
-                </div>
-
-                {/* Content View with Animated Switching */}
-                <div className="w-full">
-                  <AnimatePresence mode="wait">
-                    {streakTab === 'week' ? (
-                      <motion.div
-                        key="week"
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        transition={{ duration: 0.2 }}
-                        className="w-full bg-slate-50 dark:bg-[#1e293b]/40 rounded-3xl p-5 border border-slate-200 dark:border-slate-700/60 space-y-4 shadow-sm"
-                      >
-                        <div className="flex justify-between items-center px-1">
-                          {daysData.map((day, idx) => {
-                            const isToday = day.dayNum === todayIndex;
-                            
-                            let isCompleted = false;
-                            let isFrozen = false;
-                            let isFuture = false;
-
-                            const todayRowIdx = daysData.findIndex(d => d.dayNum === todayIndex);
-                            const cellDate = getWeekDayDate(day.dayNum);
-                            
-                            if (idx > todayRowIdx) {
-                              isFuture = true;
-                            } else {
-                              const hasFoodLog = allFoodLogs.some(log => {
-                                if (!log.logged_at) return false;
-                                const logDate = new Date(log.logged_at);
-                                logDate.setHours(0, 0, 0, 0);
-                                const cellDateTime = new Date(cellDate);
-                                cellDateTime.setHours(0, 0, 0, 0);
-                                return logDate.getTime() === cellDateTime.getTime();
-                              });
-                              isCompleted = hasFoodLog;
-                            }
-
-                            const dayCals = getDayCalories(cellDate);
-                            const formattedLabel = day.label === "Sáb" ? "Sábado" : day.label === "Dom" ? "Domingo" : day.label === "Seg" ? "Segunda-feira" : day.label === "Ter" ? "Terça-feira" : day.label === "Qua" ? "Quarta-feira" : day.label === "Qui" ? "Quinta-feira" : "Sexta-feira";
-
-                            return (
-                              <div key={idx} className="flex flex-col items-center gap-2 flex-1">
-                                <span className={`text-[10px] font-black tracking-wider uppercase ${isToday ? 'text-orange-500 dark:text-amber-400 font-black' : isFuture ? 'text-slate-300 dark:text-slate-600' : 'text-slate-500 dark:text-slate-400'}`}>
-                                  {day.label}
-                                </span>
-
-                                {isFrozen ? (
-                                  <div className="w-9 h-9 relative flex items-center justify-center filter drop-shadow-md" title="Sequência Congelada!">
-                                    <svg width="34" height="34" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                      {/* Outer rim of plate (ice blue) */}
-                                      <circle cx="20" cy="20" r="18" stroke="#38bdf8" strokeWidth="2.5" fill="#bae6fd" />
-                                      {/* Inner rim of plate (darker ice blue highlight) */}
-                                      <circle cx="20" cy="20" r="12" stroke="#0284c7" strokeWidth="1.5" strokeDasharray="3 1" fill="#e0f2fe" />
-                                      {/* Deepest center of plate */}
-                                      <circle cx="20" cy="20" r="8" fill="#f0f9ff" />
-                                    </svg>
-                                  </div>
-                                ) : isCompleted ? (
-                                  <div 
-                                    className="w-9 h-9 relative flex items-center justify-center filter drop-shadow-md cursor-pointer select-none"
-                                    onMouseEnter={(e) => {
-                                      setHoveredDayCalories(dayCals);
-                                      setHoveredDayLabel(formattedLabel);
-                                      setMousePos({ x: e.clientX, y: e.clientY });
-                                    }}
-                                    onMouseMove={(e) => {
-                                      setMousePos({ x: e.clientX, y: e.clientY });
-                                    }}
-                                    onMouseLeave={() => {
-                                      setHoveredDayCalories(null);
-                                      setHoveredDayLabel(null);
-                                    }}
-                                    onClick={(e) => {
-                                      setHoveredDayCalories(dayCals);
-                                      setHoveredDayLabel(formattedLabel);
-                                      setMousePos({ x: e.clientX, y: e.clientY });
-                                    }}
-                                  >
-                                    <Utensils 
-                                      size={34} 
-                                      style={{ fill: 'url(#shirt-grad)', stroke: '#ffffff', strokeWidth: 1.5 }} 
-                                    />
-                                    <div className="absolute inset-0 flex items-center justify-center pt-1 pointer-events-none">
-                                      <Check className="text-white fill-white stroke-[4]" size={10} />
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center border border-slate-200 dark:border-slate-700/60 animate-none">
-                                    <div className="w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-700" />
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-
-
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="month"
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        transition={{ duration: 0.2 }}
-                        className="w-full bg-slate-50 dark:bg-[#1e293b]/40 rounded-3xl p-5 border border-slate-200 dark:border-slate-700/60 flex flex-col items-center shadow-sm"
-                      >
-                        {/* Month Selector header */}
-                        <div className="flex justify-between items-center w-full mb-4 px-1">
-                          <button
-                            type="button"
-                            onClick={handlePrevMonth}
-                            className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 hover:scale-105 active:scale-95 transition-all cursor-pointer"
-                          >
-                            <ChevronLeft size={16} />
-                          </button>
-                          <span className="font-extrabold text-xs uppercase tracking-widest text-slate-800 dark:text-slate-200">
-                            {monthsNames[month]} {year}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={handleNextMonth}
-                            className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 hover:scale-105 active:scale-95 transition-all cursor-pointer"
-                          >
-                            <ChevronRight size={16} />
-                          </button>
-                        </div>
-
-                        {/* Calendar Grid Header */}
-                        <div className="grid grid-cols-7 gap-1 w-full text-center border-b border-slate-200 dark:border-slate-800/80 pb-2 mb-2">
-                          {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((lbl, i) => (
-                            <span key={i} className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase">
-                              {lbl}
-                            </span>
-                          ))}
-                        </div>
-
-                        {/* Calendar Days */}
-                        <div className="grid grid-cols-7 gap-y-2 gap-x-1 w-full">
-                          {calendarDays.map((d, idx) => {
-                            if (d === null) {
-                              return <div key={`empty-${idx}`} className="w-8 h-8" />;
-                            }
-                            
-                            const cellDate = new Date(year, month, d);
-                            cellDate.setHours(0, 0, 0, 0);
-
-                            const todayDate = new Date();
-                            todayDate.setHours(0, 0, 0, 0);
-
-                            const isCellToday = cellDate.getTime() === todayDate.getTime();
-                            const isCellFuture = cellDate.getTime() > todayDate.getTime();
-
-                            const hasFoodLog = allFoodLogs.some(log => {
-                              if (!log.logged_at) return false;
-                              const logDate = new Date(log.logged_at);
-                              logDate.setHours(0, 0, 0, 0);
-                              return logDate.getTime() === cellDate.getTime();
-                            });
-
-                            let isCompleted = hasFoodLog;
-                            let isFrozen = false;
-
-                            const dayCals = getDayCalories(cellDate);
-                            const monthNameAbr = monthsNames[month].substring(0, 3);
-                            const formattedLabel = `${d} de ${monthNameAbr}`;
-
-                            return (
-                              <div key={`day-${d}`} className="flex items-center justify-center w-8 h-8 relative">
-                                {isFrozen ? (
-                                  <div className="w-8 h-8 relative flex items-center justify-center filter drop-shadow-sm" title={`${d}: Sequência Congelada!`}>
-                                    <svg width="28" height="28" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                      {/* Outer rim of plate (ice blue) */}
-                                      <circle cx="20" cy="20" r="18" stroke="#38bdf8" strokeWidth="2.5" fill="#bae6fd" />
-                                      {/* Inner rim of plate (darker ice blue highlight) */}
-                                      <circle cx="20" cy="20" r="12" stroke="#0284c7" strokeWidth="1.5" strokeDasharray="3 1" fill="#e0f2fe" />
-                                      {/* Deepest center of plate */}
-                                      <circle cx="20" cy="20" r="8" fill="#f0f9ff" />
-                                    </svg>
-                                  </div>
-                                ) : isCompleted ? (
-                                  <div 
-                                    className={`w-8 h-8 relative flex items-center justify-center filter drop-shadow-sm cursor-pointer select-none ${isCellToday ? 'ring-2 ring-orange-400 rounded-full' : ''}`}
-                                    onMouseEnter={(e) => {
-                                      setHoveredDayCalories(dayCals);
-                                      setHoveredDayLabel(formattedLabel);
-                                      setMousePos({ x: e.clientX, y: e.clientY });
-                                    }}
-                                    onMouseMove={(e) => {
-                                      setMousePos({ x: e.clientX, y: e.clientY });
-                                    }}
-                                    onMouseLeave={() => {
-                                      setHoveredDayCalories(null);
-                                      setHoveredDayLabel(null);
-                                    }}
-                                    onClick={(e) => {
-                                      setHoveredDayCalories(dayCals);
-                                      setHoveredDayLabel(formattedLabel);
-                                      setMousePos({ x: e.clientX, y: e.clientY });
-                                    }}
-                                  >
-                                    <Utensils 
-                                      size={28} 
-                                      style={{ fill: 'url(#shirt-grad)', stroke: '#ffffff', strokeWidth: 1.5 }} 
-                                    />
-                                    <div className="absolute inset-0 flex items-center justify-center pt-1 pointer-events-none">
-                                      <Check className="text-white fill-white stroke-[4]" size={8} />
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div 
-                                    className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black ${
-                                      isCellToday 
-                                        ? 'bg-orange-100 dark:bg-orange-950/20 text-orange-600 dark:text-orange-400 ring-2 ring-orange-300 font-black' 
-                                        : isCellFuture 
-                                          ? 'text-slate-300 dark:text-slate-700' 
-                                          : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 hover:bg-slate-200 dark:hover:bg-slate-700'
-                                    }`}
-                                  >
-                                    {d}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {/* Modern designed button */}
-                <button
-                  onClick={() => setShowStreakModal(false)}
-                  className="w-full py-4 mt-6 bg-purple-cyan hover:brightness-105 active:scale-[0.98] text-white font-extrabold rounded-2xl text-xs uppercase tracking-widest transition-all shadow-lg shadow-purple-500/20 cursor-pointer select-none flex items-center justify-center gap-2"
-                >
-                  Continuar
-                </button>
-              </motion.div>
-            </motion.div>
-          );
-        })()}
       </AnimatePresence>
 
       <AnimatePresence>
