@@ -186,6 +186,7 @@ interface Message {
   pendingCaloricsAdjustment?: { offset: number; applied: boolean };
   quickActions?: QuickAction[];
   isTypingEffect?: boolean;
+  voceSabia?: string | null;
 }
 
 const getTodayMealReminder = (foodLogs: any[]) => {
@@ -311,6 +312,10 @@ interface NutriAssistantProps {
   setActiveTab: (tab: 'dashboard' | 'ranking' | 'profile' | 'weekly' | 'store' | 'admin' | 'evolution') => void;
   selectedMeal?: string | null;
   foodLogs?: any[];
+  workoutProfile?: any;
+  activeRoutine?: any;
+  waterAmount?: number;
+  waterGoal?: number;
 }
 
 export const NutriAssistant: React.FC<NutriAssistantProps> = ({ 
@@ -320,7 +325,11 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
   onExecuteActions, 
   setActiveTab,
   selectedMeal = null,
-  foodLogs = []
+  foodLogs = [],
+  workoutProfile = null,
+  activeRoutine = null,
+  waterAmount = 0,
+  waterGoal = 2000
 }) => {
   const isPremiumActive = profile?.premium_access_until 
     ? (profile.premium_access_until === 'unlimited' || new Date(profile.premium_access_until).getTime() > Date.now())
@@ -819,11 +828,15 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
           history: chatHistory,
           profile,
           selectedMealId: selectedMeal,
-          foodLogs: foodLogs
+          foodLogs: foodLogs,
+          workoutProfile,
+          activeRoutine,
+          waterAmount,
+          waterGoal
         });
       };
 
-      const data = await tryFetchWithClientFallback<{ response: string; actions: any[] }>(
+      const data = await tryFetchWithClientFallback<{ response: string; actions: any[]; quickActions?: any[]; voceSabia?: string | null }>(
         getApiUrl("/api/ai/chat-assistant"),
         {
           method: "POST",
@@ -833,7 +846,11 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
             history: chatHistory,
             profile: profile,
             selectedMealId: selectedMeal,
-            foodLogs: foodLogs
+            foodLogs: foodLogs,
+            workoutProfile,
+            activeRoutine,
+            waterAmount,
+            waterGoal
           })
         },
         fallbackFn
@@ -845,6 +862,8 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
         text: (data.response || "Compreendido, mestre!").replace(/\*/g, ""),
         timestamp: botMessageTime,
         pendingActions: data.actions && data.actions.length > 0 ? data.actions.map(normalizePendingAction) : undefined,
+        quickActions: data.quickActions && data.quickActions.length > 0 ? data.quickActions : undefined,
+        voceSabia: data.voceSabia || undefined,
         actionsEvaluated: false,
         isTypingEffect: true
       };
@@ -1176,6 +1195,17 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
                               )
                             ) : (
                               ""
+                            )}
+
+                            {msg.sender === "bot" && msg.voceSabia && (
+                              <div className="mt-3 p-3 rounded-xl bg-amber-50/75 dark:bg-amber-950/20 border border-amber-200/40 dark:border-amber-900/30 text-xs text-amber-900 dark:text-amber-300">
+                                <div className="font-extrabold flex items-center gap-1 mb-1 text-[11px] uppercase tracking-wider text-amber-800 dark:text-amber-400">
+                                  <span>💡 Você Sabia?</span>
+                                </div>
+                                <p className="leading-relaxed font-medium">
+                                  {msg.voceSabia.replace(/Você sabia\?\s*💡/gi, "").trim()}
+                                </p>
+                              </div>
                             )}
 
                             {msg.quickActions && msg.quickActions.length > 0 && (

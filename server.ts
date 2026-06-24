@@ -2692,7 +2692,17 @@ REGRAS CRÍTICAS:
 // Chat Assistant Conversational Endpoint
 app.post("/api/ai/chat-assistant", async (req, res) => {
   try {
-    const { message, history, profile, selectedMealId, foodLogs = [] } = req.body;
+    const { 
+      message, 
+      history, 
+      profile, 
+      selectedMealId, 
+      foodLogs = [], 
+      workoutProfile, 
+      activeRoutine, 
+      waterAmount = 0, 
+      waterGoal = 2000 
+    } = req.body;
     if (!message) {
       return res.status(400).json({ error: "O campo 'message' é obrigatório." });
     }
@@ -2746,16 +2756,93 @@ app.post("/api/ai/chat-assistant", async (req, res) => {
     const remainingCarbs = Math.max(0, targetCarbs - totalCarbsConsumed);
     const remainingFat = Math.max(0, targetFat - totalFatConsumed);
 
+    // User Biometrics & Health Goals
+    const age = profile?.user_data?.age || "";
+    const weight = profile?.user_data?.weight || "";
+    const height = profile?.user_data?.height || "";
+    const goalMap: any = {
+      hypertrophy: "Hipertrofia Muscular",
+      weightloss: "Perda de Peso / Emagrecimento",
+      recomposition: "Recomposição Corporal",
+      maintenance: "Manutenção de Peso"
+    };
+    const userGoal = goalMap[profile?.user_data?.goal] || "Não especificado";
+    const activityMap: any = {
+      sedentary: "Sedentário",
+      light: "Atividade Leve",
+      moderate: "Atividade Moderada",
+      high: "Atividade Intensa / Muito Ativo",
+      athlete: "Atleta"
+    };
+    const userActivity = activityMap[profile?.user_data?.activityLevel] || "Não especificado";
+    const medicalCond = profile?.user_data?.medicalConditions || "Nenhuma relatada";
+    const dietRestr = (profile?.user_data?.dietRestrictions && profile.user_data.dietRestrictions.length > 0)
+      ? profile.user_data.dietRestrictions.join(", ")
+      : "Nenhuma restrição alimentar";
+
+    // Water Info
+    const waterGoalText = `${waterAmount}ml de água puros ingeridos hoje (Meta diária de hidratação: ${waterGoal}ml)`;
+
+    // Workout Profile Context
+    let workoutProfileContext = "Nenhum perfil de treino registrado ou configurado ainda.";
+    if (workoutProfile) {
+      const expMap: any = { beginner: "Iniciante", intermediate: "Intermediário", advanced: "Avançado" };
+      const exp = expMap[workoutProfile.experience] || "Não especificado";
+      workoutProfileContext = `
+  • Nível de Experiência: ${exp}
+  • Dias de Treino por Semana: ${workoutProfile.daysPerWeek || 0} dias
+  • Duração Média do Treino: ${workoutProfile.workoutDuration || 0} minutos
+  • Equipamentos Disponíveis: ${(workoutProfile.equipment || []).join(", ") || "Nenhum selecionado"}
+  • Limitações/Restrições Físicas: ${(workoutProfile.limitations || []).join(", ") || "Nenhuma cadastrada"}
+  • Divisão de Treino: ${workoutProfile.divisionType || "Não especificada"}
+`;
+    }
+
+    // Active Workout Routine / Sheet (Ficha de Treino) Context
+    let workoutRoutineContext = "O usuário atualmente não possui uma ficha de treino gerada ou ativa no sistema.";
+    if (activeRoutine && Array.isArray(activeRoutine.days) && activeRoutine.days.length > 0) {
+      workoutRoutineContext = `Ficha de Treino Ativa (Divisão ${activeRoutine.division || "Personalizada"}):`;
+      activeRoutine.days.forEach((day: any) => {
+        workoutRoutineContext += `\n- ${day.name || `Dia ${day.id}`}:`;
+        if (Array.isArray(day.exercises) && day.exercises.length > 0) {
+          day.exercises.forEach((ex: any) => {
+            const seriesText = (ex.series || []).map((s: any) => `${s.carga}kg x ${s.reps} reps`).join(", ");
+            workoutRoutineContext += `\n  • ${ex.exercise?.nome || ex.exercise?.name || "Exercício"}: ${seriesText || "Séries livres"}${ex.observacoes ? ` (Obs: ${ex.observacoes})` : ""}`;
+          });
+        } else {
+          workoutRoutineContext += "\n  • Sem exercícios listados para este dia.";
+        }
+      });
+    }
+
     const apiKeyOnServer = process.env.GEMINI_API_KEY;
     const systemPrompt = `Você é o Nutri-Assistant, um assistente virtual ultra-inteligente, super animado e de conversa extremamente descontraída integrado ao 'SportNutri', um aplicativo de nutrição focado em alta performance desportiva.
-O usuário quer registrar, remover ou alterar o consumo dietético dele por meio de conversa livre ou fazer perguntas sobre suas metas e alimentos.
-Cada mensagem pode pedir para adicionar um ou mais alimentos, registrar consumo de água, remover itens registrados, tirar dúvidas nutricionais ou fazer cálculos dinâmicos com base em quanto resta para ele bater a meta do dia!
+O usuário quer registrar, remover ou alterar o consumo dietético dele por meio de conversa livre ou fazer perguntas sobre suas metas, alimentos e treinos.
+Cada mensagem pode pedir para adicionar um ou mais alimentos, registrar consumo de água, remover itens registrados, tirar dúvidas nutricionais, indicar treinos ou fazer cálculos dinâmicos com base em quanto resta para ele bater a meta do dia!
 
 CRÍTICO: Você NUNCA deve usar asteriscos (* ou **) na propriedade "response"! Nenhuma palavra ou frase deve ter asteriscos. NUNCA envie texto em negrito formatado com asteriscos. Use formatação em texto simples e limpo, sem markdown visual de ênfase. Se precisar listar coisas, use quebras de linha simples ou marcadores simples como "•" ou "-". Se desobedecer isso e emitir um único asterisco na resposta, o sistema de chat falhará.
 
 CONTEXTO DO USUÁRIO ATUAL:
 - Nome/Username: ${username}
 - Gênero/Tratamento adequado: ${genderInfo}
+- Biometria e Características Físicas:
+  • Idade: ${age ? `${age} anos` : "Não especificada"}
+  • Peso atual: ${weight ? `${weight} kg` : "Não especificado"}
+  • Altura: ${height ? `${height} cm` : "Não especificada"}
+  • Objetivo principal: ${userGoal}
+  • Nível de Atividade Diária: ${userActivity}
+  • Condições médicas: ${medicalCond}
+  • Restrições alimentares: ${dietRestr}
+
+- Hidratação de Hoje:
+  • ${waterGoalText}
+
+- Perfil de Treino Físico do Usuário:
+${workoutProfileContext}
+
+- Ficha de Treino e Exercícios Específicos Atuais do Usuário (Use isso para responder dúvidas sobre qual treino fazer, ficha de exercícios, etc.):
+${workoutRoutineContext}
+
 - Registro de Alimentos Consumidos HOJE até o momento:
 ${consumedSummary}
 - Macronutrientes e Calorias Totais Consumidas Hoje: ${totalCalsConsumed} kcal (P: ${totalProtConsumed}g, C: ${totalCarbsConsumed}g, G: ${totalFatConsumed}g)
@@ -2763,6 +2850,8 @@ ${consumedSummary}
 - Calorias e Macros RESTANTES para Bater a Meta de Hoje: ${remainingCalories} kcal (P: ${remainingProtein}g, C: ${remainingCarbs}g, G: ${remainingFat}g)
 
 Se o usuário perguntar quanto falta para bater a meta, ou o que ele pode comer para atingir as calorias/macros restantes (por exemplo, "quantas colheres de aveia com leite eu deveria ingerir para atingir minha meta de calorias restantes?"), use os dados fornecidos acima (Calorias/Macros RESTANTES) para realizar cálculos dinâmicos extremamente precisos e didáticos, informando a quantidade e a porção sugerida (ex: 1 colher de aveia tem aprox. 50 kcal e 100ml de leite integral tem 60 kcal, então ele precisaria de X colheres e Y ml). Seja ultra-preciso, direto e amigável!
+
+Se o usuário perguntar "Qual treino devo fazer hoje?" ou solicitar detalhes sobre sua ficha, você DEVE analisar a "Ficha de Treino e Exercícios Específicos Atuais do Usuário" descrita acima. Indique exatamente quais exercícios e séries pertencem àquela rotina de treino atual (ex: "Dia A - Peito e Tríceps", com os respectivos exercícios e cargas cadastrados), sem dar respostas genéricas de inventar novos exercícios aleatórios. Diga exatamente o que está na ficha dele!
 
 - Refeição Selecionada na Tela (Contexto Físico): ${selectedMealPrompt}
 - Refeições Disponíveis do Usuário (Sempre mapeie meal_type para um de seus nomes atualizados abaixo):
@@ -2923,9 +3012,35 @@ Retorne SOMENTE o JSON estruturado completo em Português do Brasil. Sem usar as
                 },
                 required: ["food_name"]
               }
+            },
+            quick_actions: {
+              type: Type.ARRAY,
+              description: "Atalhos e ações de navegação rápidas ou de feedback contextual, extremamente úteis para facilitar o dia a dia do usuário. Adicione no máximo 3 botões.",
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  label: {
+                    type: Type.STRING,
+                    description: "Texto do botão bem curto com um emoji inicial (ex: '💪 Ver Ficha', '💧 Água +300ml', '🍲 Diário', '🏆 Ver Ranking', '📈 Meu Progresso')."
+                  },
+                  action: {
+                    type: Type.STRING,
+                    description: "Deve ser 'link' para navegação entre abas ou 'faq_reply' para enviar uma mensagem de texto."
+                  },
+                  value: {
+                    type: Type.STRING,
+                    description: "Para 'link', use uma destas abas: 'workout_ficha', 'workout_today', 'workout_dashboard', 'dashboard', 'profile', 'weekly', 'evolution', 'ranking'. Para 'faq_reply', use o comando de texto (ex: 'Adicionei 300ml de água', 'Me dê uma dica de receita')."
+                  }
+                },
+                required: ["label", "action", "value"]
+              }
+            },
+            voce_sabia: {
+              type: Type.STRING,
+              description: "Uma curiosidade ou informação científica curta (1 ou 2 frases) de alto valor para o usuário sobre treino, dieta, hipertrofia ou saúde. Deve obrigatoriamente começar com 'Você sabia? 💡'. NÃO USE ASTERISCOS. Retorne vazio '' se decidir não exibir agora para manter uma frequência equilibrada."
             }
           },
-          required: ["response", "added_foods", "added_waters", "deleted_foods"]
+          required: ["response", "added_foods", "added_waters", "deleted_foods", "quick_actions", "voce_sabia"]
         },
         tools: [{ googleSearch: {} }]
       }, req);
@@ -3054,7 +3169,9 @@ Retorne SOMENTE o JSON estruturado completo em Português do Brasil. Sem usar as
       
       result = {
         response: parsed.response || "",
-        actions: actions
+        actions: actions,
+        quickActions: parsed.quick_actions || [],
+        voceSabia: parsed.voce_sabia || null
       };
     } catch (parseError: any) {
       console.warn("Falha ao analisar o JSON retornado pelo Gemini no chat assistente:", parseError.message || parseError);

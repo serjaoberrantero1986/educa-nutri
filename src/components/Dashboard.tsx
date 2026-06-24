@@ -2994,6 +2994,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
         setActiveTab={setActiveTab}
         selectedMeal={selectedMeal}
         foodLogs={foodLogs}
+        workoutProfile={workoutProfile}
+        activeRoutine={activeRoutine}
+        waterAmount={waterAmount}
+        waterGoal={waterGoal}
       />
     </div>
   );
