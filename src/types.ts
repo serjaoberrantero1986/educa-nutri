@@ -119,6 +119,7 @@ export interface Profile {
   paid_premium?: boolean;
   paid_professional?: boolean;
   role?: string | null;
+  is_professional?: boolean;
   rewarded_goals_today?: {
     calories?: boolean;
     protein?: boolean;
@@ -224,8 +225,10 @@ export interface WorkoutRoutine {
   isPrivate?: boolean; // Default true. Professional/Admin users can toggle this.
   creatorName?: string; // Author's username.
   creatorRole?: string; // Author's role.
+  creatorAvatarUrl?: string | null; // Author's profile photo.
   downloads?: number; // Number of times cloned.
   daysCount?: number; // How many days of training (3 days a,b,c or 4 days a,b,c,d, etc.)
+  level?: 'iniciante' | 'intermediario' | 'avancado';
 }
 
 export interface WorkoutSetRecord {

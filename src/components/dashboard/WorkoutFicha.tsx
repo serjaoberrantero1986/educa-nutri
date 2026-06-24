@@ -13,10 +13,13 @@ import {
   HelpCircle,
   Play,
   RotateCcw,
-  Pencil
+  Pencil,
+  Save
 } from "lucide-react";
 import { Profile, UserData, UserWorkoutProfile, WorkoutRoutine } from "../../types";
 import { WorkoutExerciseManagementModal } from "./WorkoutExerciseManagementModal";
+import { db, isFirebaseConfigured } from "../../lib/firebase";
+import { doc, setDoc } from "firebase/firestore";
 
 interface WorkoutFichaProps {
   user: any;
@@ -43,6 +46,15 @@ export const WorkoutFicha: React.FC<WorkoutFichaProps> = ({
   // States for inline training day name editing
   const [editingDayId, setEditingDayId] = useState<string | null>(null);
   const [editingDayName, setEditingDayName] = useState<string>('');
+  const [publicationName, setPublicationName] = useState(currentRoutine?.division || '');
+  const [isSaveAsNewOpen, setIsSaveAsNewOpen] = useState(false);
+  const [newRoutineName, setNewRoutineName] = useState('');
+
+  React.useEffect(() => {
+    if (currentRoutine?.division) {
+      setPublicationName(currentRoutine.division);
+    }
+  }, [currentRoutine?.division]);
 
   const getCustomMuscleGroups = () => {
     const saved = localStorage.getItem('sportnutri_custom_muscle_groups');
@@ -74,6 +86,63 @@ export const WorkoutFicha: React.FC<WorkoutFichaProps> = ({
       days: updatedDays
     });
     setEditingDayId(null);
+  };
+
+  const handleOpenSaveAsNew = () => {
+    if (!currentRoutine) return;
+    if (!profile) {
+      alert("Voce precisa estar logado para salvar treinos.");
+      return;
+    }
+    setNewRoutineName(`${publicationName || currentRoutine.division} (Copia)`);
+    setIsSaveAsNewOpen(true);
+  };
+
+  const handleConfirmSaveAsNew = async () => {
+    const finalTitle = newRoutineName.trim() !== "" ? newRoutineName.trim() : `${publicationName || currentRoutine.division} (Copia)`;
+    setIsSaveAsNewOpen(false);
+    setSaving(true);
+    try {
+      if (isFirebaseConfigured) {
+        const newId = `routine_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const inheritedPrivate = currentRoutine.isPrivate !== undefined ? currentRoutine.isPrivate : true;
+        
+        const cloned: WorkoutRoutine = {
+          ...currentRoutine,
+          id: newId,
+          user_id: profile.id,
+          division: finalTitle,
+          createdAt: new Date().toISOString(),
+          isPrivate: inheritedPrivate,
+          downloads: 0,
+          creatorName: profile.username || 'Usuario',
+          creatorRole: profile.role === 'admin' ? 'Administrador' : profile.role === 'professional' ? 'Profissional' : 'Aluno',
+          creatorAvatarUrl: profile.avatar_url || null,
+          daysCount: currentRoutine.days.length
+        };
+
+        const routineRef = doc(db, 'workout_routines', newId);
+        await setDoc(routineRef, cloned);
+
+        // Update the active training routine to make it the active routine with the new name
+        if (onUpdateWorkoutRoutine) {
+          const activeCloned: WorkoutRoutine = {
+            ...cloned,
+            id: profile.id // The active routine's ID must match the user ID
+          };
+          await onUpdateWorkoutRoutine(activeCloned);
+        }
+
+        alert(`Treino "${finalTitle}" foi salvo com sucesso como um novo treino e ativado como sua Ficha Ativa!`);
+      } else {
+        alert("A integracao com o banco de dados nao esta configurada no momento.");
+      }
+    } catch (err) {
+      console.error("Erro ao salvar como novo treino:", err);
+      alert("Ocorreu um erro ao salvar o novo treino.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Local states for core setup
@@ -787,8 +856,8 @@ export const WorkoutFicha: React.FC<WorkoutFichaProps> = ({
           </div>
 
           {/* Configuração de Compartilhamento do Treino (Privado/Público) */}
-          <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="space-y-1">
+          <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-1.5 flex-1 w-full">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-1">
                   {currentRoutine.isPrivate === false ? (
@@ -809,9 +878,80 @@ export const WorkoutFicha: React.FC<WorkoutFichaProps> = ({
                   ? "Este treino está publicado e pode ser acessado, visualizado e clonado por iniciantes e alunos na biblioteca pública."
                   : "Este treino é exclusivo e só você consegue ver. Compartilhe-o tornando-o público para alunos e outros usuários!"}
               </p>
+              
+              {/* Opções de Nível / Categoria do Treino */}
+              <div className="pt-2 w-full">
+                <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-1.5">
+                  Nível / Categoria do Treino
+                </label>
+                <div className="flex flex-row flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (onUpdateWorkoutRoutine) {
+                        await onUpdateWorkoutRoutine({
+                          ...currentRoutine,
+                          level: 'iniciante'
+                        });
+                      }
+                    }}
+                    className={`px-3 py-1.5 font-extrabold text-[10px] uppercase rounded-xl transition-all cursor-pointer border ${
+                      currentRoutine.level === 'iniciante'
+                        ? 'bg-amber-500 hover:bg-amber-600 text-white border-transparent'
+                        : 'bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-350 border-slate-200 dark:border-slate-800'
+                    }`}
+                  >
+                    Iniciante
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (onUpdateWorkoutRoutine) {
+                        await onUpdateWorkoutRoutine({
+                          ...currentRoutine,
+                          level: 'intermediario'
+                        });
+                      }
+                    }}
+                    className={`px-3 py-1.5 font-extrabold text-[10px] uppercase rounded-xl transition-all cursor-pointer border ${
+                      currentRoutine.level === 'intermediario'
+                        ? 'bg-amber-500 hover:bg-amber-600 text-white border-transparent'
+                        : 'bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-350 border-slate-200 dark:border-slate-800'
+                    }`}
+                  >
+                    Intermediário
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (onUpdateWorkoutRoutine) {
+                        await onUpdateWorkoutRoutine({
+                          ...currentRoutine,
+                          level: 'avancado'
+                        });
+                      }
+                    }}
+                    className={`px-3 py-1.5 font-extrabold text-[10px] uppercase rounded-xl transition-all cursor-pointer border ${
+                      currentRoutine.level === 'avancado'
+                        ? 'bg-amber-500 hover:bg-amber-600 text-white border-transparent'
+                        : 'bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-350 border-slate-200 dark:border-slate-800'
+                    }`}
+                  >
+                    Avançado
+                  </button>
+                </div>
+              </div>
             </div>
             
-            <div className="flex gap-2">
+            <div className="flex flex-row items-center gap-2 shrink-0 self-end md:self-center">
+              <button
+                type="button"
+                onClick={handleOpenSaveAsNew}
+                className="px-3 py-1.5 font-extrabold text-[10px] uppercase rounded-xl bg-purple-600 hover:bg-purple-700 text-white border border-transparent transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <Save size={12} />
+                Salvar Treino
+              </button>
               <button
                 type="button"
                 onClick={async () => {
@@ -824,9 +964,11 @@ export const WorkoutFicha: React.FC<WorkoutFichaProps> = ({
                     const newIsPrivate = currentRoutine.isPrivate === false ? true : false;
                     await onUpdateWorkoutRoutine({
                       ...currentRoutine,
+                      division: currentRoutine.division,
                       isPrivate: newIsPrivate,
                       creatorName: profile?.username || 'Professor',
                       creatorRole: profile?.role === 'admin' ? 'Administrador' : 'Profissional',
+                      creatorAvatarUrl: profile?.avatar_url || null,
                       daysCount: currentRoutine.days.length
                     });
                     alert(newIsPrivate 
@@ -1442,6 +1584,55 @@ export const WorkoutFicha: React.FC<WorkoutFichaProps> = ({
           }}
         />
       )}
+
+      {/* Modal para salvar como novo treino */}
+      <AnimatePresence>
+        {isSaveAsNewOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/65 backdrop-blur-xs">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4"
+            >
+              <div>
+                <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
+                  Salvar Treino
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                  Digite o nome para este treino salvo na sua biblioteca:
+                </p>
+              </div>
+
+              <input
+                type="text"
+                value={newRoutineName}
+                onChange={(e) => setNewRoutineName(e.target.value)}
+                placeholder="Ex: Treino Hipertrofia Avançado"
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl px-3.5 py-2.5 text-xs font-bold text-slate-700 dark:text-white focus:ring-1 focus:ring-cyan-500 outline-none"
+                autoFocus
+              />
+
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsSaveAsNewOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-extrabold rounded-xl uppercase tracking-wider transition-all cursor-pointer border-0"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSaveAsNew}
+                  className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:brightness-105 active:scale-95 text-white text-xs font-black rounded-xl uppercase tracking-wider transition-all cursor-pointer border-0 shadow-md shadow-cyan-500/10"
+                >
+                  Salvar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

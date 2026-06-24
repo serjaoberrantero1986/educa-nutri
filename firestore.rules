@@ -223,10 +223,10 @@ service cloud.firestore {
     }
 
     match /workout_routines/{routineId} {
-      allow get: if isSignedIn() && (isOwner(routineId) || isAdmin());
-      allow list: if isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin());
-      allow create, update: if isSignedIn() && (isOwner(routineId) || isAdmin()) && isValidWorkoutRoutine(incoming());
-      allow delete: if isSignedIn() && (isOwner(routineId) || isAdmin());
+      allow get: if isSignedIn() && (isOwner(routineId) || resource.data.isPrivate == false || isAdmin());
+      allow list: if isSignedIn() && (resource.data.user_id == request.auth.uid || resource.data.isPrivate == false || isAdmin());
+      allow create, update: if isSignedIn() && (routineId == request.auth.uid || incoming().user_id == request.auth.uid || isAdmin()) && isValidWorkoutRoutine(incoming());
+      allow delete: if isSignedIn() && (routineId == request.auth.uid || existing().user_id == request.auth.uid || isAdmin());
     }
 
     match /exercise_logs/{logId} {

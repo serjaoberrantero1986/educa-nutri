@@ -23,311 +23,20 @@ import {
   Download,
   CheckCircle2,
   Crown,
-  Coins
+  Coins,
+  Pencil,
+  Trash2,
+  Check,
+  X,
+  Play
 } from "lucide-react";
 import { Profile, UserWorkoutProfile, UserData, ExerciseLog, WorkoutRoutine } from "../../types";
 import { WorkoutHistory } from "./WorkoutHistory";
-import { collection, query, where, getDocs, updateDoc, doc } from "firebase/firestore";
+import { collection, query, where, getDocs, updateDoc, doc, deleteDoc } from "firebase/firestore";
 import { db, isFirebaseConfigured } from "../../lib/firebase";
 
 // High-quality expert-made shared workouts to display out of the box or as fallbacks
-const presetRoutines: WorkoutRoutine[] = [
-  {
-    id: "preset_abc_hypertrophy",
-    user_id: "system_preset_1",
-    createdAt: new Date().toISOString(),
-    division: "ABC Clássico - Estética Masculina",
-    creatorName: "Prof. Anderson Silva (Personal)",
-    creatorRole: "Profissional",
-    isPrivate: false,
-    downloads: 1420,
-    daysCount: 3,
-    days: [
-      {
-        id: "A",
-        name: "Treino A - Peito e Tríceps",
-        exercises: [
-          {
-            id: "peito_1",
-            reposoSem: 90,
-            series: [{ carga: 20, reps: 10 }, { carga: 24, reps: 10 }, { carga: 28, reps: 8 }],
-            exercise: {
-              nome: "Supino Reto com Barra",
-              grupoPrincipal: "peito",
-              gruposSecundarios: ["triceps", "ombros"],
-              equipamento: "pesos_livres",
-              nivel: "intermediario",
-              tipo: "composto"
-            }
-          },
-          {
-            id: "peito_2",
-            reposoSem: 60,
-            series: [{ carga: 12, reps: 12 }, { carga: 14, reps: 10 }, { carga: 14, reps: 10 }],
-            exercise: {
-              nome: "Supino Inclinado com Halteres",
-              grupoPrincipal: "peito",
-              gruposSecundarios: ["ombros"],
-              equipamento: "pesos_livres",
-              nivel: "intermediario",
-              tipo: "composto"
-            }
-          },
-          {
-            id: "peito_3",
-            reposoSem: 60,
-            series: [{ carga: 30, reps: 12 }, { carga: 35, reps: 12 }, { carga: 40, reps: 10 }],
-            exercise: {
-              nome: "Pec Deck / Voador",
-              grupoPrincipal: "peito",
-              gruposSecundarios: [],
-              equipamento: "maquina",
-              nivel: "iniciante",
-              tipo: "isolador"
-            }
-          },
-          {
-            id: "triceps_1",
-            reposoSem: 60,
-            series: [{ carga: 15, reps: 12 }, { carga: 20, reps: 10 }, { carga: 20, reps: 10 }],
-            exercise: {
-              nome: "Tríceps Pulley Polia",
-              grupoPrincipal: "triceps",
-              gruposSecundarios: [],
-              equipamento: "polia",
-              nivel: "iniciante",
-              tipo: "isolador"
-            }
-          }
-        ]
-      },
-      {
-        id: "B",
-        name: "Treino B - Costas e Bíceps",
-        exercises: [
-          {
-            id: "costas_1",
-            reposoSem: 90,
-            series: [{ carga: 40, reps: 10 }, { carga: 45, reps: 10 }, { carga: 50, reps: 8 }],
-            exercise: {
-              nome: "Puxada Aberta Pulley",
-              grupoPrincipal: "costas",
-              gruposSecundarios: ["biceps"],
-              equipamento: "polia",
-              nivel: "iniciante",
-              tipo: "composto"
-            }
-          },
-          {
-            id: "costas_2",
-            reposoSem: 60,
-            series: [{ carga: 30, reps: 12 }, { carga: 35, reps: 10 }, { carga: 40, reps: 10 }],
-            exercise: {
-              nome: "Remada Curvada com Barra",
-              grupoPrincipal: "costas",
-              gruposSecundarios: ["biceps"],
-              equipamento: "pesos_livres",
-              nivel: "intermediario",
-              tipo: "composto"
-            }
-          },
-          {
-            id: "biceps_1",
-            reposoSem: 60,
-            series: [{ carga: 10, reps: 12 }, { carga: 12, reps: 10 }, { carga: 14, reps: 10 }],
-            exercise: {
-              nome: "Rosca Direta com Barra",
-              grupoPrincipal: "biceps",
-              gruposSecundarios: [],
-              equipamento: "pesos_livres",
-              nivel: "intermediario",
-              tipo: "isolador"
-            }
-          }
-        ]
-      },
-      {
-        id: "C",
-        name: "Treino C - Pernas e Ombros",
-        exercises: [
-          {
-            id: "pernas_1",
-            reposoSem: 90,
-            series: [{ carga: 40, reps: 10 }, { carga: 50, reps: 10 }, { carga: 60, reps: 8 }],
-            exercise: {
-              nome: "Agachamento Livre com Barra",
-              grupoPrincipal: "pernas",
-              gruposSecundarios: ["lombar"],
-              equipamento: "pesos_livres",
-              nivel: "avancado",
-              tipo: "composto"
-            }
-          },
-          {
-            id: "ombros_1",
-            reposoSem: 60,
-            series: [{ carga: 10, reps: 12 }, { carga: 12, reps: 10 }, { carga: 14, reps: 10 }],
-            exercise: {
-              nome: "Desenvolvimento de Ombros Halteres",
-              grupoPrincipal: "ombros",
-              gruposSecundarios: ["triceps"],
-              equipamento: "pesos_livres",
-              nivel: "intermediario",
-              tipo: "composto"
-            }
-          },
-          {
-            id: "ombros_2",
-            reposoSem: 60,
-            series: [{ carga: 8, reps: 12 }, { carga: 8, reps: 12 }, { carga: 10, reps: 10 }],
-            exercise: {
-              nome: "Elevação Lateral Halteres",
-              grupoPrincipal: "ombros",
-              gruposSecundarios: [],
-              equipamento: "pesos_livres",
-              nivel: "iniciante",
-              tipo: "isolador"
-            }
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: "preset_abcd_power_volume",
-    user_id: "system_preset_2",
-    createdAt: new Date().toISOString(),
-    division: "ABCD - Foco em Definição e Volume",
-    creatorName: "Atleta Felipe Franco (Physique Pro)",
-    creatorRole: "Profissional",
-    isPrivate: false,
-    downloads: 2190,
-    daysCount: 4,
-    days: [
-      {
-        id: "A",
-        name: "Treino A - Peito e Ombros",
-        exercises: [
-          {
-            id: "abcd_p_1",
-            reposoSem: 90,
-            series: [{ carga: 30, reps: 10 }, { carga: 35, reps: 8 }, { carga: 40, reps: 6 }],
-            exercise: {
-              nome: "Supino Inclinado com Barra",
-              grupoPrincipal: "peito",
-              gruposSecundarios: ["ombros"],
-              equipamento: "pesos_livres",
-              nivel: "avancado",
-              tipo: "composto"
-            }
-          }
-        ]
-      },
-      {
-        id: "B",
-        name: "Treino B - Costas e Trapézio",
-        exercises: [
-          {
-            id: "abcd_c_1",
-            reposoSem: 90,
-            series: [{ carga: 50, reps: 10 }, { carga: 60, reps: 10 }, { carga: 70, reps: 8 }],
-            exercise: {
-              nome: "Remada Cavalinho Máquina",
-              grupoPrincipal: "costas",
-              gruposSecundarios: ["biceps"],
-              equipamento: "maquina",
-              nivel: "intermediario",
-              tipo: "composto"
-            }
-          }
-        ]
-      },
-      {
-        id: "C",
-        name: "Treino C - Pernas Completas",
-        exercises: [
-          {
-            id: "abcd_pe_1",
-            reposoSem: 90,
-            series: [{ carga: 60, reps: 10 }, { carga: 80, reps: 8 }, { carga: 100, reps: 6 }],
-            exercise: {
-              nome: "Agachamento Livre",
-              grupoPrincipal: "pernas",
-              gruposSecundarios: ["lombar"],
-              equipamento: "pesos_livres",
-              nivel: "avancado",
-              tipo: "composto"
-            }
-          }
-        ]
-      },
-      {
-        id: "D",
-        name: "Treino D - Bíceps, Tríceps & Abdomen",
-        exercises: [
-          {
-            id: "abcd_b_1",
-            reposoSem: 60,
-            series: [{ carga: 12, reps: 12 }, { carga: 14, reps: 10 }, { carga: 16, reps: 10 }],
-            exercise: {
-              nome: "Rosca Direta Halteres",
-              grupoPrincipal: "biceps",
-              gruposSecundarios: [],
-              equipamento: "pesos_livres",
-              nivel: "intermediario",
-              tipo: "isolador"
-            }
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: "preset_fullbody_female",
-    user_id: "system_preset_3",
-    createdAt: new Date().toISOString(),
-    division: "Feminino Completo - Tonificação e Glúteos",
-    creatorName: "Dra. Carol Costa (Personal)",
-    creatorRole: "Profissional",
-    isPrivate: false,
-    downloads: 1845,
-    daysCount: 3,
-    days: [
-      {
-        id: "A",
-        name: "Treino A - Inferiores Foco Quad/Glúteo",
-        exercises: [
-          {
-            id: "fem_1",
-            reposoSem: 90,
-            series: [{ carga: 30, reps: 12 }, { carga: 40, reps: 10 }, { carga: 55, reps: 8 }],
-            exercise: {
-              nome: "Agachamento Sumô",
-              grupoPrincipal: "pernas",
-              gruposSecundarios: ["lombar"],
-              equipamento: "pesos_livres",
-              nivel: "intermediario",
-              tipo: "composto"
-            }
-          },
-          {
-            id: "fem_2",
-            reposoSem: 60,
-            series: [{ carga: 10, reps: 12 }, { carga: 14, reps: 10 }, { carga: 18, reps: 10 }],
-            exercise: {
-              nome: "Afundo com Halteres",
-              grupoPrincipal: "pernas",
-              gruposSecundarios: [],
-              equipamento: "pesos_livres",
-              nivel: "iniciante",
-              tipo: "composto"
-            }
-          }
-        ]
-      }
-    ]
-  }
-];
+const presetRoutines: WorkoutRoutine[] = [];
 
 interface WorkoutDashboardProps {
   profile: Profile | null;
@@ -362,6 +71,21 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
   const [loadingLibrary, setLoadingLibrary] = useState<boolean>(false);
   const [sharedRoutines, setSharedRoutines] = useState<WorkoutRoutine[]>([]);
   const [activatingPass, setActivatingPass] = useState<boolean>(false);
+  const [ownRoutines, setOwnRoutines] = useState<WorkoutRoutine[]>([]);
+  const [loadingOwn, setLoadingOwn] = useState<boolean>(false);
+  const [deletingRoutineId, setDeletingRoutineId] = useState<string | null>(null);
+  const [editingRoutineId, setEditingRoutineId] = useState<string | null>(null);
+  const [editingRoutineTitle, setEditingRoutineTitle] = useState<string>("");
+  const [savedRoutineId, setSavedRoutineId] = useState<string | null>(null);
+
+  const [librarySortField, setLibrarySortField] = useState<'division' | 'createdAt'>('createdAt');
+  const [librarySortDirection, setLibrarySortDirection] = useState<'asc' | 'desc'>('desc');
+  const [libraryCurrentPage, setLibraryCurrentPage] = useState<number>(1);
+
+  // Reset page when search, level filter or sort changes
+  useEffect(() => {
+    setLibraryCurrentPage(1);
+  }, [searchTerm, filterLevel, librarySortField, librarySortDirection]);
 
   // Check if access is active
   const isPremiumActive = profile?.premium_access_until 
@@ -390,7 +114,11 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
             const data = doc.data() as WorkoutRoutine;
             // Prevent duplicate preset loading if we store them in DB as well
             if (!data.id.startsWith("preset_")) {
-              routinesFromFirestore.push(data);
+              const role = (data.creatorRole || "").toLowerCase();
+              const isProfOrAdmin = role === 'profissional' || role === 'professional' || role === 'administrador' || role === 'admin';
+              if (isProfOrAdmin) {
+                routinesFromFirestore.push(data);
+              }
             }
           });
           setSharedRoutines(routinesFromFirestore);
@@ -404,6 +132,82 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
 
     fetchSharedWorkouts();
   }, [subTab, hasLibraryAccess]);
+
+  // Load professional's own created workouts from firestore if firebase is configured
+  useEffect(() => {
+    const fetchOwnRoutines = async () => {
+      if (!profile?.id) return;
+      setLoadingOwn(true);
+      try {
+        if (isFirebaseConfigured) {
+          const qOwn = collection(db, 'workout_routines');
+          const querySnapshot = await getDocs(qOwn);
+          const routines: WorkoutRoutine[] = [];
+          querySnapshot.forEach((doc) => {
+            const data = doc.data() as WorkoutRoutine;
+            // Filter out system presets if any
+            if (!data.id.startsWith("preset_")) {
+              if (data.user_id === profile.id) {
+                routines.push(data);
+              }
+            }
+          });
+          setOwnRoutines(routines);
+        }
+      } catch (err) {
+        console.error("Erro ao carregar treinos:", err);
+      } finally {
+        setLoadingOwn(false);
+      }
+    };
+
+    fetchOwnRoutines();
+  }, [subTab, profile?.id, profile?.role]);
+
+  const handleSaveOwnRoutineTitle = async (routineId: string) => {
+    if (!editingRoutineTitle || editingRoutineTitle.trim() === "") return;
+
+    try {
+      if (isFirebaseConfigured) {
+        const routineRef = doc(db, 'workout_routines', routineId);
+        await updateDoc(routineRef, {
+          division: editingRoutineTitle.trim()
+        });
+
+        // Update local states
+        setOwnRoutines(prev => prev.map(r => r.id === routineId ? { ...r, division: editingRoutineTitle.trim() } : r));
+        setSharedRoutines(prev => prev.map(r => r.id === routineId ? { ...r, division: editingRoutineTitle.trim() } : r));
+        
+        // Show the green saved state
+        setSavedRoutineId(routineId);
+        setEditingRoutineId(null);
+        setTimeout(() => {
+          setSavedRoutineId(null);
+        }, 1500);
+      }
+    } catch (err) {
+      console.error("Erro ao atualizar título do treino:", err);
+    }
+  };
+
+  const handleDeleteOwnRoutine = async (routineId: string) => {
+    try {
+      if (isFirebaseConfigured) {
+        const routineRef = doc(db, 'workout_routines', routineId);
+        await deleteDoc(routineRef);
+
+        // Update local states
+        setOwnRoutines(prev => prev.filter(r => r.id !== routineId));
+        setSharedRoutines(prev => prev.filter(r => r.id !== routineId));
+        alert("Treino excluído com sucesso!");
+      }
+    } catch (err) {
+      console.error("Erro ao excluir treino:", err);
+      alert("Ocorreu um erro ao excluir o treino.");
+    } finally {
+      setDeletingRoutineId(null);
+    }
+  };
 
   const handleBuyLibraryPass = async () => {
     if (!profile || !onUpdateProfile) return;
@@ -441,10 +245,7 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
 
   const handleCloneRoutine = async (routine: WorkoutRoutine) => {
     if (!profile) return;
-    const confirmClone = window.confirm(
-      `Deseja clonar o treino "${routine.division}" de autoria de "${routine.creatorName || 'Profissional'}"? Isto irá substituir sua ficha de treino ativa atual.`
-    );
-    if (!confirmClone) return;
+    const isOwn = routine.user_id === profile.id;
 
     if (onUpdateWorkoutRoutine) {
       try {
@@ -455,13 +256,13 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
           user_id: profile.id,
           createdAt: new Date().toISOString(),
           isPrivate: true, // Imported copy is private to user by default
-          downloads: (routine.downloads || 0) + 1
+          downloads: (routine.downloads || 0) + (isOwn ? 0 : 1)
         };
 
         await onUpdateWorkoutRoutine(cloned);
 
-        // Increment downloads in Firestore if possible
-        if (isFirebaseConfigured && !routine.id.startsWith("preset_")) {
+        // Increment downloads in Firestore if possible and not own
+        if (isFirebaseConfigured && !routine.id.startsWith("preset_") && !isOwn) {
           try {
             const routineRef = doc(db, 'workout_routines', routine.user_id);
             await updateDoc(routineRef, {
@@ -472,12 +273,16 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
           }
         }
 
-        alert(`Treino de "${routine.creatorName}" clonado com sucesso! Agora você já pode iniciar seu treino na aba "Treinar".`);
-        // Navigate to the train tab or just stay on dashboard
-        onNavigateToTab("workout_today");
+        const successMessage = isOwn 
+          ? `Treino "${routine.division}" ativado com sucesso! Redirecionando para sua Ficha Ativa.`
+          : `Treino de "${routine.creatorName}" importado e ativado com sucesso! Redirecionando para sua Ficha Ativa.`;
+
+        alert(successMessage);
+        // Navigate to the Ficha tab to see the updated routine immediately
+        onNavigateToTab("workout_ficha");
       } catch (err) {
-        console.error("Erro ao clonar treino:", err);
-        alert("Ocorreu um erro ao clonar este treino. Tente novamente.");
+        console.error("Erro ao importar treino:", err);
+        alert("Ocorreu um erro ao importar este treino. Tente novamente.");
       }
     }
   };
@@ -923,25 +728,24 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
           onClick={() => setSubTab("biometrics")}
           className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border-0 ${
             subTab === "biometrics"
-              ? "bg-white dark:bg-slate-900 text-cyan-500 shadow-sm"
+              ? "bg-cyan-500 text-white shadow-md shadow-cyan-500/25"
               : "bg-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
           }`}
         >
           <Dumbbell size={14} />
-          Painel de Biometria
+          Biometria
         </button>
         <button
           type="button"
           onClick={() => setSubTab("library")}
           className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border-0 ${
             subTab === "library"
-              ? "bg-white dark:bg-slate-900 text-cyan-500 shadow-sm"
+              ? "bg-cyan-500 text-white shadow-md shadow-cyan-500/25"
               : "bg-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
           }`}
         >
           <Users size={14} />
-          Biblioteca Pública
-          {isProfessional && <span className="ml-1.5 bg-cyan-500 text-white text-[8px] px-1.5 py-0.5 rounded-md">Pro</span>}
+          Biblioteca
         </button>
       </div>
 
@@ -1256,153 +1060,463 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
             </div>
           ) : (
             /* Acesso Concedido - Mostra a Biblioteca Completa */
-            <div className="space-y-6">
-              <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div>
-                    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-emerald-500 tracking-wider bg-emerald-50 dark:bg-emerald-950/20 px-2.5 py-1 rounded-full border border-emerald-150">
-                      <Unlock size={10} /> Acesso Ativo
-                    </span>
-                    <h3 className="text-lg font-black text-slate-900 dark:text-white mt-1">Biblioteca Pública de Treinos</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                      Navegue por treinos completos criados por profissionais e clique para importar diretamente para a sua ficha!
-                    </p>
-                  </div>
-                </div>
+            (() => {
+              const combined = [...presetRoutines, ...ownRoutines, ...sharedRoutines];
+              const unique = combined
+                .filter((routine) => !profile || routine.id !== profile.id)
+                .filter((routine, index, self) =>
+                  self.findIndex((r) => r.id === routine.id) === index
+                );
 
-                {/* Search and filter bar */}
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-2">
-                  <div className="sm:col-span-8 relative">
-                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                    <input
-                      type="text"
-                      placeholder="Buscar por divisao muscular (ex: ABC, Peito, Pernas)..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-bold text-slate-700 dark:text-white focus:ring-1 focus:ring-cyan-500 outline-none"
-                    />
-                  </div>
+              const filtered = unique.filter((routine) => {
+                const matchesSearch = 
+                  routine.division.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                  (routine.creatorName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+                  routine.days.some(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
+                
+                if (filterLevel === "all") return matchesSearch;
+                
+                const matchesLevel = 
+                  routine.level === filterLevel ||
+                  routine.days.some(d => 
+                    d.exercises.some(e => e.exercise.nivel === filterLevel)
+                  );
+                return matchesSearch && matchesLevel;
+              });
 
-                  <div className="sm:col-span-4">
-                    <select
-                      value={filterLevel}
-                      onChange={(e) => setFilterLevel(e.target.value)}
-                      className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-bold text-slate-700 dark:text-white outline-none cursor-pointer"
-                    >
-                      <option value="all">Todos os Niveis</option>
-                      <option value="iniciante">Iniciante</option>
-                      <option value="intermediario">Intermediario</option>
-                      <option value="avancado">Avancado</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
+              const sorted = [...filtered].sort((a, b) => {
+                if (librarySortField === 'division') {
+                  const nameA = (a.division || '').trim().toLowerCase();
+                  const nameB = (b.division || '').trim().toLowerCase();
+                  return librarySortDirection === 'asc' 
+                    ? nameA.localeCompare(nameB) 
+                    : nameB.localeCompare(nameA);
+                } else {
+                  const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                  const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                  return librarySortDirection === 'asc' 
+                    ? dateA - dateB 
+                    : dateB - dateA;
+                }
+              });
 
-              {/* Grid of Workouts */}
-              {loadingLibrary ? (
-                <div className="text-center py-12 text-slate-500">Carregando treinos...</div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {[...presetRoutines, ...sharedRoutines]
-                    .filter((routine) => {
-                      const matchesSearch = 
-                        routine.division.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        (routine.creatorName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        routine.days.some(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()));
-                      
-                      if (filterLevel === "all") return matchesSearch;
-                      
-                      const matchesLevel = routine.days.some(d => 
-                        d.exercises.some(e => e.exercise.nivel === filterLevel)
-                      );
-                      return matchesSearch && matchesLevel;
-                    })
-                    .map((routine) => {
-                      const muscles = Array.from(new Set(
-                        routine.days.flatMap(d => 
-                          d.exercises.flatMap(e => [
-                            e.exercise.grupoPrincipal, 
-                            ...(e.exercise.gruposSecundarios || [])
-                          ])
-                        )
-                      )).filter(Boolean);
+              const itemsPerPage = 10;
+              const totalPages = Math.ceil(sorted.length / itemsPerPage);
+              const paginated = sorted.slice(
+                (libraryCurrentPage - 1) * itemsPerPage,
+                libraryCurrentPage * itemsPerPage
+              );
 
-                      const formatMuscle = (m: string) => {
-                        const map: { [key: string]: string } = {
-                          peito: "Peito", costas: "Costas", pernas: "Pernas",
-                          biceps: "Biceps", triceps: "Triceps", ombros: "Ombros",
-                          abdome: "Abdomen", lombar: "Lombar"
-                        };
-                        return map[m] || m;
-                      };
+              return (
+                <div className="space-y-6">
+                  <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-emerald-500 tracking-wider bg-emerald-50 dark:bg-emerald-950/20 px-2.5 py-1 rounded-full border border-emerald-150">
+                          <Unlock size={10} /> Acesso Ativo
+                        </span>
+                        <h3 className="text-lg font-black text-slate-900 dark:text-white mt-1">Biblioteca Pública de Treinos</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                          Navegue por treinos completos criados por profissionais e clique para importar diretamente para a sua ficha!
+                        </p>
+                      </div>
+                    </div>
 
-                      const totalExercises = routine.days.reduce((acc, d) => acc + d.exercises.length, 0);
+                    {/* Search and filter bar */}
+                    <div className="space-y-4 pt-2">
+                      <div className="relative">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                        <input
+                          type="text"
+                          placeholder="Buscar por divisao muscular (ex: ABC, Peito, Pernas)..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-bold text-slate-700 dark:text-white focus:ring-1 focus:ring-cyan-500 outline-none"
+                        />
+                      </div>
 
-                      return (
-                        <div 
-                          key={routine.id}
-                          className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2rem] p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between space-y-4"
-                        >
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-cyan-600 bg-cyan-50 dark:bg-cyan-950/20 px-2 py-0.5 rounded-md border border-cyan-100/30">
-                                {routine.daysCount || routine.days.length} dias ({routine.days.map(d => d.id).join(", ")})
-                              </span>
-                              
-                              <span className="flex items-center gap-1 text-[10px] text-slate-400">
-                                <Download size={10} /> {routine.downloads || 0} imports
-                              </span>
-                            </div>
-
-                            <div className="space-y-1">
-                              <h4 className="text-sm font-black text-slate-900 dark:text-white">
-                                {routine.division}
-                              </h4>
-                              
-                              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-bold">
-                                <div className="w-5 h-5 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center shrink-0">
-                                  <User size={10} className="text-slate-500" />
-                                </div>
-                                <span className="text-[11px] truncate">{routine.creatorName || "Profissional Parceiro"}</span>
-                                <span className="bg-yellow-400/20 text-yellow-500 dark:text-yellow-400 text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase border border-yellow-400/30">
-                                  {routine.creatorRole || "Profissional"}
-                                </span>
-                              </div>
-                            </div>
-
-                            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-                              Distribuicao muscular: {muscles.map(formatMuscle).join(", ") || "Geral"}
-                            </p>
-
-                            <div className="bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl space-y-2">
-                              <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Resumo do Cronograma:</span>
-                              <div className="text-[11px] text-slate-600 dark:text-slate-400 space-y-1 font-semibold leading-relaxed">
-                                {routine.days.map(d => (
-                                  <div key={d.id} className="flex justify-between">
-                                    <span>Treino {d.id}: {d.name}</span>
-                                    <span className="text-[9px] text-slate-400">{d.exercises.length} exs</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="border-t border-slate-50 dark:border-slate-800/80 pt-4 flex items-center justify-between">
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">{totalExercises} exercicios no total</span>
-                            <button
-                              type="button"
-                              onClick={() => handleCloneRoutine(routine)}
-                              className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:brightness-105 active:scale-95 text-white text-xs font-black rounded-xl uppercase tracking-wider cursor-pointer border-0 shadow-lg shadow-cyan-500/10 flex items-center gap-1"
-                            >
-                              <Download size={12} /> Clonar Treino
-                            </button>
-                          </div>
+                      {/* Filter and Sorting Buttons Row */}
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-1">
+                        {/* Level Filters */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setFilterLevel("all")}
+                            className={`px-3 py-1.5 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all cursor-pointer border ${
+                              filterLevel === "all"
+                                ? 'bg-cyan-500 hover:bg-cyan-600 text-white border-transparent shadow-sm'
+                                : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 border-slate-150 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                            }`}
+                          >
+                            Todos os Níveis
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFilterLevel("iniciante")}
+                            className={`px-3 py-1.5 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all cursor-pointer border ${
+                              filterLevel === "iniciante"
+                                ? 'bg-cyan-500 hover:bg-cyan-600 text-white border-transparent shadow-sm'
+                                : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 border-slate-150 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                            }`}
+                          >
+                            Iniciante
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFilterLevel("intermediario")}
+                            className={`px-3 py-1.5 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all cursor-pointer border ${
+                              filterLevel === "intermediario"
+                                ? 'bg-cyan-500 hover:bg-cyan-600 text-white border-transparent shadow-sm'
+                                : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 border-slate-150 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                            }`}
+                          >
+                            Intermediário
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFilterLevel("avancado")}
+                            className={`px-3 py-1.5 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all cursor-pointer border ${
+                              filterLevel === "avancado"
+                                ? 'bg-cyan-500 hover:bg-cyan-600 text-white border-transparent shadow-sm'
+                                : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 border-slate-150 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                            }`}
+                          >
+                            Avançado
+                          </button>
                         </div>
-                      );
-                    })}
+
+                        {/* Sorting Buttons */}
+                        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                          <span className="text-slate-400 dark:text-slate-500 font-semibold mr-0.5">Ordenar:</span>
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (librarySortField === 'division') {
+                                setLibrarySortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+                              } else {
+                                setLibrarySortField('division');
+                                setLibrarySortDirection('asc');
+                              }
+                            }}
+                            className={`px-3 py-1.5 rounded-xl font-medium transition-all duration-200 flex items-center gap-1 border cursor-pointer ${
+                              librarySortField === 'division'
+                                ? 'bg-purple-100 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800/50 text-purple-700 dark:text-purple-300 shadow-sm font-semibold'
+                                : 'bg-slate-50 dark:bg-slate-800/50 border-slate-150 dark:border-slate-700/50 text-slate-600 dark:text-slate-300 hover:bg-slate-100'
+                            }`}
+                          >
+                            <span>A-Z</span>
+                            {librarySortField === 'division' && (librarySortDirection === 'asc' ? ' (Crescente ▲)' : ' (Decrescente ▼)')}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (librarySortField === 'createdAt') {
+                                setLibrarySortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+                              } else {
+                                setLibrarySortField('createdAt');
+                                setLibrarySortDirection('desc');
+                              }
+                            }}
+                            className={`px-3 py-1.5 rounded-xl font-medium transition-all duration-200 flex items-center gap-1 border cursor-pointer ${
+                              librarySortField === 'createdAt'
+                                ? 'bg-purple-100 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800/50 text-purple-700 dark:text-purple-300 shadow-sm font-semibold'
+                                : 'bg-slate-50 dark:bg-slate-800/50 border-slate-150 dark:border-slate-700/50 text-slate-600 dark:text-slate-300 hover:bg-slate-100'
+                            }`}
+                          >
+                            <span>Data</span>
+                            {librarySortField === 'createdAt' && (librarySortDirection === 'asc' ? ' (Crescente ▲)' : ' (Decrescente ▼)')}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Grid of Workouts */}
+                  {loadingLibrary ? (
+                    <div className="text-center py-12 text-slate-500">Carregando treinos...</div>
+                  ) : paginated.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400 font-medium bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6">
+                      Nenhum treino encontrado nesta categoria ou busca.
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {paginated.map((routine) => {
+                          const muscles = Array.from(new Set(
+                            routine.days.flatMap(d => 
+                              d.exercises.flatMap(e => [
+                                e.exercise.grupoPrincipal, 
+                                ...(e.exercise.gruposSecundarios || [])
+                              ])
+                            )
+                          )).filter(Boolean);
+
+                          const formatMuscle = (m: string) => {
+                            const map: { [key: string]: string } = {
+                              peito: "Peito", costas: "Costas", pernas: "Pernas",
+                              biceps: "Bíceps", triceps: "Tríceps", ombros: "Ombros",
+                              abdome: "Abdômen", lombar: "Lombar", abdome_lombar: "Abdômen/Lombar"
+                            };
+                            
+                            // Check if we can map custom muscle group IDs from localStorage
+                            const customMusclesRaw = localStorage.getItem('sportnutri_custom_muscle_groups');
+                            if (customMusclesRaw) {
+                              try {
+                                const parsed = JSON.parse(customMusclesRaw) as { id: string; label: string }[];
+                                const customMatch = parsed.find(item => item.id === m);
+                                if (customMatch) return customMatch.label;
+                              } catch (e) {
+                                console.error("Erro ao ler grupos musculares customizados:", e);
+                              }
+                            }
+                            
+                            return map[m] || m;
+                          };
+
+                          const totalExercises = routine.days.reduce((acc, d) => acc + d.exercises.length, 0);
+                          const isOwnCard = profile && (routine.user_id === profile.id || (profile.role === 'admin' && !routine.id.startsWith("preset_")));
+                          const isActive = routine.id === profile?.id || routine.id === currentRoutine?.id;
+
+                          return (
+                            <div 
+                              key={routine.id}
+                              className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2rem] p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between space-y-4"
+                            >
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center flex-wrap gap-1.5 shrink-0">
+                                    <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-cyan-600 bg-cyan-50 dark:bg-cyan-950/20 px-2 py-0.5 rounded-md border border-cyan-100/30">
+                                      {routine.daysCount || routine.days.length} dias ({routine.days.map(d => d.id).join(", ")})
+                                    </span>
+                                    {routine.level && (
+                                      <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-amber-600 bg-amber-50 dark:bg-amber-950/20 px-2 py-0.5 rounded-md border border-amber-100/30">
+                                        {routine.level === 'iniciante' ? 'Iniciante' : routine.level === 'intermediario' ? 'Intermediário' : 'Avançado'}
+                                      </span>
+                                    )}
+                                    {isOwnCard && (
+                                      <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border ${
+                                        routine.isPrivate 
+                                          ? "text-slate-500 bg-slate-50 dark:bg-slate-950/20 border-slate-200/50" 
+                                          : "text-purple-600 bg-purple-50 dark:bg-purple-950/20 border-purple-100/30"
+                                      }`}>
+                                        {routine.isPrivate ? "Privado" : "Público"}
+                                      </span>
+                                    )}
+                                  </div>
+                                  
+                                  <span className="flex items-center gap-1 text-[10px] text-slate-400 font-medium">
+                                    <Download size={10} /> {routine.downloads || 0} importações
+                                  </span>
+                                </div>
+
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    {editingRoutineId === routine.id ? (
+                                      <div className="flex items-center gap-1.5 w-full">
+                                        <input
+                                          type="text"
+                                          value={editingRoutineTitle}
+                                          onChange={(e) => setEditingRoutineTitle(e.target.value)}
+                                          autoFocus
+                                          onFocus={(e) => e.target.select()}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              handleSaveOwnRoutineTitle(routine.id);
+                                            } else if (e.key === 'Escape') {
+                                              setEditingRoutineId(null);
+                                            }
+                                          }}
+                                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-white focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSaveOwnRoutineTitle(routine.id)}
+                                          className="p-1.5 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg transition-all cursor-pointer flex items-center justify-center shrink-0 border-0 bg-transparent"
+                                          title="Salvar"
+                                        >
+                                          <Check size={14} className="stroke-[3]" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingRoutineId(null)}
+                                          className="p-1.5 text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-950/20 rounded-lg transition-all cursor-pointer flex items-center justify-center shrink-0 border-0 bg-transparent"
+                                          title="Cancelar"
+                                        >
+                                          <X size={14} className="stroke-[3]" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                          <h4 className={`text-sm font-black transition-colors duration-200 ${
+                                            savedRoutineId === routine.id 
+                                              ? "text-emerald-500 dark:text-emerald-400 font-black scale-102" 
+                                              : "text-slate-900 dark:text-white"
+                                          }`}>
+                                            {routine.division}
+                                          </h4>
+                                          {savedRoutineId === routine.id && (
+                                            <div className="flex items-center gap-1 text-emerald-500 dark:text-emerald-400 font-bold text-[10px] shrink-0 animate-pulse">
+                                              <Check size={12} className="stroke-[3.5] text-emerald-500" />
+                                              <span className="uppercase tracking-wider font-black">Salvo!</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                        
+                                        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-bold">
+                                          <div className="w-6 h-6 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center shrink-0 overflow-hidden border border-slate-200/50 dark:border-slate-800/80">
+                                            {routine.creatorAvatarUrl ? (
+                                              <img 
+                                                src={routine.creatorAvatarUrl} 
+                                                alt={routine.creatorName || "Criador"} 
+                                                className="w-full h-full object-cover"
+                                                referrerPolicy="no-referrer"
+                                              />
+                                            ) : (
+                                              <User size={11} className="text-slate-500" />
+                                            )}
+                                          </div>
+                                          <span className="text-[11px] truncate">{routine.creatorName || "Profissional Parceiro"}</span>
+                                          <span className="bg-yellow-400/20 text-yellow-500 dark:text-yellow-400 text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase border border-yellow-400/30">
+                                            {routine.creatorRole || "Profissional"}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {isOwnCard && editingRoutineId !== routine.id && (
+                                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                                      {deletingRoutineId === routine.id ? (
+                                        <div className="flex items-center gap-1.5 bg-red-50 dark:bg-red-950/25 border border-red-100 dark:border-red-900/30 px-2.5 py-1 rounded-full animate-in fade-in zoom-in-95 duration-150">
+                                          <span className="text-[9px] font-black uppercase tracking-wider text-red-600 dark:text-red-400">
+                                            EXCLUIR?
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteOwnRoutine(routine.id)}
+                                            className="text-red-600 dark:text-red-400 hover:scale-110 active:scale-95 transition-all cursor-pointer p-0.5 flex items-center justify-center border-0 bg-transparent"
+                                            title="Confirmar"
+                                          >
+                                            <Check size={12} className="stroke-[3]" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setDeletingRoutineId(null)}
+                                            className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400 hover:scale-110 active:scale-95 transition-all cursor-pointer p-0.5 flex items-center justify-center border-0 bg-transparent"
+                                            title="Cancelar"
+                                          >
+                                            <X size={12} className="stroke-[3]" />
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setEditingRoutineId(routine.id);
+                                              setEditingRoutineTitle(routine.division);
+                                            }}
+                                            className="p-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-950 dark:hover:bg-slate-900 border border-slate-150 dark:border-slate-800 text-slate-600 dark:text-slate-400 rounded-lg transition-all cursor-pointer flex items-center justify-center shrink-0"
+                                            title="Editar Título"
+                                          >
+                                            <Pencil size={12} className="stroke-[2.5]" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setDeletingRoutineId(routine.id)}
+                                            className="p-1.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950/40 border border-red-100 dark:border-red-900/30 text-red-600 dark:text-red-400 rounded-lg transition-all cursor-pointer flex items-center justify-center shrink-0"
+                                            title="Excluir"
+                                          >
+                                            <Trash2 size={12} className="stroke-[2.5]" />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                                  Distribuicao muscular: {muscles.map(formatMuscle).join(", ") || "Geral"}
+                                </p>
+
+                                <div className="bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl space-y-2">
+                                  <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Resumo do Cronograma:</span>
+                                  <div className="text-[11px] text-slate-600 dark:text-slate-400 space-y-1 font-semibold leading-relaxed">
+                                    {routine.days.map(d => (
+                                      <div key={d.id} className="flex justify-between">
+                                        <span>Treino {d.id}: {d.name}</span>
+                                        <span className="text-[9px] text-slate-400">{d.exercises.length} exs</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="border-t border-slate-50 dark:border-slate-800/80 pt-4 flex items-center justify-between">
+                                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">{totalExercises} exercicios no total</span>
+                                {isActive ? (
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 rounded-xl border border-emerald-100 dark:border-emerald-900/30 flex items-center gap-1 select-none shrink-0 font-extrabold">
+                                    <Check size={12} className="stroke-[3.5]" />
+                                    Ativo
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCloneRoutine(routine)}
+                                    className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:brightness-105 active:scale-95 text-white text-xs font-black rounded-xl uppercase tracking-wider cursor-pointer border-0 shadow-lg shadow-cyan-500/10 flex items-center gap-1"
+                                  >
+                                    <Download size={12} /> Importar Treino
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Pagination Controls */}
+                      {totalPages > 1 && (
+                        <div className="flex flex-wrap items-center justify-center gap-1.5 pt-4">
+                          <button
+                            type="button"
+                            onClick={() => setLibraryCurrentPage(prev => Math.max(prev - 1, 1))}
+                            disabled={libraryCurrentPage === 1}
+                            className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-bold text-slate-600 dark:text-slate-450 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                          >
+                            Anterior
+                          </button>
+                          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                            <button
+                              key={p}
+                              type="button"
+                              onClick={() => setLibraryCurrentPage(p)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer border ${
+                                libraryCurrentPage === p
+                                  ? 'bg-purple-600 border-transparent text-white shadow-sm'
+                                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                              }`}
+                            >
+                              {p}
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => setLibraryCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                            disabled={libraryCurrentPage === totalPages}
+                            className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-bold text-slate-600 dark:text-slate-450 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                          >
+                            Próximo
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              );
+            })()
           )}
         </div>
       )}

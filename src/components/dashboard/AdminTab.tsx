@@ -581,6 +581,8 @@ export default function AdminTab({
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
   const [editingCoins, setEditingCoins] = useState<number | string>(0);
   const [editingRole, setEditingRole] = useState<string>('user');
+  const [isAdminSelected, setIsAdminSelected] = useState<boolean>(false);
+  const [isProfessionalSelected, setIsProfessionalSelected] = useState<boolean>(false);
   const [editingPremium, setEditingPremium] = useState<string>('');
   const [editingWhatsapp, setEditingWhatsapp] = useState<string>('');
   const [savingEdit, setSavingEdit] = useState(false);
@@ -867,6 +869,8 @@ export default function AdminTab({
     setSelectedUser(target);
     setEditingCoins(target.xp || 0);
     setEditingRole(target.role || 'user');
+    setIsAdminSelected(target.role === 'admin');
+    setIsProfessionalSelected(target.role === 'professional' || (target.role === 'admin' && target.is_professional !== false));
     setEditingPremium(target.premium_access_until || '');
     setEditingWhatsapp(target.whatsapp_access_until || '');
     setEditSuccess(false);
@@ -891,6 +895,7 @@ export default function AdminTab({
       const updates = {
         xp: Number(editingCoins),
         role: editingRole,
+        is_professional: isProfessionalSelected,
         premium_access_until: editingPremium || null,
         whatsapp_access_until: editingWhatsapp || null
       };
@@ -904,6 +909,7 @@ export default function AdminTab({
         ...u,
         xp: Number(editingCoins),
         role: editingRole,
+        is_professional: isProfessionalSelected,
         premium_access_until: editingPremium || null,
         whatsapp_access_until: editingWhatsapp || null
       } : u));
@@ -914,6 +920,7 @@ export default function AdminTab({
           ...profile,
           xp: Number(editingCoins),
           role: editingRole,
+          is_professional: isProfessionalSelected,
           premium_access_until: editingPremium || null,
           whatsapp_access_until: editingWhatsapp || null
         });
@@ -2517,6 +2524,7 @@ export default function AdminTab({
                       <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1">
                         {u.username}
                         {u.role === 'admin' && <Shield size={12} className="text-red-500" />}
+                        {u.role === 'professional' && <Shield size={12} className="text-cyan-500" />}
                       </div>
                       <div className="text-[10px] text-slate-400">
                         {u.email || (u.username?.includes("@") ? u.username : "Sem e-mail")}
@@ -2527,8 +2535,14 @@ export default function AdminTab({
                     <span className="font-mono text-slate-600 dark:text-slate-300">{u.whatsapp || 'Não configurado'}</span>
                   </td>
                   <td className="py-4 text-center">
-                    <span className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase ${u.role === 'admin' ? 'bg-red-50 dark:bg-red-950/20 text-red-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
-                      {u.role || 'user'}
+                    <span className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase ${
+                      u.role === 'admin' 
+                        ? 'bg-red-50 dark:bg-red-950/20 text-red-600' 
+                        : u.role === 'professional'
+                        ? 'bg-cyan-50 dark:bg-cyan-950/20 text-cyan-600'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                    }`}>
+                      {u.role === 'professional' ? 'Profissional' : u.role === 'admin' ? 'Admin' : 'Usuário'}
                     </span>
                   </td>
                    <td className="py-4 text-center">
@@ -2713,31 +2727,114 @@ export default function AdminTab({
 
                   {/* Role selection */}
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Cargo de Acesso</label>
-                    <select 
-                      value={editingRole}
-                      onChange={e => setEditingRole(e.target.value)}
-                      className="w-full border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 rounded-xl py-2 px-3 text-xs"
-                    >
-                      <option value="user">User (Usuário Padrão)</option>
-                      <option value="admin">Admin (Acesso ao Painel Admin)</option>
-                    </select>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Níveis de Privilégio</label>
+                    <div className="grid grid-cols-3 gap-2 bg-slate-50 dark:bg-slate-950 p-1.5 rounded-2xl border border-slate-100 dark:border-slate-800/60">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAdminSelected(false);
+                          setIsProfessionalSelected(false);
+                          setEditingRole('user');
+                        }}
+                        className={`py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer border-0 ${
+                          (!isAdminSelected && !isProfessionalSelected)
+                            ? "bg-purple-600 text-white shadow-md shadow-purple-600/25"
+                            : "bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white"
+                        }`}
+                      >
+                        Usuário
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextProf = !isProfessionalSelected;
+                          setIsProfessionalSelected(nextProf);
+                          if (nextProf) {
+                            setEditingRole(isAdminSelected ? 'admin' : 'professional');
+                          } else {
+                            setEditingRole(isAdminSelected ? 'admin' : 'user');
+                          }
+                        }}
+                        className={`py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer border-0 ${
+                          isProfessionalSelected
+                            ? "bg-purple-600 text-white shadow-md shadow-purple-600/25"
+                            : "bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white"
+                        }`}
+                      >
+                        Profissional
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextAdmin = !isAdminSelected;
+                          setIsAdminSelected(nextAdmin);
+                          if (nextAdmin) {
+                            setEditingRole('admin');
+                          } else {
+                            setEditingRole(isProfessionalSelected ? 'professional' : 'user');
+                          }
+                        }}
+                        className={`py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer border-0 ${
+                          isAdminSelected
+                            ? "bg-purple-600 text-white shadow-md shadow-purple-600/25"
+                            : "bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white"
+                        }`}
+                      >
+                        Administrador
+                      </button>
+                    </div>
                   </div>
 
                   {/* Premium Date */}
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Expiração do Premium</label>
                     <div className="flex flex-col gap-2">
-                      <select 
-                        value={editingPremium}
-                        onChange={e => setEditingPremium(e.target.value)}
-                        className="w-full border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 rounded-xl py-2 px-3 text-xs"
-                      >
-                        <option value="">Inativo (Sem Premium)</option>
-                        <option value="unlimited">Ilimitado (Acesso Vitalício)</option>
-                        <option value={new Date(Date.now() + 86400000).toISOString()}>Passe 24h (Passe Diário)</option>
-                        <option value={new Date(Date.now() + 2592000000).toISOString()}>Abono Mensal (30 dias)</option>
-                      </select>
+                      <div className="grid grid-cols-2 gap-2 bg-slate-50 dark:bg-slate-950 p-1.5 rounded-2xl border border-slate-100 dark:border-slate-800/60">
+                        <button
+                          type="button"
+                          onClick={() => setEditingPremium('')}
+                          className={`py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer border-0 ${
+                            !editingPremium
+                              ? "bg-purple-600 text-white shadow-md shadow-purple-600/25"
+                              : "bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white"
+                          }`}
+                        >
+                          Inativo
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingPremium('unlimited')}
+                          className={`py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer border-0 ${
+                            editingPremium === 'unlimited'
+                              ? "bg-purple-600 text-white shadow-md shadow-purple-600/25"
+                              : "bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white"
+                          }`}
+                        >
+                          Ilimitado
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingPremium(new Date(Date.now() + 86400000).toISOString())}
+                          className={`py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer border-0 ${
+                            (editingPremium && editingPremium !== 'unlimited' && ((new Date(editingPremium).getTime() - Date.now()) / 3600000 <= 36))
+                              ? "bg-purple-600 text-white shadow-md shadow-purple-600/25"
+                              : "bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white"
+                          }`}
+                        >
+                          Passe 24h
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingPremium(new Date(Date.now() + 2592000000).toISOString())}
+                          className={`py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer border-0 ${
+                            (editingPremium && editingPremium !== 'unlimited' && ((new Date(editingPremium).getTime() - Date.now()) / 3600000 > 36))
+                              ? "bg-purple-600 text-white shadow-md shadow-purple-600/25"
+                              : "bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white"
+                          }`}
+                        >
+                          Plano Mensal
+                        </button>
+                      </div>
                       {editingPremium && editingPremium !== 'unlimited' && (
                         <input 
                           type="datetime-local" 
@@ -2749,30 +2846,7 @@ export default function AdminTab({
                     </div>
                   </div>
 
-                  {/* WhatsApp Pass Date */}
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Passe Especial WhatsApp AI Bot</label>
-                    <div className="flex flex-col gap-2">
-                      <select 
-                        value={editingWhatsapp}
-                        onChange={e => setEditingWhatsapp(e.target.value)}
-                        className="w-full border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 rounded-xl py-2 px-3 text-xs"
-                      >
-                        <option value="">Inativo (Sem acesso pelo Whatsapp)</option>
-                        <option value="unlimited">Ilimitado (Acesso Vitalício)</option>
-                        <option value={new Date(Date.now() + 86400000).toISOString()}>Passe 24h (Passe Diário)</option>
-                        <option value={new Date(Date.now() + 2592000000).toISOString()}>Abono Mensal (30 dias)</option>
-                      </select>
-                      {editingWhatsapp && editingWhatsapp !== 'unlimited' && (
-                        <input 
-                          type="datetime-local" 
-                          value={editingWhatsapp.substring(0, 16)} 
-                          onChange={e => setEditingWhatsapp(new Date(e.target.value).toISOString())}
-                          className="border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 rounded-xl py-2 px-3 text-xs" 
-                        />
-                      )}
-                    </div>
-                  </div>
+
                 </div>
               </div>
 
