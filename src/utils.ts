@@ -648,6 +648,9 @@ export const getLocalDateString = (d: Date = new Date()): string => {
 
 export function getMuscleGroupLabel(group: string, customGroups?: { id: string; label: string }[]): string {
   if (!group) return '';
+  if (group === 'mg_nsztg4yei' || group.toLowerCase() === 'mg_nsztg4yei') {
+    return 'Posterior de Ombros';
+  }
   const defaults: Record<string, string> = {
     peito: 'Peito',
     costas: 'Costas',

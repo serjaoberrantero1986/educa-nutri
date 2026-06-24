@@ -1237,7 +1237,7 @@ export default function AdminTab({
           }`}
         >
           <ChefHat size={14} />
-          Tabela Alimentar
+          Tabela
         </button>
 
         <button
@@ -1249,7 +1249,7 @@ export default function AdminTab({
           }`}
         >
           <Sliders size={14} />
-          Logs de Diagnóstico
+          Logs
         </button>
       </div>
 

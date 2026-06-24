@@ -245,7 +245,6 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
 
   const handleCloneRoutine = async (routine: WorkoutRoutine) => {
     if (!profile) return;
-    const isOwn = routine.user_id === profile.id;
 
     if (onUpdateWorkoutRoutine) {
       try {
@@ -256,23 +255,27 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
           user_id: profile.id,
           createdAt: new Date().toISOString(),
           isPrivate: true, // Imported copy is private to user by default
-          downloads: (routine.downloads || 0) + (isOwn ? 0 : 1)
+          downloads: (routine.downloads || 0) + 1
         };
 
         await onUpdateWorkoutRoutine(cloned);
 
-        // Increment downloads in Firestore if possible and not own
-        if (isFirebaseConfigured && !routine.id.startsWith("preset_") && !isOwn) {
+        // Increment downloads in Firestore if possible
+        if (isFirebaseConfigured && !routine.id.startsWith("preset_")) {
           try {
-            const routineRef = doc(db, 'workout_routines', routine.user_id);
+            const routineRef = doc(db, 'workout_routines', routine.id);
             await updateDoc(routineRef, {
               downloads: (routine.downloads || 0) + 1
             });
+            // Update local state so that the downloads count increments instantly in the UI
+            setSharedRoutines(prev => prev.map(r => r.id === routine.id ? { ...r, downloads: (r.downloads || 0) + 1 } : r));
+            setOwnRoutines(prev => prev.map(r => r.id === routine.id ? { ...r, downloads: (r.downloads || 0) + 1 } : r));
           } catch (e) {
             console.error("Could not increment downloads:", e);
           }
         }
 
+        const isOwn = routine.user_id === profile.id;
         const successMessage = isOwn 
           ? `Treino "${routine.division}" ativado com sucesso! Redirecionando para sua Ficha Ativa.`
           : `Treino de "${routine.creatorName}" importado e ativado com sucesso! Redirecionando para sua Ficha Ativa.`;
@@ -1269,6 +1272,9 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
                           )).filter(Boolean);
 
                           const formatMuscle = (m: string) => {
+                            if (m === 'mg_nsztg4yei' || m.toLowerCase() === 'mg_nsztg4yei') {
+                              return 'Posterior de Ombros';
+                            }
                             const map: { [key: string]: string } = {
                               peito: "Peito", costas: "Costas", pernas: "Pernas",
                               biceps: "Bíceps", triceps: "Tríceps", ombros: "Ombros",
