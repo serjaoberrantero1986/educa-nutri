@@ -746,12 +746,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
       return 'Push/Pull/Legs 2x';
     };
 
+    const mapExperienceToLevel = (exp: 'beginner' | 'intermediate' | 'advanced'): 'iniciante' | 'intermediario' | 'avancado' => {
+      if (exp === 'advanced') return 'avancado';
+      if (exp === 'intermediate') return 'intermediario';
+      return 'iniciante';
+    };
+
     const newRoutine: WorkoutRoutine = {
       id: `${user.uid}_routine`,
       user_id: user.uid,
       createdAt: new Date().toISOString(),
       division: currentAutoSplit(daysCount),
-      days: finalDays
+      days: finalDays,
+      level: mapExperienceToLevel(prof.experience)
     };
 
     setActiveRoutine(newRoutine);

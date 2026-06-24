@@ -1076,11 +1076,26 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
                 
                 if (filterLevel === "all") return matchesSearch;
                 
-                const matchesLevel = 
-                  routine.level === filterLevel ||
-                  routine.days.some(d => 
-                    d.exercises.some(e => e.exercise.nivel === filterLevel)
-                  );
+                const getRoutineLevel = (r: WorkoutRoutine): 'iniciante' | 'intermediario' | 'avancado' => {
+                  if (r.level) return r.level;
+                  let hasIntermediate = false;
+                  let hasAdvanced = false;
+                  for (const day of r.days) {
+                    for (const ex of day.exercises) {
+                      const exLevel = ex.exercise?.nivel;
+                      if (exLevel === 'avancado') {
+                        hasAdvanced = true;
+                      } else if (exLevel === 'intermediario') {
+                        hasIntermediate = true;
+                      }
+                    }
+                  }
+                  if (hasAdvanced) return 'avancado';
+                  if (hasIntermediate) return 'intermediario';
+                  return 'iniciante';
+                };
+
+                const matchesLevel = getRoutineLevel(routine) === filterLevel;
                 return matchesSearch && matchesLevel;
               });
 
