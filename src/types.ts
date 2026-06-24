@@ -136,6 +136,7 @@ export interface Profile {
   recipe_favorites?: any[];
   recipe_generations?: any[];
   recipes_generated_today?: { date: string; count: number };
+  ai_diet_generated?: boolean;
 }
 
 export interface FoodLog {

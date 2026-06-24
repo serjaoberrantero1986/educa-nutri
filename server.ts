@@ -204,7 +204,7 @@ async function getDynamicAiConfig(req?: express.Request) {
     const provider = headerProvider || "Google Gemini";
     let apiKey = headerKey || "";
     if (!apiKey) {
-      if (provider.toLowerCase().includes("openai")) {
+      if (provider.toLowerCase().includes("openai") || provider.toLowerCase().includes("open ai")) {
         apiKey = process.env.OPENAI_API_KEY || "";
       } else {
         apiKey = process.env.GEMINI_API_KEY || "";
@@ -236,7 +236,7 @@ async function getDynamicAiConfig(req?: express.Request) {
       let apiKey = data.ai_api_key || "";
 
       if (!apiKey) {
-        if (provider.toLowerCase().includes("openai")) {
+        if (provider.toLowerCase().includes("openai") || provider.toLowerCase().includes("open ai")) {
           apiKey = process.env.OPENAI_API_KEY || "";
         } else {
           apiKey = process.env.GEMINI_API_KEY || "";
@@ -478,6 +478,7 @@ async function callUnifiedAi(options: {
   if (
     provider === "OpenAI" || 
     provider.toLowerCase().includes("openai") || 
+    provider.toLowerCase().includes("open ai") || 
     provider === "DeepSeek AI" ||
     provider === "DeepSeek" ||
     provider.toLowerCase().includes("deepseek") ||
@@ -492,7 +493,7 @@ async function callUnifiedAi(options: {
     } else if (provider.startsWith("Groq") || provider.toLowerCase().includes("groq")) {
       baseUrl = "https://api.groq.com/openai/v1/chat/completions";
       if (model === "gemini-3.5-flash") model = "llama3-70b-8192";
-    } else if (provider === "OpenAI" || provider.toLowerCase().includes("openai")) {
+    } else if (provider === "OpenAI" || provider.toLowerCase().includes("openai") || provider.toLowerCase().includes("open ai")) {
       if (model === "gemini-3.5-flash") model = "gpt-4o-mini";
     }
 
@@ -3552,6 +3553,339 @@ Seja muito criativo e retorne APENAS o JSON estruturado puro em Português do Br
   } catch (errGlobal: any) {
     console.error("Erro no gerador de receitas por IA:", errGlobal);
     return res.status(500).json({ error: "Erro interno ao gerar receita: " + errGlobal.message });
+  }
+});
+
+function normalizeDietPlan(data: any): any {
+  if (!data || typeof data !== "object") return data;
+
+  const result: any = {
+    bmi: typeof data.bmi === "number" ? data.bmi : (typeof data.imc === "number" ? data.imc : 22),
+    bmiCategory: data.bmiCategory || data.imc_categoria || data.categoria_imc || "Normal",
+    bmr: typeof data.bmr === "number" ? data.bmr : (typeof data.tmb === "number" ? data.tmb : 1600),
+    tdee: typeof data.tdee === "number" ? data.tdee : (typeof data.get === "number" ? data.get : 2200),
+    targetCalories: typeof data.targetCalories === "number" ? data.targetCalories : (typeof data.calorias_alvo === "number" ? data.calorias_alvo : 2000),
+    macros: {
+      protein: 0,
+      carbs: 0,
+      fat: 0
+    },
+    weeklyPlan: {}
+  };
+
+  // Resolve macros
+  const rawMacros = data.macros || data.macronutrientes || {};
+  result.macros.protein = typeof rawMacros.protein === "number" ? rawMacros.protein : (typeof rawMacros.proteinas === "number" ? rawMacros.proteinas : 150);
+  result.macros.carbs = typeof rawMacros.carbs === "number" ? rawMacros.carbs : (typeof rawMacros.carboidratos === "number" ? rawMacros.carboidratos : 200);
+  result.macros.fat = typeof rawMacros.fat === "number" ? rawMacros.fat : (typeof rawMacros.gorduras === "number" ? rawMacros.gorduras : 60);
+
+  // Resolve weeklyPlan / PlanoSemanal / plano_semanal / weekly_plan / semana
+  let rawWeeklyPlan = data.weeklyPlan || data.PlanoSemanal || data.plano_semanal || data.weekly_plan || data.semana || {};
+  if (Object.keys(rawWeeklyPlan).length === 0) {
+    for (const key of Object.keys(data)) {
+      const val = data[key];
+      if (val && typeof val === "object" && (val["Segunda"] || val["Segunda-feira"] || val["segunda"] || val["segunda-feira"])) {
+        rawWeeklyPlan = val;
+        break;
+      }
+    }
+  }
+
+  const days = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
+  const dayMappings: Record<string, string> = {
+    "segunda": "Segunda", "segunda-feira": "Segunda", "segunda_feira": "Segunda",
+    "terça": "Terça", "terça-feira": "Terça", "terça_feira": "Terça", "terca": "Terça", "terca-feira": "Terça",
+    "quarta": "Quarta", "quarta-feira": "Quarta", "quarta_feira": "Quarta",
+    "quinta": "Quinta", "quinta-feira": "Quinta", "quinta_feira": "Quinta",
+    "sexta": "Sexta", "sexta-feira": "Sexta", "sexta_feira": "Sexta",
+    "sábado": "Sábado", "sabado": "Sábado",
+    "domingo": "Domingo"
+  };
+
+  for (const day of days) {
+    let rawMeals = rawWeeklyPlan[day];
+    if (!rawMeals) {
+      for (const [key, val] of Object.entries(rawWeeklyPlan)) {
+        const normKey = key.toLowerCase().trim();
+        if (dayMappings[normKey] === day) {
+          rawMeals = val;
+          break;
+        }
+      }
+    }
+    
+    // If rawMeals is not an array, but an object (like {"Café da Manhã": {...}, "Almoço": {...}})
+    if (rawMeals && typeof rawMeals === "object" && !Array.isArray(rawMeals)) {
+      rawMeals = Object.entries(rawMeals).map(([mealName, mealData]: [string, any]) => {
+        const foods: any[] = [];
+        if (mealData.foods && Array.isArray(mealData.foods)) {
+          mealData.foods.forEach((f: any) => {
+            if (f && typeof f === "object") {
+              const rawFood = f.food || f;
+              foods.push({
+                food: {
+                  id: rawFood.id || `f_${Math.random().toString(36).substr(2, 9)}`,
+                  name: rawFood.name || "Alimento",
+                  category: rawFood.category || "carboidrato",
+                  calories: typeof rawFood.calories === "number" ? rawFood.calories : (typeof rawFood.calorias === "number" ? rawFood.calorias : 100),
+                  protein: typeof rawFood.protein === "number" ? rawFood.protein : (typeof rawFood.proteinas === "number" ? rawFood.proteinas : 0),
+                  carbs: typeof rawFood.carbs === "number" ? rawFood.carbs : (typeof rawFood.carboidratos === "number" ? rawFood.carboidratos : 0),
+                  fat: typeof rawFood.fat === "number" ? rawFood.fat : (typeof rawFood.gorduras === "number" ? rawFood.gorduras : 0),
+                  portion: rawFood.portion || rawFood.porcao || "100g",
+                  measure_unit: rawFood.measure_unit || rawFood.unidade_medida || "g",
+                  grams_per_unit: typeof rawFood.grams_per_unit === "number" ? rawFood.grams_per_unit : 100
+                },
+                amount: typeof f.amount === "number" ? f.amount : (typeof f.quantidade === "number" ? f.quantidade : 100)
+              });
+            }
+          });
+        } else if (mealData && typeof mealData === "object") {
+          // It's a single food object, like {"name": "...", "calorias": ...}
+          foods.push({
+            food: {
+              id: mealData.id || `f_${Math.random().toString(36).substr(2, 9)}`,
+              name: mealData.name || "Alimento",
+              category: mealData.category || "carboidrato",
+              calories: typeof mealData.calories === "number" ? mealData.calories : (typeof mealData.calorias === "number" ? mealData.calorias : 100),
+              protein: typeof mealData.protein === "number" ? mealData.protein : (typeof mealData.proteinas === "number" ? mealData.proteinas : 0),
+              carbs: typeof mealData.carbs === "number" ? mealData.carbs : (typeof mealData.carboidratos === "number" ? mealData.carboidratos : 0),
+              fat: typeof mealData.fat === "number" ? mealData.fat : (typeof mealData.gorduras === "number" ? mealData.gorduras : 0),
+              portion: mealData.portion || mealData.porcao || mealData.porção || "100g",
+              measure_unit: mealData.measure_unit || mealData.unidade_medida || "g",
+              grams_per_unit: typeof mealData.grams_per_unit === "number" ? mealData.grams_per_unit : 100
+            },
+            amount: typeof mealData.amount === "number" ? mealData.amount : (typeof mealData.quantidade === "number" ? mealData.quantidade : 100)
+          });
+        }
+
+        const totalCalories = typeof mealData.totalCalories === "number" ? mealData.totalCalories : (typeof mealData.calorias === "number" ? mealData.calorias : foods.reduce((sum, f) => sum + (f.food.calories * f.amount / 100), 0));
+        const totalProtein = typeof mealData.totalProtein === "number" ? mealData.totalProtein : (typeof mealData.proteinas === "number" ? mealData.proteinas : foods.reduce((sum, f) => sum + (f.food.protein * f.amount / 100), 0));
+        const totalCarbs = typeof mealData.totalCarbs === "number" ? mealData.totalCarbs : (typeof mealData.carboidratos === "number" ? mealData.carboidratos : foods.reduce((sum, f) => sum + (f.food.carbs * f.amount / 100), 0));
+        const totalFat = typeof mealData.totalFat === "number" ? mealData.totalFat : (typeof mealData.gorduras === "number" ? mealData.gorduras : foods.reduce((sum, f) => sum + (f.food.fat * f.amount / 100), 0));
+
+        return {
+          name: mealName,
+          percentage: typeof mealData.percentage === "number" ? mealData.percentage : 20,
+          foods,
+          totalCalories,
+          totalProtein,
+          totalCarbs,
+          totalFat
+        };
+      });
+    }
+
+    result.weeklyPlan[day] = Array.isArray(rawMeals) ? rawMeals.map((m: any) => {
+      const foodsList = (m.foods || []).map((f: any) => {
+        const rawFood = f.food || f;
+        return {
+          food: {
+            id: rawFood.id || `f_${Math.random().toString(36).substr(2, 9)}`,
+            name: rawFood.name || "Alimento",
+            category: rawFood.category || "carboidrato",
+            calories: typeof rawFood.calories === "number" ? rawFood.calories : (typeof rawFood.calorias === "number" ? rawFood.calorias : 100),
+            protein: typeof rawFood.protein === "number" ? rawFood.protein : (typeof rawFood.proteinas === "number" ? rawFood.proteinas : 0),
+            carbs: typeof rawFood.carbs === "number" ? rawFood.carbs : (typeof rawFood.carboidratos === "number" ? rawFood.carboidratos : 0),
+            fat: typeof rawFood.fat === "number" ? rawFood.fat : (typeof rawFood.gorduras === "number" ? rawFood.gorduras : 0),
+            portion: rawFood.portion || rawFood.porcao || "100g",
+            measure_unit: rawFood.measure_unit || rawFood.unidade_medida || "g",
+            grams_per_unit: typeof rawFood.grams_per_unit === "number" ? rawFood.grams_per_unit : 100
+          },
+          amount: typeof f.amount === "number" ? f.amount : (typeof f.quantidade === "number" ? f.quantidade : 100)
+        };
+      });
+
+      return {
+        name: m.name || "Refeição",
+        percentage: typeof m.percentage === "number" ? m.percentage : 20,
+        foods: foodsList,
+        totalCalories: typeof m.totalCalories === "number" ? m.totalCalories : foodsList.reduce((sum, f) => sum + (f.food.calories * f.amount / 100), 0),
+        totalProtein: typeof m.totalProtein === "number" ? m.totalProtein : foodsList.reduce((sum, f) => sum + (f.food.protein * f.amount / 100), 0),
+        totalCarbs: typeof m.totalCarbs === "number" ? m.totalCarbs : foodsList.reduce((sum, f) => sum + (f.food.carbs * f.amount / 100), 0),
+        totalFat: typeof m.totalFat === "number" ? m.totalFat : foodsList.reduce((sum, f) => sum + (f.food.fat * f.amount / 100), 0)
+      };
+    }) : [];
+  }
+
+  return result;
+}
+
+app.post("/api/ai/generate-diet", async (req, res) => {
+  try {
+    const { userData, targetCalories, targetMacros, customMeals } = req.body;
+    if (!userData) {
+      return res.status(400).json({ error: "Dados do usuário ausentes." });
+    }
+
+    const sexWord = userData.sex === "male" ? "Masculino" : "Feminino";
+    const goalWord = userData.goal === "weightloss" ? "Perda de peso" :
+                     userData.goal === "hypertrophy" ? "Hipertrofia" :
+                     userData.goal === "recomposition" ? "Recomposição Corporal" : "Manutenção";
+    
+    const dietRestrictionsStr = Array.isArray(userData.dietRestrictions) && userData.dietRestrictions.length > 0
+      ? userData.dietRestrictions.join(", ")
+      : "Nenhuma restrição alimentar";
+
+    const customMealsStr = Array.isArray(customMeals) && customMeals.length > 0
+      ? customMeals.map((m: any) => m.name).join(", ")
+      : "Café da Manhã, Lanche da Manhã, Almoço, Lanche da Tarde, Jantar, Ceia";
+
+    const systemInstruction = `Você é um nutricionista esportivo de elite, especialista em criar planos alimentares realistas, saborosos e altamente eficientes.
+Você deve gerar um plano semanal completo de dieta (de Segunda a Domingo) para o usuário com base nos seguintes dados:
+- Sexo: ${sexWord}
+- Idade: ${userData.age} anos
+- Peso: ${userData.weight} kg
+- Altura: ${userData.height} cm
+- Objetivo: ${goalWord}
+- Restrições alimentares: ${dietRestrictionsStr}
+- Refeições desejadas: ${customMealsStr}
+- Meta diária de calorias: ${targetCalories} kcal
+- Meta diária de macros: Proteínas: ${targetMacros.protein}g, Carboidratos: ${targetMacros.carbs}g, Gorduras: ${targetMacros.fat}g.
+
+DIRETRIZES DE DIETA DE EXCELÊNCIA (CRÍTICO):
+1. ALIMENTOS DO DIA A DIA E COESÃO: Use alimentos realistas, saudáveis e comuns do dia a dia (exemplos: ovos cozidos ou mexidos, pão integral, tapioca, crepioca, banana, maçã, aveia, leite desnatado ou iogurte natural, arroz integral ou branco, feijão, filé de peito de frango, patinho moído, peixe grelhado, azeite de oliva, castanhas, legumes variados, saladas verdes).
+2. INCLUSÃO DE RECEITAS EM VEZ DE SÓ IN NATURA: Em vez de sugerir apenas ingredientes puros ("ovo", "leite"), inclua receitas comuns e fáceis de preparar, por exemplo: "Omelete de ovos com ricota", "Vitamina de banana com aveia e leite desnatado", "Panqueca de banana fit", "Crepioca de queijo branco".
+3. SEM EXAGEROS EXÓTICOS NO CAFÉ: Ninguém quer comer salmão grelhado, bacalhau ou bife com alho no café da manhã! O café da manhã e lanches devem conter alimentos típicos de desjejum (ovos, frutas, pães saudáveis, aveia, iogurte, whey, queijo branco, café, etc.). Refeições pesadas (carnes, peixes pesados, arroz e feijão, purês) são estritamente para o Almoço e Jantar.
+4. PROIBIÇÃO ABSOLUTA DE JUNK FOOD: Sob nenhuma circunstância sugira alimentos industrializados de baixo valor nutricional, refrigerantes convencionais (coca-cola), frituras, coxinhas, pastéis, salgadinhos ou doces açucarados. A indicação deve ser de alimentos saudáveis e limpos que auxiliem no objetivo físico e na longevidade.
+5. SEM INSTRUÇÕES DE PREPARO: Não mostre nenhuma forma de preparo ou instruções detalhadas de receitas (sem campo "instructions" ou "modo de preparo" nos alimentos, pois isso já existe na aba de receitas). Apenas retorne o nome do alimento ou receita (no campo "name" do alimento), sua porção, quantidade em gramas/unidades e seus macronutrientes correspondentes.
+6. DIVERSIFICAÇÃO SEMANAL COM REPETIÇÃO INTELIGENTE: Varie os cardápios de um dia para o outro para tornar o plano semanal extremamente rico, agradável e personalizado de seguir. Não é proibido repetir algumas receitas práticas ou lanches rápidos no decorrer da semana (por exemplo, repetir uma receita de omelete ou uma vitamina de banana com maçã 2 vezes na semana é totalmente normal, realista e prático para o paciente), apenas evite que todos os dias tenham cardápios exatamente iguais, chatos ou excessivamente repetitivos.
+7. COMPATIBILIDADE DE MACROS: A soma das calorias e macros de todas as refeições de cada dia deve se aproximar com alta precisão de: ${targetCalories} kcal, ${targetMacros.protein}g de Proteína, ${targetMacros.carbs}g de Carboidratos e ${targetMacros.fat}g de Gordura. Distribua proporcionalmente entre as refeições solicitadas.
+
+RESTRIÇÃO CRÍTICA SOBRE FORMATO:
+- Não retorne nenhum caractere de asterisco (* ou **) em nenhuma string. Não use negrito com asteriscos. Se desobedecer isso e emitir asteriscos, o sistema de parser falhará.
+- Retorne EXCLUSIVAMENTE um formato JSON estruturado compatível com a seguinte especificação exata:
+{
+  "bmi": number,
+  "bmiCategory": "string",
+  "bmr": number,
+  "tdee": number,
+  "targetCalories": number,
+  "macros": {
+    "protein": number,
+    "carbs": number,
+    "fat": number
+  },
+  "weeklyPlan": {
+    "Segunda": [
+      {
+        "name": "Nome da Refeição (ex: Café da Manhã)",
+        "percentage": number (porcentagem de calorias da refeição, ex: 20),
+        "foods": [
+          {
+            "food": {
+              "id": "ID do alimento (ex: f1)",
+              "name": "Nome do alimento (ex: Ovo Cozido)",
+              "category": "proteína ou carboidrato ou vegetal ou gordura ou laticinio",
+              "calories": number (calorias por 100g, ex: 155),
+              "protein": number (proteína por 100g, ex: 13),
+              "carbs": number (carboidratos por 100g, ex: 1.1),
+              "fat": number (gorduras por 100g, ex: 11),
+              "portion": "100g ou 1 unidade",
+              "measure_unit": "g ou unidade",
+              "grams_per_unit": number (gramas por unidade, ex: 50)
+            },
+            "amount": number (quantidade em gramas recomendada para o usuário, ex: 150)
+          }
+        ],
+        "totalCalories": number,
+        "totalProtein": number,
+        "totalCarbs": number,
+        "totalFat": number
+      }
+    ],
+    "Terça": [...],
+    "Quarta": [...],
+    "Quinta": [...],
+    "Sexta": [...],
+    "Sábado": [...],
+    "Domingo": [...]
+  }
+}`;
+
+    const mealProps = {
+      name: { type: Type.STRING },
+      percentage: { type: Type.NUMBER },
+      foods: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            food: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                name: { type: Type.STRING },
+                category: { type: Type.STRING },
+                calories: { type: Type.NUMBER },
+                protein: { type: Type.NUMBER },
+                carbs: { type: Type.NUMBER },
+                fat: { type: Type.NUMBER },
+                portion: { type: Type.STRING },
+                measure_unit: { type: Type.STRING },
+                grams_per_unit: { type: Type.NUMBER }
+              },
+              required: ["id", "name", "category", "calories", "protein", "carbs", "fat", "portion", "measure_unit", "grams_per_unit"]
+            },
+            amount: { type: Type.NUMBER }
+          },
+          required: ["food", "amount"]
+        }
+      },
+      totalCalories: { type: Type.NUMBER },
+      totalProtein: { type: Type.NUMBER },
+      totalCarbs: { type: Type.NUMBER },
+      totalFat: { type: Type.NUMBER }
+    };
+
+    const completion = await callUnifiedAi({
+      prompt: "Gere o plano de dieta semanal estruturado completo para o usuário de acordo com as instruções do sistema.",
+      systemInstruction,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          bmi: { type: Type.NUMBER },
+          bmiCategory: { type: Type.STRING },
+          bmr: { type: Type.NUMBER },
+          tdee: { type: Type.NUMBER },
+          targetCalories: { type: Type.NUMBER },
+          macros: {
+            type: Type.OBJECT,
+            properties: {
+              protein: { type: Type.NUMBER },
+              carbs: { type: Type.NUMBER },
+              fat: { type: Type.NUMBER },
+            },
+            required: ["protein", "carbs", "fat"],
+          },
+          weeklyPlan: {
+            type: Type.OBJECT,
+            properties: {
+              "Segunda": { type: Type.ARRAY, items: { type: Type.OBJECT, properties: mealProps, required: ["name", "percentage", "foods", "totalCalories", "totalProtein", "totalCarbs", "totalFat"] } },
+              "Terça": { type: Type.ARRAY, items: { type: Type.OBJECT, properties: mealProps, required: ["name", "percentage", "foods", "totalCalories", "totalProtein", "totalCarbs", "totalFat"] } },
+              "Quarta": { type: Type.ARRAY, items: { type: Type.OBJECT, properties: mealProps, required: ["name", "percentage", "foods", "totalCalories", "totalProtein", "totalCarbs", "totalFat"] } },
+              "Quinta": { type: Type.ARRAY, items: { type: Type.OBJECT, properties: mealProps, required: ["name", "percentage", "foods", "totalCalories", "totalProtein", "totalCarbs", "totalFat"] } },
+              "Sexta": { type: Type.ARRAY, items: { type: Type.OBJECT, properties: mealProps, required: ["name", "percentage", "foods", "totalCalories", "totalProtein", "totalCarbs", "totalFat"] } },
+              "Sábado": { type: Type.ARRAY, items: { type: Type.OBJECT, properties: mealProps, required: ["name", "percentage", "foods", "totalCalories", "totalProtein", "totalCarbs", "totalFat"] } },
+              "Domingo": { type: Type.ARRAY, items: { type: Type.OBJECT, properties: mealProps, required: ["name", "percentage", "foods", "totalCalories", "totalProtein", "totalCarbs", "totalFat"] } },
+            },
+            required: ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"],
+          }
+        },
+        required: ["bmi", "bmiCategory", "bmr", "tdee", "targetCalories", "macros", "weeklyPlan"]
+      }
+    }, req);
+
+    let generatedText = completion.text || "";
+    generatedText = generatedText.replace(/\*/g, "");
+
+    const parsedJson = JSON.parse(generatedText);
+    const dietPlan = normalizeDietPlan(parsedJson);
+    return res.json({ dietPlan });
+
+  } catch (error: any) {
+    console.error("Erro ao gerar plano alimentar inteligente:", error);
+    return res.status(500).json({ error: "Falha na geração inteligente com IA: " + error.message });
   }
 });
 

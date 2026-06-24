@@ -42,12 +42,13 @@ import {
 } from "recharts";
 import { domToPng } from "modern-screenshot";
 import { UserData, DietPlan, Food, Meal, Profile } from "./types";
-import { generateDiet, FALLBACK_FOODS, getApiUrl, EXERCISES, formatFoodName, getLocalDateString, calculateNavyBodyFat } from "./utils";
+import { generateDiet, FALLBACK_FOODS, getApiUrl, EXERCISES, formatFoodName, getLocalDateString, calculateNavyBodyFat, calculateBMI, calculateBMR, calculateTDEEEnhanced, calculateMacros } from "./utils";
 import { auth, db, isFirebaseConfigured } from "./lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { Auth } from "./components/Auth";
 import { Dashboard } from "./components/Dashboard";
+import { getAiHeaders } from "./services/storeConfigService";
 
 const SilhouetteSVG: React.FC<{ sex: 'male' | 'female'; index: number; active: boolean }> = ({ sex, index, active }) => {
   const strokeColor = active ? '#10b981' : '#64748b';
@@ -186,6 +187,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'ranking' | 'profile' | 'weekly' | 'recipes' | 'store' | 'admin' | 'evolution' | 'workout_dashboard' | 'workout_ficha' | 'workout_today' | 'workout_history'>('dashboard');
   const [appMode, setAppMode] = useState<'diet' | 'workout'>('diet');
   const printRef = useRef<HTMLDivElement>(null);
+
+  const [isGenModalOpen, setIsGenModalOpen] = useState(false);
+  const [aiGenLoading, setAiGenLoading] = useState(false);
+  const [aiGenError, setAiGenError] = useState<string | null>(null);
 
   const fetchProfile = async (user: any) => {
     setLoadingProfile(true);
@@ -447,6 +452,10 @@ export default function App() {
   }, [darkMode]);
 
   const handleGenerate = async () => {
+    setIsGenModalOpen(true);
+  };
+
+  const handleGenerateLocal = async () => {
     setLoading(true);
     const activeFoodsList = (foods && foods.length > 5) ? foods : FALLBACK_FOODS;
     const plan = generateDiet(userData, activeFoodsList, profile?.custom_meals);
@@ -480,6 +489,109 @@ export default function App() {
       setStep(3);
     }
     setLoading(false);
+    setIsGenModalOpen(false);
+  };
+
+  const handleGenerateAI = async () => {
+    const isPremiumActive = !!(
+      profile?.premium_access_until && (
+        profile.premium_access_until === 'unlimited' || 
+        new Date(profile.premium_access_until).getTime() > Date.now()
+      )
+    );
+    
+    if (!isPremiumActive && profile?.ai_diet_generated) {
+      setAiGenError("limit_reached");
+      return;
+    }
+
+    setAiGenLoading(true);
+    setAiGenError(null);
+
+    try {
+      const bmr = calculateBMR(userData);
+      const tdee = calculateTDEEEnhanced(bmr, userData);
+      let adjustment = 0;
+      if (userData.goal === "weightloss") {
+        const speed = userData.journeySpeed || "moderate";
+        if (speed === "conservative") {
+          adjustment = -Math.round((userData.weight * 0.0025 * 7700) / 7);
+        } else if (speed === "aggressive") {
+          adjustment = -Math.round((userData.weight * 0.0075 * 7700) / 7);
+        } else {
+          adjustment = -Math.round((userData.weight * 0.005 * 7700) / 7);
+        }
+        adjustment = Math.max(-1000, Math.min(-200, adjustment));
+      } else if (userData.goal === "hypertrophy") {
+        const speed = userData.journeySpeed || "moderate";
+        if (speed === "conservative") adjustment = 150;
+        else if (speed === "aggressive") adjustment = 500;
+        else adjustment = 300;
+      } else if (userData.goal === "recomposition") {
+        adjustment = -150;
+      }
+      const targetCalories = Math.round(Math.max(1200, tdee + adjustment));
+      const targetMacros = calculateMacros(userData.weight, userData.goal, targetCalories);
+
+      const response = await fetch(getApiUrl("/api/ai/generate-diet"), {
+        method: "POST",
+        headers: {
+          ...getAiHeaders()
+        },
+        body: JSON.stringify({
+          userData,
+          targetCalories,
+          targetMacros,
+          customMeals: profile?.custom_meals || []
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || "Erro ao conectar com servidor de IA.");
+      }
+
+      const data = await response.json();
+      if (!data.dietPlan) {
+        throw new Error("Dados da dieta por IA não estruturados corretamente.");
+      }
+
+      const plan = data.dietPlan;
+
+      if (session?.user) {
+        const docRef = doc(db, 'profiles', session.user.uid);
+        const updatedFields: any = {
+          diet_plan: plan
+        };
+        
+        if (!isPremiumActive) {
+          updatedFields.ai_diet_generated = true;
+        }
+
+        if (isFirebaseConfigured) {
+          await updateDoc(docRef, updatedFields);
+        }
+        
+        lastSyncedDietPlanRef.current = JSON.stringify(plan);
+        setDietPlan(plan);
+        setProfile(prev => prev ? { ...prev, ...updatedFields } : null);
+        const cached = localStorage.getItem(`profile_${session.user.uid}`);
+        if (cached) {
+          const cachedProfile = JSON.parse(cached);
+          localStorage.setItem(`profile_${session.user.uid}`, JSON.stringify({ ...cachedProfile, ...updatedFields }));
+        }
+      } else {
+        setDietPlan(plan);
+        setStep(3);
+      }
+
+      setIsGenModalOpen(false);
+    } catch (err: any) {
+      console.error("Erro ao gerar dieta com IA:", err);
+      setAiGenError(err.message || "Conexão falhou. Tente novamente em instantes.");
+    } finally {
+      setAiGenLoading(false);
+    }
   };
 
   const handleUpdateBiometrics = async (newUserData: UserData) => {
@@ -557,7 +669,7 @@ export default function App() {
   };
 
   const regenerateFood = (day: string, mealIdx: number, foodIdx: number) => {
-    if (!dietPlan) return;
+    if (!dietPlan || !dietPlan.weeklyPlan) return;
     
     const currentFood = dietPlan.weeklyPlan[day][mealIdx].foods[foodIdx].food;
     const activeFoodsList = (foods && foods.length > 5) ? foods : FALLBACK_FOODS;
@@ -618,13 +730,13 @@ export default function App() {
     return `${roundedUnits} ${food.measure_unit}${roundedUnits > 1 ? 's' : ''}`;
   };
 
-  const macroData = dietPlan ? [
-    { name: "Proteína", value: dietPlan.macros.protein * 4 },
-    { name: "Carboidrato", value: dietPlan.macros.carbs * 4 },
-    { name: "Gordura", value: dietPlan.macros.fat * 9 },
+  const macroData = (dietPlan && dietPlan.macros) ? [
+    { name: "Proteína", value: (dietPlan.macros.protein || 0) * 4 },
+    { name: "Carboidrato", value: (dietPlan.macros.carbs || 0) * 4 },
+    { name: "Gordura", value: (dietPlan.macros.fat || 0) * 9 },
   ] : [];
 
-  const currentDayMeals = dietPlan?.weeklyPlan[activeDay] || [];
+  const currentDayMeals = dietPlan?.weeklyPlan?.[activeDay] || [];
   const mealData = currentDayMeals.map(m => ({
     name: m.name,
     Proteínas: Math.round(m.totalProtein),
@@ -1460,15 +1572,15 @@ export default function App() {
                   <div className="grid grid-cols-3 gap-4 pt-4 border-t border-slate-50 dark:border-slate-800">
                     <div className="text-center">
                       <div className="text-xs text-slate-400 mb-1">Proteína</div>
-                      <div className="font-bold text-purple-600 dark:text-purple-400">{dietPlan.macros.protein}g</div>
+                      <div className="font-bold text-purple-600 dark:text-purple-400">{dietPlan.macros?.protein || 0}g</div>
                     </div>
                     <div className="text-center">
                       <div className="text-xs text-slate-400 mb-1">Carbo</div>
-                      <div className="font-bold text-cyan-600 dark:text-cyan-400">{dietPlan.macros.carbs}g</div>
+                      <div className="font-bold text-cyan-600 dark:text-cyan-400">{dietPlan.macros?.carbs || 0}g</div>
                     </div>
                     <div className="text-center">
                       <div className="text-xs text-slate-400 mb-1">Gordura</div>
-                      <div className="font-bold text-amber-600">{dietPlan.macros.fat}g</div>
+                      <div className="font-bold text-amber-600">{dietPlan.macros?.fat || 0}g</div>
                     </div>
                   </div>
                 </div>
@@ -1559,7 +1671,7 @@ export default function App() {
                         </span>
                       </div>
                       <div className="p-6 space-y-5">
-                        {meal.foods.map((item, fIdx) => (
+                        {(meal.foods || []).map((item, fIdx) => (
                           <div key={fIdx} className="flex items-center justify-between group/item">
                             <div className="flex items-center gap-4">
                               <motion.button 
@@ -1572,15 +1684,15 @@ export default function App() {
                                 <RefreshCw size={14} />
                               </motion.button>
                               <div>
-                                <div className="text-sm font-bold text-slate-800 dark:text-slate-100">{formatFoodName(item.food.name)}</div>
+                                <div className="text-sm font-bold text-slate-800 dark:text-slate-100">{item.food ? formatFoodName(item.food.name) : "Alimento desconhecido"}</div>
                                 <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
-                                  {formatMeasure(item.amount, item.food)} ({item.amount}g) • {Math.round(item.food.calories * item.amount / 100)} kcal
+                                  {item.food ? formatMeasure(item.amount, item.food) : `${item.amount}g`} ({item.amount}g) • {item.food ? Math.round(item.food.calories * item.amount / 100) : 0} kcal
                                 </div>
                               </div>
                             </div>
                             <div className="text-[10px] font-mono text-slate-400 flex flex-col items-end">
-                              <span>P: {Math.round(item.food.protein * item.amount / 100)}g</span>
-                              <span>C: {Math.round(item.food.carbs * item.amount / 100)}g</span>
+                              <span>P: {item.food ? Math.round(item.food.protein * item.amount / 100) : 0}g</span>
+                              <span>C: {item.food ? Math.round(item.food.carbs * item.amount / 100) : 0}g</span>
                             </div>
                           </div>
                         ))}
@@ -1667,13 +1779,13 @@ export default function App() {
               <div key={day} className="space-y-4">
                 <div className="bg-slate-900 text-white py-2 px-3 rounded-xl text-center text-[10px] font-black uppercase tracking-widest">{day}</div>
                 <div className="space-y-3">
-                  {dietPlan?.weeklyPlan[day].map((meal, mIdx) => (
+                  {(dietPlan?.weeklyPlan?.[day] || []).map((meal, mIdx) => (
                     <div key={mIdx} className="bg-slate-50 dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-800 space-y-2">
                       <div className="text-[8px] font-black uppercase tracking-widest text-purple-500">{meal.name}</div>
                       <div className="space-y-1">
-                        {meal.foods.map((f, fIdx) => (
+                        {(meal.foods || []).map((f, fIdx) => (
                           <div key={fIdx} className="text-[9px] font-bold text-slate-700 dark:text-slate-300 leading-tight">
-                            {formatMeasure(f.amount, f.food)} {formatFoodName(f.food.name)}
+                            {f.food ? `${formatMeasure(f.amount, f.food)} ${formatFoodName(f.food.name)}` : `${f.amount}g de Alimento`}
                           </div>
                         ))}
                       </div>
@@ -1688,15 +1800,15 @@ export default function App() {
             <div className="flex gap-8">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-purple-500" />
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Proteína: {dietPlan?.macros.protein}g</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Proteína: {dietPlan?.macros?.protein || 0}g</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-cyan-500" />
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Carbo: {dietPlan?.macros.carbs}g</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Carbo: {dietPlan?.macros?.carbs || 0}g</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-amber-500" />
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gordura: {dietPlan?.macros.fat}g</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gordura: {dietPlan?.macros?.fat || 0}g</span>
               </div>
             </div>
             <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest italic">Gerado por SportNutri AI • {new Date().toLocaleDateString()}</div>
@@ -1720,6 +1832,132 @@ export default function App() {
           </p>
         </div>
       </footer>
+
+      {/* DIET GENERATION CHOICE MODAL */}
+      {isGenModalOpen && (
+        <div id="diet-gen-modal" className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-50">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 p-8 max-w-xl w-full shadow-2xl space-y-6 relative"
+          >
+            <button 
+              onClick={() => {
+                if (!aiGenLoading && !loading) {
+                  setIsGenModalOpen(false);
+                  setAiGenError(null);
+                }
+              }}
+              className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all font-bold text-sm"
+              disabled={aiGenLoading || loading}
+            >
+              Fechar
+            </button>
+
+            <div className="space-y-2">
+              <h3 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">
+                Escolha o Tipo de Geração
+              </h3>
+              <p className="text-slate-500 dark:text-slate-400 text-xs">
+                Selecione como deseja calcular e gerar o seu novo plano de alimentação semanal.
+              </p>
+            </div>
+
+            {aiGenError === "limit_reached" ? (
+              <div className="p-5 bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 rounded-2xl space-y-4">
+                <p className="text-xs text-amber-800 dark:text-amber-300 font-bold leading-relaxed">
+                  Limite de IA Atingido: Você já utilizou sua única geração de dieta com Inteligência Artificial gratuita do plano comum. Para gerar novos planos ilimitados por IA, adquira a assinatura correspondente na Loja!
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setIsGenModalOpen(false);
+                      setAiGenError(null);
+                      setActiveTab('store');
+                    }}
+                    className="flex-1 bg-amber-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs hover:bg-amber-600 transition-all cursor-pointer text-center"
+                  >
+                    Ir para a Loja
+                  </button>
+                  <button
+                    onClick={() => setAiGenError(null)}
+                    className="flex-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold py-2.5 px-4 rounded-xl text-xs hover:bg-slate-200 dark:hover:bg-slate-700 transition-all cursor-pointer text-center"
+                  >
+                    Ver Outras Opções
+                  </button>
+                </div>
+              </div>
+            ) : aiGenError ? (
+              <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-2xl text-xs text-red-600 dark:text-red-400 font-bold">
+                {aiGenError}
+              </div>
+            ) : null}
+
+            {aiGenError !== "limit_reached" && (
+              <div className="grid grid-cols-1 gap-4">
+                {/* AI PREMIUM GENERATION */}
+                <div className="border border-slate-100 dark:border-slate-800 hover:border-purple-200 dark:hover:border-purple-900/50 p-5 rounded-3xl bg-slate-50/50 dark:bg-slate-800/10 space-y-4 transition-all">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-black tracking-widest text-purple-600 dark:text-purple-400 uppercase bg-purple-50 dark:bg-purple-950/40 px-2.5 py-1 rounded-full">
+                        Especialista IA
+                      </span>
+                      <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100">Geração Inteligente com IA</h4>
+                      <p className="text-slate-400 text-[11px] leading-relaxed">
+                        Cria um cardápio semanal diversificado com receitas e alimentos práticos do dia a dia. Evita junk food e pratos impróprios no café da manhã. Totalmente livre de instruções de preparo redundantes.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 pt-2 border-t border-slate-100 dark:border-slate-800/50">
+                    <span className="text-[10px] font-bold text-slate-500">
+                      {profile?.premium_access_until ? "Ilimitado para você!" : "1 Uso Grátis (Já usado: " + (profile?.ai_diet_generated ? "Sim" : "Não") + ")"}
+                    </span>
+                    <button
+                      onClick={handleGenerateAI}
+                      disabled={aiGenLoading || loading}
+                      className="bg-purple-cyan text-white font-bold py-2.5 px-5 rounded-xl text-xs shadow-md shadow-purple-500/10 hover:opacity-95 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {aiGenLoading ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Gerando...
+                        </>
+                      ) : (
+                        "Gerar Dieta Inteligente"
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* LOCAL ALGORITHMIC GENERATION */}
+                <div className="border border-slate-100 dark:border-slate-800 hover:border-cyan-200 dark:hover:border-cyan-900/50 p-5 rounded-3xl bg-slate-50/50 dark:bg-slate-800/10 space-y-4 transition-all">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black tracking-widest text-cyan-600 dark:text-cyan-400 uppercase bg-cyan-50 dark:bg-cyan-950/40 px-2.5 py-1 rounded-full">
+                      Algorítmica Rápida
+                    </span>
+                    <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100">Geração Padrão Convencional</h4>
+                    <p className="text-slate-400 text-[11px] leading-relaxed">
+                      Geração de cardápio rápida e instantânea baseada nas tabelas nutricionais predefinidas do banco de dados local.
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 pt-2 border-t border-slate-100 dark:border-slate-800/50">
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded">
+                      Sempre Grátis
+                    </span>
+                    <button
+                      onClick={handleGenerateLocal}
+                      disabled={aiGenLoading || loading}
+                      className="bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 dark:hover:bg-slate-600 text-white font-bold py-2.5 px-5 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {loading ? "Gerando..." : "Gerar Dieta Padrão"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

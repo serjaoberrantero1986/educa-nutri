@@ -643,72 +643,48 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
   };
 
   const suggestions = React.useMemo(() => {
-    let cachedLogs: any[] = [];
+    let recentSearches: string[] = [];
     try {
-      const cachedStr = localStorage.getItem(`all_food_logs_${user.uid}`);
-      if (cachedStr) {
-        cachedLogs = JSON.parse(cachedStr);
+      const userId = user?.uid || 'guest';
+      const stored = localStorage.getItem(`recent_typed_foods_${userId}`);
+      if (stored) {
+        recentSearches = JSON.parse(stored);
       }
     } catch (e) {
       console.error(e);
     }
 
-    if (cachedLogs && cachedLogs.length > 0) {
-      const counts: Record<string, number> = {};
-      cachedLogs.forEach((log: any) => {
-        if (log.food_name) {
-          const name = log.food_name.trim();
-          counts[name] = (counts[name] || 0) + 1;
-        }
-      });
+    // Filter out empty or invalid entries
+    recentSearches = (recentSearches || []).map(f => typeof f === 'string' ? f.trim() : '').filter(Boolean);
 
-      const sortedNames = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
-
-      if (sortedNames.length > 0) {
-        const smartSuggestions = [];
-        const topFood = sortedNames[0];
-        
-        smartSuggestions.push({
-          label: `Registrar ${topFood} 🍎`,
-          query: `Adiciona ${topFood} no meu lanche`
-        });
-
-        if (sortedNames.length > 1) {
-          const secondFood = sortedNames[1];
-          smartSuggestions.push({
-            label: `Adicionar ${secondFood} 🍽️`,
-            query: `Registra ${secondFood} no almoço`
-          });
-        } else {
-          smartSuggestions.push({
-            label: "Tomei 500ml de água 💧",
-            query: "Adiciona 500ml de água"
-          });
-        }
-
-        if (sortedNames.length > 2) {
-          const thirdFood = sortedNames[2];
-          smartSuggestions.push({
-            label: `Comi ${thirdFood} 🥚`,
-            query: `Adiciona ${thirdFood} no meu café da manhã`
-          });
-        } else {
-          smartSuggestions.push({
-            label: "Tirar lanche do dia ❌",
-            query: "Remova o lanche do meu dia"
-          });
-        }
-
-        return smartSuggestions;
+    // If there are less than 3, pad with nice defaults
+    const defaults = ["Arroz Branco Cozido", "Leite Integral", "Feijão Carioca Cozido"];
+    const uniqueFoods = [...recentSearches];
+    for (const d of defaults) {
+      if (uniqueFoods.length >= 3) break;
+      if (!uniqueFoods.some(f => f.toLowerCase() === d.toLowerCase())) {
+        uniqueFoods.push(d);
       }
     }
 
+    // Take top 3
+    const topThree = uniqueFoods.slice(0, 3);
+
     return [
-      { label: "1 Maçã e 5 Castanhas no Lanche da Tarde 🍎", query: "Esqueci de registrar meu lanche da tarde, foi 1 maçã e 5 castanhas. Adiciona aí no meu dia?" },
-      { label: "Tomei 500ml de água 💧", query: "Adiciona 500ml de água" },
-      { label: "Tirar ovo do café da manhã 🥚", query: "Remova o ovo cozido do meu café da manhã" }
+      {
+        label: `Registrar ${topThree[0]} 🍎`,
+        query: `Adiciona ${topThree[0]} no meu lanche`
+      },
+      {
+        label: `Adicionar ${topThree[1]} 🥛`,
+        query: `Registra ${topThree[1]} no almoço`
+      },
+      {
+        label: `Comi ${topThree[2]} 🥚`,
+        query: `Adiciona ${topThree[2]} no meu café da manhã`
+      }
     ];
-  }, [user.uid]);
+  }, [user?.uid]);
 
   const hasAlertNotification = React.useMemo(() => {
     return messages.some(m => 
@@ -741,13 +717,17 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
       {/* Floating Chat Sheet Drawer overlay */}
       <AnimatePresence>
         {isOpen && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex justify-end transition-all">
+          <div 
+            className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex justify-end transition-all"
+            onClick={() => setIsOpen(false)}
+          >
             {/* Modal/Drawer Container */}
             <motion.div
               initial={{ opacity: 0, x: 350 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 350 }}
               transition={{ type: "spring", damping: 25, stiffness: 220 }}
+              onClick={(e) => e.stopPropagation()}
               className="w-full max-w-md h-full bg-slate-50 dark:bg-slate-950 flex flex-col shadow-2xl relative border-l border-slate-100 dark:border-slate-800"
             >
               {/* Header */}

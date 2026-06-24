@@ -30,7 +30,7 @@ export const WeeklyPlanTab: React.FC<WeeklyPlanTabProps> = ({
   onPrint
 }) => {
   const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
-  const currentDayMeals = dietPlan?.weeklyPlan[activePlanDay] || [];
+  const currentDayMeals = dietPlan?.weeklyPlan?.[activePlanDay] || [];
   const mealData = currentDayMeals.map(m => ({
     name: m.name,
     Proteínas: Math.round(m.totalProtein),
@@ -178,7 +178,7 @@ export const WeeklyPlanTab: React.FC<WeeklyPlanTabProps> = ({
       {dietPlan ? (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {(dietPlan.weeklyPlan[activePlanDay] || []).map((meal, mIdx) => (
+            {(dietPlan?.weeklyPlan?.[activePlanDay] || []).map((meal, mIdx) => (
               <motion.div 
                 key={`${activePlanDay}-${mIdx}`}
                 initial={{ opacity: 0, scale: 0.98 }}
@@ -197,7 +197,7 @@ export const WeeklyPlanTab: React.FC<WeeklyPlanTabProps> = ({
                   </span>
                 </div>
                 <div className="p-6 space-y-5">
-                  {meal.foods.map((item, fIdx) => (
+                  {(meal.foods || []).map((item, fIdx) => (
                     <div key={fIdx} className="flex items-center justify-between group/item">
                       <div className="flex items-center gap-4">
                         <motion.button 
@@ -210,15 +210,15 @@ export const WeeklyPlanTab: React.FC<WeeklyPlanTabProps> = ({
                           <RefreshCw size={14} />
                         </motion.button>
                         <div>
-                          <div className="text-sm font-bold text-slate-800 dark:text-slate-100">{formatFoodName(item.food.name)}</div>
+                          <div className="text-sm font-bold text-slate-800 dark:text-slate-100">{item.food ? formatFoodName(item.food.name) : "Alimento desconhecido"}</div>
                           <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
-                            {formatMeasure(item.amount, item.food)} ({item.amount}g) • {Math.round(item.food.calories * item.amount / 100)} kcal
+                            {item.food ? formatMeasure(item.amount, item.food) : `${item.amount}g`} ({item.amount}g) • {item.food ? Math.round(item.food.calories * item.amount / 100) : 0} kcal
                           </div>
                         </div>
                       </div>
                       <div className="text-[10px] font-mono text-slate-400 flex flex-col items-end">
-                        <span>P: {Math.round(item.food.protein * item.amount / 100)}g</span>
-                        <span>C: {Math.round(item.food.carbs * item.amount / 100)}g</span>
+                        <span>P: {item.food ? Math.round(item.food.protein * item.amount / 100) : 0}g</span>
+                        <span>C: {item.food ? Math.round(item.food.carbs * item.amount / 100) : 0}g</span>
                       </div>
                     </div>
                   ))}

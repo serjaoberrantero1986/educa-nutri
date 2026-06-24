@@ -1752,8 +1752,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const newFoodLogs: FoodLog[] = [];
     
     for (const act of actions) {
-      if (act.type === 'ADD_WATER' && act.amount_ml) {
-        await handleAddWater(Number(act.amount_ml), addedVia || 'chat');
+      if (act.type === 'ADD_WATER' && (act.amount_ml || act.amount)) {
+        await handleAddWater(Number(act.amount_ml || act.amount), addedVia || 'chat');
       } 
       else if (act.type === 'ADD_FOOD') {
         const logId = Math.random().toString(36).substring(2, 15);
@@ -1860,9 +1860,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const totalCarbs = foodLogs.reduce((sum, log) => sum + log.carbs, 0);
   const totalFat = foodLogs.reduce((sum, log) => sum + log.fat, 0);
 
-  const targetProtein = dietPlan?.macros.protein || 150;
-  const targetCarbs = dietPlan?.macros.carbs || 250;
-  const targetFat = dietPlan?.macros.fat || 70;
+  const targetProtein = dietPlan?.macros?.protein || 150;
+  const targetCarbs = dietPlan?.macros?.carbs || 250;
+  const targetFat = dietPlan?.macros?.fat || 70;
 
   const checkAndRewardDailyGoals = useCallback(async () => {
     if (!profile) return;
@@ -2599,6 +2599,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             profile={profile}
             setProfile={setProfile}
             userData={userData}
+            selectedDate={selectedDate}
           />
         )}
 

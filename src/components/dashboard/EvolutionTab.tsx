@@ -142,13 +142,15 @@ interface EvolutionTabProps {
   profile: Profile | null;
   setProfile: React.Dispatch<React.SetStateAction<Profile | null>>;
   userData: UserData;
+  selectedDate?: Date;
 }
 
 export const EvolutionTab: React.FC<EvolutionTabProps> = ({
   user,
   profile,
   setProfile,
-  userData
+  userData,
+  selectedDate
 }) => {
   const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
 
@@ -161,7 +163,7 @@ export const EvolutionTab: React.FC<EvolutionTabProps> = ({
   const [logPeitoral, setLogPeitoral] = useState<string>(userData.peitoral?.toString() || '100');
   const [logCoxas, setLogCoxas] = useState<string>(userData.coxas?.toString() || '55');
   const [logDate, setLogDate] = useState<string>(() => {
-    const d = new Date();
+    const d = selectedDate || new Date();
     const tzOffset = d.getTimezoneOffset() * 60000;
     return (new Date(d.getTime() - tzOffset)).toISOString().slice(0, 10);
   });
@@ -217,6 +219,14 @@ export const EvolutionTab: React.FC<EvolutionTabProps> = ({
       setLocalStepsCategory(activeData.stepsCategory || 'Não sei (estimar em 5.000 passos)');
     }
   }, [profile?.user_data]);
+
+  // Sync logDate state when the global selectedDate changes
+  React.useEffect(() => {
+    if (selectedDate) {
+      const tzOffset = selectedDate.getTimezoneOffset() * 60000;
+      setLogDate(new Date(selectedDate.getTime() - tzOffset).toISOString().slice(0, 10));
+    }
+  }, [selectedDate]);
 
   // Extract entries safe fallbacks
   const weightHistory = useMemo((): WeightHistoryEntry[] => {
@@ -564,15 +574,6 @@ export const EvolutionTab: React.FC<EvolutionTabProps> = ({
                 <span className="text-xs text-purple-600 dark:text-purple-400 font-bold flex items-center gap-1">
                   <Calendar size={14} /> Histórico de Evolução
                 </span>
-              </div>
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Data do Registro das Medidas</label>
-                <input 
-                  type="date"
-                  value={logDate}
-                  onChange={(e) => setLogDate(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-2xl p-3 text-xs font-extrabold text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-purple-500/20 transition-all cursor-pointer"
-                />
               </div>
             </div>
 
