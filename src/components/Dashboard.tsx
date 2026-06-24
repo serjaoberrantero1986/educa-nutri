@@ -2993,6 +2993,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         onExecuteActions={executeAssistantActions}
         setActiveTab={setActiveTab}
         selectedMeal={selectedMeal}
+        foodLogs={foodLogs}
       />
     </div>
   );

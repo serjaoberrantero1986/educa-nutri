@@ -2692,7 +2692,7 @@ REGRAS CRÍTICAS:
 // Chat Assistant Conversational Endpoint
 app.post("/api/ai/chat-assistant", async (req, res) => {
   try {
-    const { message, history, profile, selectedMealId } = req.body;
+    const { message, history, profile, selectedMealId, foodLogs = [] } = req.body;
     if (!message) {
       return res.status(400).json({ error: "O campo 'message' é obrigatório." });
     }
@@ -2721,16 +2721,49 @@ app.post("/api/ai/chat-assistant", async (req, res) => {
       selectedMealPrompt = `O usuário atualmente SELECIONOU ou está visualizando a refeição "${currentSelectedMealObj.name || currentSelectedMealObj.id}". Se o usuário pedir para adicionar um alimento e NÃO houver menção a outra refeição no texto para aquele alimento, coloque-o nesta refeição por padrão. Caso contrário, se o usuário associar explicitamente o alimento a outra refeição no texto, coloque-o na respectiva refeição mencionada!`;
     }
 
+    let consumedSummary = "Nenhum alimento registrado ainda hoje.";
+    let totalCalsConsumed = 0;
+    let totalProtConsumed = 0;
+    let totalCarbsConsumed = 0;
+    let totalFatConsumed = 0;
+
+    if (Array.isArray(foodLogs) && foodLogs.length > 0) {
+      totalCalsConsumed = Math.round(foodLogs.reduce((sum: number, log: any) => sum + (log.calories || 0), 0));
+      totalProtConsumed = Math.round(foodLogs.reduce((sum: number, log: any) => sum + (log.protein || 0), 0));
+      totalCarbsConsumed = Math.round(foodLogs.reduce((sum: number, log: any) => sum + (log.carbs || 0), 0));
+      totalFatConsumed = Math.round(foodLogs.reduce((sum: number, log: any) => sum + (log.fat || 0), 0));
+
+      consumedSummary = foodLogs.map((log: any) => `  - ${log.name || log.food_name}: ${log.calories} kcal (P: ${log.protein}g, C: ${log.carbs}g, G: ${log.fat}g) [Na refeição: ${log.meal_type || 'Geral'}]`).join("\n");
+    }
+
+    const targetCalories = profile?.diet_plan?.targetCalories || profile?.diet_plan?.dailyTargets?.calories || 2000;
+    const targetProtein = profile?.diet_plan?.macros?.protein || profile?.diet_plan?.dailyTargets?.protein || 150;
+    const targetCarbs = profile?.diet_plan?.macros?.carbs || profile?.diet_plan?.dailyTargets?.carbs || 200;
+    const targetFat = profile?.diet_plan?.macros?.fat || profile?.diet_plan?.dailyTargets?.fat || 60;
+
+    const remainingCalories = Math.max(0, targetCalories - totalCalsConsumed);
+    const remainingProtein = Math.max(0, targetProtein - totalProtConsumed);
+    const remainingCarbs = Math.max(0, targetCarbs - totalCarbsConsumed);
+    const remainingFat = Math.max(0, targetFat - totalFatConsumed);
+
     const apiKeyOnServer = process.env.GEMINI_API_KEY;
     const systemPrompt = `Você é o Nutri-Assistant, um assistente virtual ultra-inteligente, super animado e de conversa extremamente descontraída integrado ao 'SportNutri', um aplicativo de nutrição focado em alta performance desportiva.
-O usuário quer registrar, remover ou alterar o consumo dietético dele por meio de conversa livre.
-Cada mensagem pode pedir para adicionar um ou mais alimentos, registrar consumo de água, remover itens registrados, etc.
+O usuário quer registrar, remover ou alterar o consumo dietético dele por meio de conversa livre ou fazer perguntas sobre suas metas e alimentos.
+Cada mensagem pode pedir para adicionar um ou mais alimentos, registrar consumo de água, remover itens registrados, tirar dúvidas nutricionais ou fazer cálculos dinâmicos com base em quanto resta para ele bater a meta do dia!
 
 CRÍTICO: Você NUNCA deve usar asteriscos (* ou **) na propriedade "response"! Nenhuma palavra ou frase deve ter asteriscos. NUNCA envie texto em negrito formatado com asteriscos. Use formatação em texto simples e limpo, sem markdown visual de ênfase. Se precisar listar coisas, use quebras de linha simples ou marcadores simples como "•" ou "-". Se desobedecer isso e emitir um único asterisco na resposta, o sistema de chat falhará.
 
 CONTEXTO DO USUÁRIO ATUAL:
 - Nome/Username: ${username}
 - Gênero/Tratamento adequado: ${genderInfo}
+- Registro de Alimentos Consumidos HOJE até o momento:
+${consumedSummary}
+- Macronutrientes e Calorias Totais Consumidas Hoje: ${totalCalsConsumed} kcal (P: ${totalProtConsumed}g, C: ${totalCarbsConsumed}g, G: ${totalFatConsumed}g)
+- Metas Diárias Totais Recomendadas do Usuário: ${targetCalories} kcal (P: ${targetProtein}g, C: ${targetCarbs}g, G: ${targetFat}g)
+- Calorias e Macros RESTANTES para Bater a Meta de Hoje: ${remainingCalories} kcal (P: ${remainingProtein}g, C: ${remainingCarbs}g, G: ${remainingFat}g)
+
+Se o usuário perguntar quanto falta para bater a meta, ou o que ele pode comer para atingir as calorias/macros restantes (por exemplo, "quantas colheres de aveia com leite eu deveria ingerir para atingir minha meta de calorias restantes?"), use os dados fornecidos acima (Calorias/Macros RESTANTES) para realizar cálculos dinâmicos extremamente precisos e didáticos, informando a quantidade e a porção sugerida (ex: 1 colher de aveia tem aprox. 50 kcal e 100ml de leite integral tem 60 kcal, então ele precisaria de X colheres e Y ml). Seja ultra-preciso, direto e amigável!
+
 - Refeição Selecionada na Tela (Contexto Físico): ${selectedMealPrompt}
 - Refeições Disponíveis do Usuário (Sempre mapeie meal_type para um de seus nomes atualizados abaixo):
 ${userMeals.map((m: any) => `  - ID "${m.id}" -> nome atualizado: "${m.name}"`).join("\n")}

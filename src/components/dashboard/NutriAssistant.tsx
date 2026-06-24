@@ -7,6 +7,34 @@ import { doc, updateDoc } from "firebase/firestore";
 import { getAiHeaders } from "../../services/storeConfigService";
 import { tryFetchWithClientFallback, clientChatAssistant, clientAnalyzeMeal } from "../../services/clientAiFallback";
 
+const TypingText: React.FC<{ text: string; onComplete?: () => void }> = ({ text, onComplete }) => {
+  const [displayedText, setDisplayedText] = useState("");
+  const [isDone, setIsDone] = useState(false);
+
+  useEffect(() => {
+    if (isDone) return;
+    const cleanText = text.replace(/\*/g, "");
+    let index = 0;
+    const interval = setInterval(() => {
+      if (index < cleanText.length) {
+        setDisplayedText(cleanText.substring(0, index + 1));
+        index++;
+        window.dispatchEvent(new Event("chat-scroll-request"));
+      } else {
+        clearInterval(interval);
+        setIsDone(true);
+        if (onComplete) onComplete();
+      }
+    }, 15);
+    return () => clearInterval(interval);
+  }, [text, isDone, onComplete]);
+
+  if (isDone) {
+    return <>{text.replace(/\*/g, "")}</>;
+  }
+  return <>{displayedText}</>;
+};
+
 function getGramsForUnit(unit: string, pendingFood: any): number {
   const normUnit = (unit || "").toLowerCase().trim();
   const foodUnit = (pendingFood.measure_unit || "").toLowerCase().trim();
@@ -141,6 +169,14 @@ const normalizePendingAction = (act: any): any => {
   };
 };
 
+interface QuickAction {
+  label: string;
+  action: "link" | "challenge_complete" | "faq_reply";
+  value?: any;
+  id?: string;
+  completed?: boolean;
+}
+
 interface Message {
   sender: "user" | "bot";
   text: string;
@@ -148,7 +184,124 @@ interface Message {
   actionsEvaluated?: boolean;
   pendingActions?: any[];
   pendingCaloricsAdjustment?: { offset: number; applied: boolean };
+  quickActions?: QuickAction[];
+  isTypingEffect?: boolean;
 }
+
+const getTodayMealReminder = (foodLogs: any[]) => {
+  const hour = new Date().getHours();
+  const mealsToday = (foodLogs || []).map(log => (log.meal_type || "").toLowerCase().trim());
+  
+  if (hour >= 5 && hour < 10) {
+    const alreadyLogged = mealsToday.includes("café da manhã") || mealsToday.includes("cafe");
+    if (!alreadyLogged) {
+      return {
+        id: "meal_cafe",
+        title: "Lembrete: Café da Manhã 🍳☕",
+        description: "Fera, já mandou para dentro o seu desjejum? Não esquece de registrar os ovos ou o pão para abastecer os músculos!",
+        prompt: "Quero registrar meu café da manhã hoje"
+      };
+    }
+  } else if (hour >= 10 && hour < 12) {
+    const alreadyLogged = mealsToday.includes("lanche da manhã") || mealsToday.includes("lanche_manha") || mealsToday.includes("lanche manha");
+    if (!alreadyLogged) {
+      return {
+        id: "meal_lanche_manha",
+        title: "Lembrete: Lanche da Manhã 🍎🥜",
+        description: "Hora daquela fruta, shake ou porção de castanhas para manter o metabolismo a todo vapor!",
+        prompt: "Quero registrar meu lanche da manhã"
+      };
+    }
+  } else if (hour >= 12 && hour < 15) {
+    const alreadyLogged = mealsToday.includes("almoço") || mealsToday.includes("almoco");
+    if (!alreadyLogged) {
+      return {
+        id: "meal_almoco",
+        title: "Lembrete: Almoço 🍲🍗",
+        description: "Almoço caprichado na mesa? Registre seu arroz, feijão e aquela proteína pesada para o anabolismo!",
+        prompt: "Quero registrar meu almoço de hoje"
+      };
+    }
+  } else if (hour >= 15 && hour < 18) {
+    const alreadyLogged = mealsToday.includes("lanche da tarde") || mealsToday.includes("lanche_tarde") || mealsToday.includes("lanche tarde");
+    if (!alreadyLogged) {
+      return {
+        id: "meal_lanche_tarde",
+        title: "Lembrete: Lanche da Tarde 🥪🥛",
+        description: "Bateu aquela fome da tarde? Que tal uma aveia com leite ou um scoop de whey gelado?",
+        prompt: "Quero registrar meu lanche da tarde"
+      };
+    }
+  } else if (hour >= 18 && hour < 22) {
+    const alreadyLogged = mealsToday.includes("jantar");
+    if (!alreadyLogged) {
+      return {
+        id: "meal_jantar",
+        title: "Lembrete: Jantar 🥗🥩",
+        description: "Chegou a hora de abastecer o corpo para a recuperação noturna. Registre seu jantar saudável!",
+        prompt: "Quero registrar meu jantar"
+      };
+    }
+  } else {
+    const alreadyLogged = mealsToday.includes("ceia");
+    if (!alreadyLogged) {
+      return {
+        id: "meal_ceia",
+        title: "Lembrete: Ceia 🥛💤",
+        description: "Vai mandar aquela ceia leve antes de dormir (abacate, iogurte, whey)? Registre agora!",
+        prompt: "Quero registrar minha ceia"
+      };
+    }
+  }
+  return null;
+};
+
+const getTodayChallenge = () => {
+  const day = new Date().getDay();
+  const challenges = [
+    {
+      id: "challenge_squat",
+      title: "Desafio de Pernas: Agachamento Livre 🏋️‍♂️",
+      description: "Faça 3 séries de 15 repetições de agachamento livre corporal agora para estimular suas pernas e faturar +30 NC!",
+      xpReward: 30,
+    },
+    {
+      id: "challenge_water",
+      title: "Desafio de Hidratação Rápida 💧",
+      description: "Beba 2 copos grandes de água pura (500ml) agora mesmo para hidratar e lubrificar suas juntas, faturando +20 NC!",
+      xpReward: 20,
+    },
+    {
+      id: "challenge_stretching",
+      title: "Desafio de Mobilidade Corporal 🤸‍♂️",
+      description: "Alongue-se por 2 minutos (toque nos pés e estique os braços) para melhorar a flexibilidade e faturar +25 NC!",
+      xpReward: 25,
+    }
+  ];
+  return challenges[day % challenges.length];
+};
+
+const getTodayTip = () => {
+  const day = new Date().getDay();
+  const tips = [
+    {
+      id: "tip_oats",
+      title: "Poder da Aveia 🥣",
+      description: "A aveia em flocos possui carboidratos de baixo índice glicêmico e fibras solúveis (beta-glucana) que controlam o colesterol e dão saciedade duradoura!"
+    },
+    {
+      id: "tip_water",
+      title: "Metabolismo e Água 💧",
+      description: "Beba água gelada! Seu corpo gasta energia para aquecê-la até a temperatura corporal, acelerando sutilmente seu metabolismo por termogênese."
+    },
+    {
+      id: "tip_protein",
+      title: "Importância da Proteína 🥩",
+      description: "Consumir fontes de proteína de alto valor biológico nas refeições principais ajuda a preservar a massa muscular em fases de deficit calórico e potencializa a hipertrofia!"
+    }
+  ];
+  return tips[day % tips.length];
+};
 
 interface NutriAssistantProps {
   user: any;
@@ -157,6 +310,7 @@ interface NutriAssistantProps {
   onExecuteActions: (actions: any[], addedVia?: string) => Promise<void>;
   setActiveTab: (tab: 'dashboard' | 'ranking' | 'profile' | 'weekly' | 'store' | 'admin' | 'evolution') => void;
   selectedMeal?: string | null;
+  foodLogs?: any[];
 }
 
 export const NutriAssistant: React.FC<NutriAssistantProps> = ({ 
@@ -165,7 +319,8 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
   setProfile,
   onExecuteActions, 
   setActiveTab,
-  selectedMeal = null
+  selectedMeal = null,
+  foodLogs = []
 }) => {
   const isPremiumActive = profile?.premium_access_until 
     ? (profile.premium_access_until === 'unlimited' || new Date(profile.premium_access_until).getTime() > Date.now())
@@ -194,6 +349,71 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
   ]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isAssistantTyping, setIsAssistantTyping] = useState(false);
+  const [hasNewOutreachNotification, setHasNewOutreachNotification] = useState(false);
+  const [pendingOutreach, setPendingOutreach] = useState<Message | null>(null);
+
+  const handleExecuteQuickAction = async (msgIdx: number, actionIdx: number, action: any) => {
+    if (action.action === "link") {
+      setActiveTab(action.value);
+      setIsOpen(false);
+    } else if (action.action === "faq_reply") {
+      handleSendMessage(action.value);
+    } else if (action.action === "challenge_complete") {
+      const challengeId = action.value.id;
+      const xpReward = action.value.xp;
+      
+      const today = new Date().toDateString();
+      let completedChallenges: string[] = [];
+      try {
+        const stored = localStorage.getItem(`completed_challenges_${profile?.id || "guest"}`);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.date === today) completedChallenges = parsed.challenges || [];
+        }
+      } catch (e) { console.error(e); }
+      
+      if (!completedChallenges.includes(challengeId)) {
+        completedChallenges.push(challengeId);
+        try {
+          localStorage.setItem(
+            `completed_challenges_${profile?.id || "guest"}`,
+            JSON.stringify({ date: today, challenges: completedChallenges })
+          );
+        } catch (e) { console.error(e); }
+        
+        await handleUpdateXP(xpReward);
+        
+        setMessages(prev => prev.map((m, idx) => {
+          if (idx === msgIdx && m.quickActions) {
+            return {
+              ...m,
+              quickActions: m.quickActions.map((act, aIdx) => 
+                aIdx === actionIdx ? { ...act, completed: true } : act
+              )
+            };
+          }
+          return m;
+        }));
+      }
+    }
+  };
+
+  const handleUpdateXP = async (amount: number) => {
+    if (!profile?.id) return;
+    try {
+      const finalXP = (profile.xp || 0) + amount;
+      const updatedProfile = { ...profile, xp: finalXP };
+      setProfile(updatedProfile);
+      
+      if (isFirebaseConfigured) {
+        const profileRef = doc(db, 'profiles', profile.id);
+        await updateDoc(profileRef, { xp: finalXP });
+      }
+    } catch (e) {
+      console.error("Error updating XP inside assistant:", e);
+    }
+  };
   
   // Audio state
   const [isRecording, setIsRecording] = useState(false);
@@ -353,6 +573,18 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
       chatEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, isLoading]);
+
+  useEffect(() => {
+    const handleScrollRequest = () => {
+      if (chatEndRef.current) {
+        chatEndRef.current.scrollIntoView({ behavior: "auto" });
+      }
+    };
+    window.addEventListener("chat-scroll-request", handleScrollRequest);
+    return () => {
+      window.removeEventListener("chat-scroll-request", handleScrollRequest);
+    };
+  }, []);
 
   // Audio recording handlers
   const startListening = () => {
@@ -586,7 +818,8 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
           message: textToSend,
           history: chatHistory,
           profile,
-          selectedMealId: selectedMeal
+          selectedMealId: selectedMeal,
+          foodLogs: foodLogs
         });
       };
 
@@ -599,7 +832,8 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
             message: textToSend,
             history: chatHistory,
             profile: profile,
-            selectedMealId: selectedMeal
+            selectedMealId: selectedMeal,
+            foodLogs: foodLogs
           })
         },
         fallbackFn
@@ -611,7 +845,8 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
         text: (data.response || "Compreendido, mestre!").replace(/\*/g, ""),
         timestamp: botMessageTime,
         pendingActions: data.actions && data.actions.length > 0 ? data.actions.map(normalizePendingAction) : undefined,
-        actionsEvaluated: false
+        actionsEvaluated: false,
+        isTypingEffect: true
       };
 
       setMessages(prev => [...prev, botMsg]);
@@ -624,7 +859,8 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
         {
           sender: "bot",
           text: "Ops, campeão! Tive uma pequena oscilação no meu servidor de IA agora, mas não desista! Pode tentar de novo ou registrar diretamente pelas abas de refeições do diário. 🚀",
-          timestamp: botMessageTime
+          timestamp: botMessageTime,
+          isTypingEffect: true
         }
       ]);
     } finally {
@@ -632,12 +868,118 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
     }
   };
 
+  const handleSendMessageRef = useRef(handleSendMessage);
+  useEffect(() => {
+    handleSendMessageRef.current = handleSendMessage;
+  });
+
+  // Proactive chatbot outreach check on load/logs update
+  useEffect(() => {
+    const today = new Date().toDateString();
+    const userId = profile?.id || "guest";
+    const shownToday = localStorage.getItem("last_outreach_shown_date_" + userId) === today;
+    
+    if (!shownToday && !pendingOutreach) {
+      // 1. Try to get a Meal Reminder
+      const reminder = getTodayMealReminder(foodLogs);
+      if (reminder) {
+        const outreachMsg: Message = {
+          sender: "bot",
+          text: `Olá, mestre! Sou seu Nutri-Assistant. 🤖💪\n\nNotei que ainda não registrou seu ${reminder.title.replace(/Lembrete: /g, "")} hoje no diário de refeições.\n\n${reminder.description}\n\nVamos registrar agora?`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          quickActions: [
+            { label: "🍲 Ver Diário", action: "link", value: "dashboard" },
+            { label: "📖 Consultar FAQ", action: "faq_reply", value: "Quais são as perguntas frequentes do app?" }
+          ]
+        };
+        setPendingOutreach(outreachMsg);
+        setHasNewOutreachNotification(true);
+        return;
+      }
+      
+      // 2. Try Daily Challenge
+      const challenge = getTodayChallenge();
+      let completedChallenges: string[] = [];
+      try {
+        const stored = localStorage.getItem(`completed_challenges_${userId}`);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.date === today) completedChallenges = parsed.challenges || [];
+        }
+      } catch (e) { console.error(e); }
+      
+      const isChallengeCompleted = completedChallenges.includes(challenge.id);
+      if (!isChallengeCompleted) {
+        const outreachMsg: Message = {
+          sender: "bot",
+          text: `Fala campeão! Trago o desafio de hoje para turbinar sua rotina e faturar umas NutriCoins extras! ⚡🏆\n\n${challenge.title}\n\n${challenge.description}\n\nAceita o desafio?`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          quickActions: [
+            { label: `Concluir Desafio (+${challenge.xpReward} NC)`, action: "challenge_complete", value: { id: challenge.id, xp: challenge.xpReward }, completed: false },
+            { label: "🏆 Ver Ranking", action: "link", value: "ranking" }
+          ]
+        };
+        setPendingOutreach(outreachMsg);
+        setHasNewOutreachNotification(true);
+        return;
+      }
+      
+      // 3. Fallback to Nutrition Tip
+      const tip = getTodayTip();
+      const outreachMsg: Message = {
+        sender: "bot",
+        text: `Fala, fera! Passando para te dar uma dica nutricional de ouro para o seu dia! 💡🍍\n\n${tip.title}\n\n${tip.description}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        quickActions: [
+          { label: "🥣 Dicas de Dieta", action: "faq_reply", value: "Me dê dicas para manter a dieta" },
+          { label: "🛒 Ir para Loja", action: "link", value: "store" }
+        ]
+      };
+      setPendingOutreach(outreachMsg);
+      setHasNewOutreachNotification(true);
+    }
+  }, [profile?.id, foodLogs, pendingOutreach]);
+
+  // Handle human-like typing simulation when drawer is opened with a pending outreach
+  useEffect(() => {
+    if (isOpen && pendingOutreach) {
+      setIsAssistantTyping(true);
+      setHasNewOutreachNotification(false);
+      const timer = setTimeout(() => {
+        setMessages(prev => [...prev, { ...pendingOutreach, isTypingEffect: true }]);
+        setPendingOutreach(null);
+        setIsAssistantTyping(false);
+        
+        const today = new Date().toDateString();
+        localStorage.setItem("last_outreach_shown_date_" + (profile?.id || "guest"), today);
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, pendingOutreach, profile?.id]);
+
+  useEffect(() => {
+    const handleOpen = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      setIsOpen(true);
+      if (customEvent.detail?.prompt) {
+        setTimeout(() => {
+          handleSendMessageRef.current(customEvent.detail.prompt);
+        }, 150);
+      }
+    };
+    window.addEventListener("open-nutri-assistant", handleOpen);
+    return () => {
+      window.removeEventListener("open-nutri-assistant", handleOpen);
+    };
+  }, []);
+
   const handleClearChat = () => {
     setMessages([
       {
         sender: "bot",
         text: `Chat reiniciado, parceiro! O que quer atualizar no seu diário hoje? Pode ditar seu lanche ou registrar hidratação. 💧🍎`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isTypingEffect: true
       }
     ]);
   };
@@ -687,11 +1029,11 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
   }, [user?.uid]);
 
   const hasAlertNotification = React.useMemo(() => {
-    return messages.some(m => 
+    return hasNewOutreachNotification || messages.some(m => 
       (m.pendingCaloricsAdjustment && !m.pendingCaloricsAdjustment.applied) || 
       (m.pendingActions && m.pendingActions.length > 0 && !m.actionsEvaluated)
     );
-  }, [messages]);
+  }, [hasNewOutreachNotification, messages]);
 
   return (
     <>
@@ -826,7 +1168,39 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
                                 : "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 rounded-tl-none border border-slate-100 dark:border-slate-800/40"
                             }`}
                           >
-                            {msg.text ? msg.text.replace(/\*/g, "") : ""}
+                            {msg.text ? (
+                              msg.isTypingEffect && msg.sender === "bot" ? (
+                                <TypingText text={msg.text} />
+                              ) : (
+                                msg.text.replace(/\*/g, "")
+                              )
+                            ) : (
+                              ""
+                            )}
+
+                            {msg.quickActions && msg.quickActions.length > 0 && (
+                              <div className="mt-3 flex flex-wrap gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/60">
+                                {msg.quickActions.map((action, actionIdx) => {
+                                  const isCompleted = action.completed;
+                                  return (
+                                    <button
+                                      key={actionIdx}
+                                      type="button"
+                                      disabled={isCompleted}
+                                      onClick={() => handleExecuteQuickAction(index, actionIdx, action)}
+                                      className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shadow-xs ${
+                                        isCompleted
+                                          ? "bg-emerald-100 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 cursor-default"
+                                          : "bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/30 dark:hover:bg-purple-900/40 text-purple-600 dark:text-purple-400 active:scale-95 cursor-pointer"
+                                      }`}
+                                    >
+                                      {isCompleted && <Check size={12} />}
+                                      {action.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
 
                             {msg.pendingCaloricsAdjustment && (
                               <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
@@ -1180,6 +1554,28 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
                         </div>
                       </motion.div>
                     ))}
+
+                    {isAssistantTyping && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex gap-2.5 max-w-[80%] mr-auto"
+                      >
+                        <div className="h-8 w-8 rounded-lg bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                          <Bot size={18} />
+                        </div>
+                        <div className="space-y-1">
+                          <div className="p-3 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/40 rounded-2xl rounded-tl-none flex items-center gap-1.5 shadow-sm">
+                            <span className="text-xs text-slate-400 font-medium mr-1">Nutri-Assistant está digitando</span>
+                            <div className="flex gap-1 items-center">
+                              <span className="h-1.5 w-1.5 rounded-full bg-purple-500 animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                              <span className="h-1.5 w-1.5 rounded-full bg-purple-500 animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                              <span className="h-1.5 w-1.5 rounded-full bg-purple-500 animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
 
                     {isLoading && (
                       <motion.div
