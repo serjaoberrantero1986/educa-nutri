@@ -16,10 +16,44 @@ import {
   AlertTriangle,
   History,
   HelpCircle,
-  X
+  X,
+  Volume2,
+  VolumeX
 } from "lucide-react";
 import { Profile, UserWorkoutProfile, WorkoutRoutine, PlannedExercise, ExerciseLog, UserData } from "../../types";
 import { getMuscleGroupLabel } from "../../utils";
+
+const playTimerSound = (type: 'beep') => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    
+    // Explicitly resume context if suspended (crucial for browser security rules)
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
+    
+    if (type === 'beep') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(900, ctx.currentTime);
+      
+      // Amplified volume (6.0 for extreme audibility)
+      gain.gain.setValueAtTime(6.0, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+      
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.18);
+    }
+  } catch (error) {
+    console.error("Audio error:", error);
+  }
+};
 
 interface WorkoutTodayProps {
   profile: Profile | null;
@@ -93,6 +127,18 @@ export const WorkoutToday: React.FC<WorkoutTodayProps> = ({
   const [timerMaxSeconds, setTimerMaxSeconds] = useState<number>(60);
   const [timerSeconds, setTimerSeconds] = useState<number>(0);
   const [isTimerRunning, setIsTimerRunning] = useState<boolean>(false);
+  const [isTimerSoundEnabled, setIsTimerSoundEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem("workout_timer_sound_enabled");
+    return saved !== null ? saved === "true" : true;
+  });
+
+  const toggleTimerSound = () => {
+    setIsTimerSoundEnabled(prev => {
+      const newVal = !prev;
+      localStorage.setItem("workout_timer_sound_enabled", String(newVal));
+      return newVal;
+    });
+  };
 
   // Tooltip details modal state
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
@@ -136,13 +182,21 @@ export const WorkoutToday: React.FC<WorkoutTodayProps> = ({
     let interval: any = null;
     if (isTimerRunning && timerSeconds > 0) {
       interval = setInterval(() => {
-        setTimerSeconds(s => s - 1);
+        setTimerSeconds(s => {
+          const nextSeconds = s - 1;
+          if (isTimerSoundEnabled) {
+            if (nextSeconds >= 0 && nextSeconds <= 4) {
+              playTimerSound('beep');
+            }
+          }
+          return nextSeconds;
+        });
       }, 1000);
     } else if (timerSeconds === 0 && isTimerRunning) {
       setIsTimerRunning(false);
     }
     return () => clearInterval(interval);
-  }, [isTimerRunning, timerSeconds]);
+  }, [isTimerRunning, timerSeconds, isTimerSoundEnabled]);
 
   const startRestTimer = (seconds: number) => {
     setTimerMaxSeconds(seconds);
@@ -1472,6 +1526,21 @@ export const WorkoutToday: React.FC<WorkoutTodayProps> = ({
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[10000] flex flex-col items-center justify-center bg-slate-50/75 dark:bg-slate-950/75 backdrop-blur-xl select-none overflow-hidden"
           >
+            {/* Top Left "Volume" Toggle Button */}
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={toggleTimerSound}
+              className="absolute top-6 left-6 p-4 rounded-full bg-slate-500/10 hover:bg-slate-500/20 text-slate-800 dark:bg-white/5 dark:hover:bg-white/15 dark:text-white border-0 transition-all cursor-pointer flex items-center justify-center shadow-lg"
+              title={isTimerSoundEnabled ? "Desativar Sons" : "Ativar Sons"}
+            >
+              {isTimerSoundEnabled ? (
+                <Volume2 size={28} strokeWidth={2.5} className="text-purple-500 animate-pulse" />
+              ) : (
+                <VolumeX size={28} strokeWidth={2.5} className="text-slate-400" />
+              )}
+            </motion.button>
+
             {/* Top Right "X" Dismiss Button - Elegant Glassmorphic Style */}
             <motion.button
               whileHover={{ scale: 1.1 }}

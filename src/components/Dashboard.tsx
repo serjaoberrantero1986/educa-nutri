@@ -888,44 +888,68 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     // Award NutriCoins / XP for completed workout exercise
     const todayStrStr = new Date().toISOString().split('T')[0];
-    const logsToday = updatedHistory.filter(log => log.loggedAt && log.loggedAt.startsWith(todayStrStr));
-    const uniqueExsToday = new Set(logsToday.map(l => l.exercicio.toLowerCase())).size;
+    const rewardedExercises = { ...(profile?.rewarded_exercises_today || {}) };
+    if (rewardedExercises.date !== todayStrStr) {
+      rewardedExercises.date = todayStrStr;
+      rewardedExercises.exercises = [];
+      rewardedExercises.bonus_claimed = false;
+    }
 
-    const logsBefore = exerciseHistory.filter(log => log.loggedAt && log.loggedAt.startsWith(todayStrStr));
-    const uniqueExsBefore = new Set(logsBefore.map(l => l.exercicio.toLowerCase())).size;
+    const exerciseName = (cleanedPayload.exercicio || '').trim().toLowerCase();
+    const alreadyRewarded = (rewardedExercises.exercises || []).includes(exerciseName);
 
-    let rewardNC = 15;
+    let rewardNC = 0;
     let completeBonus = false;
 
-    if (uniqueExsBefore < 4 && uniqueExsToday === 4) {
-      rewardNC += 50;
-      completeBonus = true;
+    if (exerciseName && !alreadyRewarded) {
+      rewardNC = 15;
+      const newExercises = [...(rewardedExercises.exercises || []), exerciseName];
+      rewardedExercises.exercises = newExercises;
+
+      if (newExercises.length >= 4 && !rewardedExercises.bonus_claimed) {
+        rewardNC += 50;
+        rewardedExercises.bonus_claimed = true;
+        completeBonus = true;
+      }
     }
 
     if (profile) {
       const finalXP = (profile.xp || 0) + rewardNC;
-      const updatedProg = { ...profile, xp: finalXP };
+      const updatedProg = { 
+        ...profile, 
+        xp: finalXP,
+        rewarded_exercises_today: rewardedExercises
+      };
       setProfile(updatedProg);
       if (isFirebaseConfigured) {
         try {
           const profileRef = doc(db, 'profiles', user.uid);
-          await updateDoc(profileRef, { xp: finalXP });
+          await updateDoc(profileRef, { 
+            xp: finalXP,
+            rewarded_exercises_today: rewardedExercises
+          });
         } catch (err) {
           console.error("Erro ao atualizar NC do treino:", err);
         }
       }
     }
 
-    confetti({
-      particleCount: 80,
-      spread: 60,
-      origin: { y: 0.8 }
-    });
+    if (rewardNC > 0) {
+      try {
+        confetti({
+          particleCount: 80,
+          spread: 60,
+          origin: { y: 0.8 }
+        });
+      } catch (e) {}
 
-    if (completeBonus) {
-      alert(`Parabéns! Você completou um treino de 4 ou mais exercícios e conquistou +50 NutriCoins de bônus! (Total obtido: +${rewardNC} NC 🪙)`);
+      if (completeBonus) {
+        alert(`Parabéns! Você completou um treino de 4 ou mais exercícios e conquistou +50 NutriCoins de bônus! (Total obtido: +${rewardNC} NC 🪙)`);
+      } else {
+        alert(`Exercício registrado com sucesso! Você ganhou +${rewardNC} NutriCoins! 🪙`);
+      }
     } else {
-      alert(`Exercício registrado com sucesso! Você ganhou +${rewardNC} NutriCoins! 🪙`);
+      alert(`Exercício registrado com sucesso! 🏋️ (Moedas já resgatadas para este exercício hoje)`);
     }
   };
 

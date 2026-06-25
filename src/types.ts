@@ -129,6 +129,11 @@ export interface Profile {
     water?: boolean;
     date?: string;
   };
+  rewarded_exercises_today?: {
+    date?: string;
+    exercises?: string[];
+    bonus_claimed?: boolean;
+  };
   weight_history?: WeightHistoryEntry[];
   measurement_history?: MeasurementHistoryEntry[];
   photo_history?: PhotoHistoryEntry[];

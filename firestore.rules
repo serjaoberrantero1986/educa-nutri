@@ -50,6 +50,7 @@ service cloud.firestore {
         && (!data.keys().hasAny(['streak_freeze_active']) || data.streak_freeze_active is bool)
         && (!data.keys().hasAny(['premium_access_until']) || (data.premium_access_until is string || data.premium_access_until == null))
         && (!data.keys().hasAny(['rewarded_goals_today']) || data.rewarded_goals_today is map)
+        && (!data.keys().hasAny(['rewarded_exercises_today']) || data.rewarded_exercises_today is map)
         && (!data.keys().hasAny(['full_name']) || (data.full_name is string || data.full_name == null))
         && (!data.keys().hasAny(['cpf']) || (data.cpf is string || data.cpf == null))
         && (!data.keys().hasAny(['whatsapp']) || (data.whatsapp is string || data.whatsapp == null))
