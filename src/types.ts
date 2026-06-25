@@ -144,6 +144,15 @@ export interface Profile {
   recipes_generated_today?: { date: string; count: number };
   ai_diet_generated?: boolean;
   daily_missions_today?: DailyMissionsToday;
+  last_processed_week_id?: string;
+  pending_weekly_summary?: {
+    position: number;
+    oldLeague: string;
+    newLeague: string;
+    resultType: 'promoted' | 'demoted' | 'remained';
+    bonusNC: number;
+    weekId: string;
+  } | null;
 }
 
 export interface DailyMission {

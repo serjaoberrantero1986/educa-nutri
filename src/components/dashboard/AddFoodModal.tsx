@@ -138,6 +138,38 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({
   setActiveTab
 }) => {
   const [foodInput, setFoodInput] = useState('');
+  const [activeMealId, setActiveMealId] = useState<string>(mealId || '');
+
+  const getSuggestedMealIdByTime = (): string => {
+    const now = new Date();
+    const hour = now.getHours();
+    const minutes = now.getMinutes();
+    const totalMinutes = hour * 60 + minutes;
+
+    // Das 05:00 às 10:00: Café da Manhã
+    if (totalMinutes >= 300 && totalMinutes < 600) return 'cafe';
+    // Das 10:00 às 12:00: Lanche da Manhã
+    if (totalMinutes >= 600 && totalMinutes < 720) return 'lanche_manha';
+    // Das 12:00 às 14:30: Almoço
+    if (totalMinutes >= 720 && totalMinutes < 870) return 'almoco';
+    // Das 14:30 às 18:00: Lanche da Tarde
+    if (totalMinutes >= 870 && totalMinutes < 1080) return 'lanche_tarde';
+    // Das 18:00 às 21:30: Jantar
+    if (totalMinutes >= 1080 && totalMinutes < 1290) return 'jantar';
+    // Das 21:30 às 04:59: Ceia
+    return 'ceia';
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      if (mealId) {
+        setActiveMealId(mealId);
+      } else {
+        const suggested = getSuggestedMealIdByTime();
+        setActiveMealId(suggested);
+      }
+    }
+  }, [isOpen, mealId]);
   const [searchResults, setSearchResults] = useState<Food[]>([]);
   const [pendingFood, setPendingFood] = useState<{ 
     name: string; 
@@ -751,7 +783,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({
 
     const newLog = {
       user_id: user.uid,
-      meal_type: mealId,
+      meal_type: activeMealId,
       food_name: pendingFood.name,
       calories: Math.round((pendingFood.calories || 0) * amountFactor),
       protein: Math.round((pendingFood.protein || 0) * amountFactor),
@@ -806,7 +838,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({
 
       return {
         user_id: user.uid,
-        meal_type: mealId,
+        meal_type: activeMealId,
         food_name: food.name,
         calories: Math.round(food.calories_per_100 * amountFactor),
         protein: Math.round(food.protein_per_100 * amountFactor),
@@ -854,7 +886,51 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({
               <X size={24} />
             </button>
 
-            <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-6">Adicionar {mealName}</h2>
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">Adicionar Alimento</h2>
+
+            {/* Meal Selector Pills */}
+            <div className="mb-6">
+              <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-wider">
+                Refeição de Destino
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { id: 'cafe', name: 'Café', icon: '🍳' },
+                  { id: 'lanche_manha', name: 'Lanche Manhã', icon: '🍎' },
+                  { id: 'almoco', name: 'Almoço', icon: '🍲' },
+                  { id: 'lanche_tarde', name: 'Lanche Tarde', icon: '🥪' },
+                  { id: 'jantar', name: 'Jantar', icon: '🥗' },
+                  { id: 'ceia', name: 'Ceia', icon: '🥛' }
+                ].map((m) => {
+                  const isSuggested = m.id === getSuggestedMealIdByTime();
+                  const isSelected = m.id === activeMealId;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setActiveMealId(m.id)}
+                      className={`relative flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                        isSelected
+                          ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                          : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-100 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                      }`}
+                    >
+                      <span>{m.icon}</span>
+                      <span>{m.name}</span>
+                      {isSuggested && (
+                        <span className={`text-[8px] px-1 py-0.2 rounded ${
+                          isSelected 
+                            ? 'bg-purple-800 text-purple-100' 
+                            : 'bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 font-extrabold border border-amber-200/30'
+                        }`}>
+                          Sugerido
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             <div className="space-y-6">
               <div className="relative">

@@ -10,6 +10,11 @@ import { tryFetchWithClientFallback, clientChatAssistant, clientAnalyzeMeal } fr
 const TypingText: React.FC<{ text: string; onComplete?: () => void }> = ({ text, onComplete }) => {
   const [displayedText, setDisplayedText] = useState("");
   const [isDone, setIsDone] = useState(false);
+  const onCompleteRef = useRef(onComplete);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
   useEffect(() => {
     if (isDone) return;
@@ -23,11 +28,11 @@ const TypingText: React.FC<{ text: string; onComplete?: () => void }> = ({ text,
       } else {
         clearInterval(interval);
         setIsDone(true);
-        if (onComplete) onComplete();
+        if (onCompleteRef.current) onCompleteRef.current();
       }
     }, 15);
     return () => clearInterval(interval);
-  }, [text, isDone, onComplete]);
+  }, [text, isDone]);
 
   if (isDone) {
     return <>{text.replace(/\*/g, "")}</>;
@@ -187,20 +192,117 @@ interface Message {
   quickActions?: QuickAction[];
   isTypingEffect?: boolean;
   voceSabia?: string | null;
+  outreachId?: string;
+  outreachType?: string;
 }
 
-const getTodayMealReminder = (foodLogs: any[]) => {
+const getTodayWorkoutReminder = (activeRoutine: any, hasWorkout: boolean) => {
+  const currentDayOfWeek = new Date().getDay(); // 0 = Sunday, 1 = Monday...
+  const hour = new Date().getHours();
+
+  if (!activeRoutine || !Array.isArray(activeRoutine.days) || activeRoutine.days.length === 0) {
+    if (hour >= 12 && !hasWorkout) {
+      return {
+        id: "workout_setup_tip",
+        title: "Lembrete de Treino 🏋️‍♂️💪",
+        description: "Fera, que tal montar a sua ficha de treino personalizada hoje para manter o foco e ganhar músculos?",
+        prompt: "Como posso montar meu primeiro treino?",
+        messageText: "Olá, mestre! Sou seu Nutri-Assistant. 🤖💪\n\nQue tal montar a sua ficha de treino personalizada hoje para manter o foco e ganhar músculos?"
+      };
+    }
+    return null;
+  }
+  
+  const todayRoutineDay = activeRoutine.days.find((d: any) => d.day_of_week === currentDayOfWeek);
+  
+  if (todayRoutineDay) {
+    const exerciseNames = Array.isArray(todayRoutineDay.exercises) 
+      ? todayRoutineDay.exercises.slice(0, 3).map((e: any) => e.name).join(", ") 
+      : "";
+    const exerciseListStr = exerciseNames ? ` com exercícios como: ${exerciseNames}` : "";
+    
+    // Período da Tarde (Ex: 12:00 às 18:00)
+    if (hour >= 12 && hour < 18) {
+      if (!hasWorkout) {
+        return {
+          id: `workout_tarde_todo_${todayRoutineDay.day_of_week}`,
+          title: `Dia de Treinar: ${todayRoutineDay.name} ⚡🔥`,
+          description: `Olá! Hoje é dia de treinar. Que tal dar uma olhada no seu treino de hoje e se preparar?`,
+          prompt: `Quero ver meu treino de hoje`,
+          messageText: `Olá, mestre! Sou seu Nutri-Assistant. 🤖💪\n\nHoje é dia de treinar ${todayRoutineDay.name}${exerciseListStr}.\n\nOlá! Hoje é dia de treinar. Que tal dar uma olhada no seu treino de hoje e se preparar?`
+        };
+      } else {
+        return {
+          id: `workout_tarde_done_${todayRoutineDay.day_of_week}`,
+          title: `Treino Concluído! 🏆🎉`,
+          description: `Ótimo treino hoje! Lembre-se de registrar um lanche pós-treino nutritivo para ajudar na sua recuperação.`,
+          prompt: `Quero registrar meu lanche da tarde`,
+          messageText: `Olá, mestre! Sou seu Nutri-Assistant. 🤖💪\n\nÓtimo treino hoje! Lembre-se de registrar um lanche pós-treino nutritivo para ajudar na sua recuperação.`
+        };
+      }
+    }
+
+    // Período da Noite (Ex: 18:00 às 04:59)
+    if (hour >= 18 || hour < 5) {
+      if (!hasWorkout) {
+        return {
+          id: `workout_noite_todo_${todayRoutineDay.day_of_week}`,
+          title: `Consistência é Tudo 🏋️‍♂️💪`,
+          description: `Ainda dá tempo de realizar o treino de hoje! Vamos juntos manter a consistência?`,
+          prompt: `Quero começar meu treino de hoje`,
+          messageText: `Olá, mestre! Sou seu Nutri-Assistant. 🤖💪\n\nAinda dá tempo de realizar o treino de hoje! Vamos juntos manter a consistência?`
+        };
+      }
+    }
+    
+    // Fallback original
+    if (!hasWorkout) {
+      return {
+        id: `workout_${todayRoutineDay.day_of_week}_${todayRoutineDay.name.replace(/\s+/g, "_")}`,
+        title: `Lembrete de Treino: ${todayRoutineDay.name} ⚡🔥`,
+        description: `Fera, hoje é dia de ${todayRoutineDay.name}${exerciseListStr}. Vista a camisa, prepare sua garrafa d'água e mande ver no treino de hoje! Vamos registrar?`,
+        prompt: `Quero ver meu treino de hoje`,
+        messageText: `Olá, mestre! Sou seu Nutri-Assistant. 🤖💪\n\nPassando para te dar uma dica de treino importante!\n\nFera, hoje é dia de ${todayRoutineDay.name}${exerciseListStr}. Vista a camisa, prepare sua garrafa d'água e mande ver no treino de hoje! Vamos registrar?`
+      };
+    }
+  } else {
+    // Rest day reminder
+    if (hour >= 12 && !hasWorkout) {
+      return {
+        id: "workout_rest_day",
+        title: "Dia de Descanso Ativo 🤸‍♂️🧘‍♂️",
+        description: "Hoje não há treino planejado em sua ficha. Lembre-se de que o descanso é fundamental para o crescimento muscular! Aproveite para se alongar, caminhar e manter a hidratação em dia.",
+        prompt: "Quero fazer um alongamento hoje",
+        messageText: "Olá, mestre! Sou seu Nutri-Assistant. 🤖💪\n\nHoje não há treino planejado em sua ficha. Lembre-se de que o descanso é fundamental para o crescimento muscular! Aproveite para se alongar, caminhar e manter a hidratação em dia."
+      };
+    }
+  }
+  return null;
+};
+
+const getTodayMealReminder = (foodLogs: any[], hasWorkout: boolean) => {
   const hour = new Date().getHours();
   const mealsToday = (foodLogs || []).map(log => (log.meal_type || "").toLowerCase().trim());
+  const hasAnyLog = foodLogs.length > 0;
   
   if (hour >= 5 && hour < 10) {
     const alreadyLogged = mealsToday.includes("café da manhã") || mealsToday.includes("cafe");
     if (!alreadyLogged) {
+      if (!hasAnyLog) {
+        return {
+          id: "meal_cafe_morning",
+          title: "Bom Dia! 🍳☕",
+          description: "Bom dia! Que tal registrar seu café da manhã para começar o dia com o pé direito?",
+          prompt: "Quero registrar meu café da manhã hoje",
+          messageText: "Olá, mestre! Sou seu Nutri-Assistant. 🤖💪\n\nBom dia! Que tal registrar seu café da manhã para começar o dia com o pé direito?"
+        };
+      }
       return {
         id: "meal_cafe",
         title: "Lembrete: Café da Manhã 🍳☕",
         description: "Fera, já mandou para dentro o seu desjejum? Não esquece de registrar os ovos ou o pão para abastecer os músculos!",
-        prompt: "Quero registrar meu café da manhã hoje"
+        prompt: "Quero registrar meu café da manhã hoje",
+        messageText: "Olá, mestre! Sou seu Nutri-Assistant. 🤖💪\n\nNotei que ainda não registrou seu café da manhã hoje no diário de refeições.\n\nFera, já mandou para dentro o seu desjejum? Não esquece de registrar os ovos ou o pão para abastecer os músculos!"
       };
     }
   } else if (hour >= 10 && hour < 12) {
@@ -210,7 +312,8 @@ const getTodayMealReminder = (foodLogs: any[]) => {
         id: "meal_lanche_manha",
         title: "Lembrete: Lanche da Manhã 🍎🥜",
         description: "Hora daquela fruta, shake ou porção de castanhas para manter o metabolismo a todo vapor!",
-        prompt: "Quero registrar meu lanche da manhã"
+        prompt: "Quero registrar meu lanche da manhã",
+        messageText: "Olá, mestre! Sou seu Nutri-Assistant. 🤖💪\n\nNotei que ainda não registrou seu lanche da manhã hoje no diário de refeições.\n\nHora daquela fruta, shake ou porção de castanhas para manter o metabolismo a todo vapor!"
       };
     }
   } else if (hour >= 12 && hour < 15) {
@@ -220,7 +323,8 @@ const getTodayMealReminder = (foodLogs: any[]) => {
         id: "meal_almoco",
         title: "Lembrete: Almoço 🍲🍗",
         description: "Almoço caprichado na mesa? Registre seu arroz, feijão e aquela proteína pesada para o anabolismo!",
-        prompt: "Quero registrar meu almoço de hoje"
+        prompt: "Quero registrar meu almoço de hoje",
+        messageText: "Olá, mestre! Sou seu Nutri-Assistant. 🤖💪\n\nNotei que ainda não registrou seu almoço hoje no diário de refeições.\n\nAlmoço caprichado na mesa? Registre seu arroz, feijão e aquela proteína pesada para o anabolismo!"
       };
     }
   } else if (hour >= 15 && hour < 18) {
@@ -230,17 +334,19 @@ const getTodayMealReminder = (foodLogs: any[]) => {
         id: "meal_lanche_tarde",
         title: "Lembrete: Lanche da Tarde 🥪🥛",
         description: "Bateu aquela fome da tarde? Que tal uma aveia com leite ou um scoop de whey gelado?",
-        prompt: "Quero registrar meu lanche da tarde"
+        prompt: "Quero registrar meu lanche da tarde",
+        messageText: "Olá, mestre! Sou seu Nutri-Assistant. 🤖💪\n\nNotei que ainda não registrou seu lanche da tarde hoje no diário de refeições.\n\nBateu aquela fome da tarde? Que tal uma aveia com leite ou um scoop de whey gelado!"
       };
     }
   } else if (hour >= 18 && hour < 22) {
     const alreadyLogged = mealsToday.includes("jantar");
     if (!alreadyLogged) {
       return {
-        id: "meal_jantar",
+        id: "meal_jantar_noite",
         title: "Lembrete: Jantar 🥗🥩",
-        description: "Chegou a hora de abastecer o corpo para a recuperação noturna. Registre seu jantar saudável!",
-        prompt: "Quero registrar meu jantar"
+        description: "Lembre-se de registrar seu jantar para fechar o balanço de macros de hoje.",
+        prompt: "Quero registrar meu jantar",
+        messageText: "Olá, mestre! Sou seu Nutri-Assistant. 🤖💪\n\nLembre-se de registrar seu jantar para fechar o balanço de macros de hoje."
       };
     }
   } else {
@@ -250,7 +356,8 @@ const getTodayMealReminder = (foodLogs: any[]) => {
         id: "meal_ceia",
         title: "Lembrete: Ceia 🥛💤",
         description: "Vai mandar aquela ceia leve antes de dormir (abacate, iogurte, whey)? Registre agora!",
-        prompt: "Quero registrar minha ceia"
+        prompt: "Quero registrar minha ceia",
+        messageText: "Olá, mestre! Sou seu Nutri-Assistant. 🤖💪\n\nNotei que ainda não registrou sua ceia hoje no diário de refeições.\n\nVai mandar aquela ceia leve antes de dormir (abacate, iogurte, whey)? Registre agora!"
       };
     }
   }
@@ -375,6 +482,63 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
+  const [isHistoryLoaded, setIsHistoryLoaded] = useState(false);
+
+  // Load conversation history for today
+  useEffect(() => {
+    const today = new Date().toDateString();
+    const userId = profile?.id || "guest";
+    try {
+      const stored = localStorage.getItem("nutri_messages_today_" + userId);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.date === today && Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+          // Clean isTypingEffect on reload so they don't replay typing animation
+          const cleanMessages = parsed.messages.map((m: any) => ({
+            ...m,
+            isTypingEffect: false
+          }));
+          setMessages(cleanMessages);
+          setIsHistoryLoaded(true);
+          return;
+        }
+      }
+    } catch (e) {
+      console.error("Error loading chat history from localStorage", e);
+    }
+
+    // Default message if no storage exists for today
+    setMessages([
+      {
+        sender: "bot",
+        text: `Olá, mestre! Sou seu Nutri-Assistant AI! 🤖💪\n\nEstou aqui para agilizar seu dia. Pode conversar comigo livremente para gerenciar suas refeições e hidratação. Por exemplo:\n\n"Adicionei 1 maçã e 5 castanhas no meu lanche da tarde"\n"Registra 500ml de água"\n"Remova o ovo cozido do meu almoço"\n\nO que vamos registrar hoje?`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }
+    ]);
+    setIsHistoryLoaded(true);
+  }, [profile?.id]);
+
+  // Save conversation history for today
+  useEffect(() => {
+    if (!isHistoryLoaded) return;
+    const today = new Date().toDateString();
+    const userId = profile?.id || "guest";
+    if (messages.length > 0) {
+      try {
+        const dataToStore = {
+          date: today,
+          messages: messages.map(m => ({
+            ...m,
+            isTypingEffect: false // Save all as statically loaded for next time
+          }))
+        };
+        localStorage.setItem("nutri_messages_today_" + userId, JSON.stringify(dataToStore));
+      } catch (e) {
+        console.error("Error saving chat history to localStorage", e);
+      }
+    }
+  }, [messages, isHistoryLoaded, profile?.id]);
+
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isAssistantTyping, setIsAssistantTyping] = useState(false);
@@ -915,27 +1079,91 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
   useEffect(() => {
     const today = new Date().toDateString();
     const userId = profile?.id || "guest";
-    const shownToday = localStorage.getItem("last_outreach_shown_date_" + userId) === today;
     
-    if (!shownToday && !pendingOutreach) {
-      // 1. Try to get a Meal Reminder
-      const reminder = getTodayMealReminder(foodLogs);
-      if (reminder) {
+    // Avoid spamming: do not show more than one proactive outreach per day
+    const lastOutreachDate = localStorage.getItem("last_outreach_shown_date_" + userId);
+    if (lastOutreachDate === today) {
+      return;
+    }
+    
+    // Load shown reminder IDs for today to avoid repeating the exact same one
+    let shownReminderIds: string[] = [];
+    try {
+      const stored = localStorage.getItem("shown_reminders_today_" + userId);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.date === today) {
+          shownReminderIds = parsed.ids || [];
+        }
+      }
+    } catch (e) {
+      console.error("Error parsing shown reminders", e);
+    }
+    
+    if (!pendingOutreach) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const hasWorkout = (exerciseHistory || []).some(log => {
+        if (!log.loggedAt) return false;
+        const logDateStr = log.loggedAt.split('T')[0];
+        return logDateStr === todayStr;
+      });
+
+      // Get the current meal reminder candidate based on time of day
+      const mealReminder = getTodayMealReminder(foodLogs, hasWorkout);
+      // Get the current workout reminder candidate based on time of day / active routine
+      const workoutReminder = getTodayWorkoutReminder(activeRoutine, hasWorkout);
+      
+      const lastType = localStorage.getItem("last_outreach_type_" + userId) || "meal";
+      
+      let selectedReminder: any = null;
+      let selectedType: "meal" | "workout" | null = null;
+      
+      // Determine which one to show, interleaving them!
+      if (lastType === "meal") {
+        // Try workout first, then meal
+        if (workoutReminder && !shownReminderIds.includes(workoutReminder.id)) {
+          selectedReminder = workoutReminder;
+          selectedType = "workout";
+        } else if (mealReminder && !shownReminderIds.includes(mealReminder.id)) {
+          selectedReminder = mealReminder;
+          selectedType = "meal";
+        }
+      } else {
+        // Try meal first, then workout
+        if (mealReminder && !shownReminderIds.includes(mealReminder.id)) {
+          selectedReminder = mealReminder;
+          selectedType = "meal";
+        } else if (workoutReminder && !shownReminderIds.includes(workoutReminder.id)) {
+          selectedReminder = workoutReminder;
+          selectedType = "workout";
+        }
+      }
+      
+      if (selectedReminder) {
         const outreachMsg: Message = {
           sender: "bot",
-          text: `Olá, mestre! Sou seu Nutri-Assistant. 🤖💪\n\nNotei que ainda não registrou seu ${reminder.title.replace(/Lembrete: /g, "")} hoje no diário de refeições.\n\n${reminder.description}\n\nVamos registrar agora?`,
+          text: (selectedReminder.messageText || (selectedType === "meal" 
+            ? `Olá, mestre! Sou seu Nutri-Assistant. 🤖💪\n\nNotei que ainda não registrou seu ${selectedReminder.title.replace(/Lembrete: /g, "")} hoje no diário de refeições.\n\n${selectedReminder.description}\n\nVamos registrar agora?`
+            : `Olá, mestre! Sou seu Nutri-Assistant. 🤖💪\n\nPassando para te dar uma dica de treino importante!\n\n${selectedReminder.description}\n\nQuer começar ou visualizar seu treino agora?`)).replace(/\*/g, ""),
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          quickActions: [
-            { label: "🍲 Ver Diário", action: "link", value: "dashboard" },
-            { label: "📖 Consultar FAQ", action: "faq_reply", value: "Quais são as perguntas frequentes do app?" }
-          ]
+          quickActions: selectedType === "meal" 
+            ? [
+                { label: "🍲 Registrar Refeição", action: "link", value: "dashboard" },
+                { label: "📖 Consultar FAQ", action: "faq_reply", value: "Quais são as perguntas frequentes do app?" }
+              ]
+            : [
+                { label: "🏋️‍♂️ Ver Treino de Hoje", action: "link", value: "workout_dashboard" },
+                { label: "🏆 Ver Ranking", action: "link", value: "ranking" }
+              ],
+          outreachId: selectedReminder.id,
+          outreachType: selectedType || undefined
         };
         setPendingOutreach(outreachMsg);
         setHasNewOutreachNotification(true);
         return;
       }
       
-      // 2. Try Daily Challenge
+      // 2. Try Daily Challenge (if no meal or workout reminder is pending)
       const challenge = getTodayChallenge();
       let completedChallenges: string[] = [];
       try {
@@ -947,7 +1175,8 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
       } catch (e) { console.error(e); }
       
       const isChallengeCompleted = completedChallenges.includes(challenge.id);
-      if (!isChallengeCompleted) {
+      const challengeOutreachId = "challenge_" + challenge.id;
+      if (!isChallengeCompleted && !shownReminderIds.includes(challengeOutreachId)) {
         const isWaterChallenge = challenge.id === "challenge_water";
         const outreachMsg: Message = {
           sender: "bot",
@@ -970,7 +1199,9 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
                   checked: true
                 }
               ]
-            : undefined
+            : undefined,
+          outreachId: challengeOutreachId,
+          outreachType: "challenge"
         };
         setPendingOutreach(outreachMsg);
         setHasNewOutreachNotification(true);
@@ -979,19 +1210,24 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
       
       // 3. Fallback to Nutrition Tip
       const tip = getTodayTip();
-      const outreachMsg: Message = {
-        sender: "bot",
-        text: `Fala, fera! Passando para te dar uma dica nutricional de ouro para o seu dia! 💡🍍\n\n${tip.title}\n\n${tip.description}`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        quickActions: [
-          { label: "🥣 Dicas de Dieta", action: "faq_reply", value: "Me dê dicas para manter a dieta" },
-          { label: "🛒 Ir para Loja", action: "link", value: "store" }
-        ]
-      };
-      setPendingOutreach(outreachMsg);
-      setHasNewOutreachNotification(true);
+      const tipOutreachId = "tip_" + tip.id;
+      if (!shownReminderIds.includes(tipOutreachId)) {
+        const outreachMsg: Message = {
+          sender: "bot",
+          text: `Fala, fera! Passando para te dar uma dica nutricional de ouro para o seu dia! 💡🍍\n\n${tip.title}\n\n${tip.description}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          quickActions: [
+            { label: "🥣 Dicas de Dieta", action: "faq_reply", value: "Me dê dicas para manter a dieta" },
+            { label: "🛒 Ir para Loja", action: "link", value: "store" }
+          ],
+          outreachId: tipOutreachId,
+          outreachType: "tip"
+        };
+        setPendingOutreach(outreachMsg);
+        setHasNewOutreachNotification(true);
+      }
     }
-  }, [profile?.id, foodLogs, pendingOutreach]);
+  }, [profile?.id, foodLogs, pendingOutreach, activeRoutine, exerciseHistory]);
 
   // Handle human-like typing simulation when drawer is opened with a pending outreach
   useEffect(() => {
@@ -1000,11 +1236,33 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
       setHasNewOutreachNotification(false);
       const timer = setTimeout(() => {
         setMessages(prev => [...prev, { ...pendingOutreach, isTypingEffect: true }]);
-        setPendingOutreach(null);
-        setIsAssistantTyping(false);
         
         const today = new Date().toDateString();
-        localStorage.setItem("last_outreach_shown_date_" + (profile?.id || "guest"), today);
+        const userId = profile?.id || "guest";
+        
+        // Save to localStorage that we showed this reminder!
+        if (pendingOutreach.outreachId) {
+          try {
+            const stored = localStorage.getItem("shown_reminders_today_" + userId);
+            let shownIds: string[] = [];
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (parsed.date === today) shownIds = parsed.ids || [];
+            }
+            if (!shownIds.includes(pendingOutreach.outreachId)) {
+              shownIds.push(pendingOutreach.outreachId);
+            }
+            localStorage.setItem("shown_reminders_today_" + userId, JSON.stringify({ date: today, ids: shownIds }));
+          } catch (e) { console.error(e); }
+        }
+        
+        if (pendingOutreach.outreachType) {
+          localStorage.setItem("last_outreach_type_" + userId, pendingOutreach.outreachType);
+        }
+        
+        localStorage.setItem("last_outreach_shown_date_" + userId, today);
+        setPendingOutreach(null);
+        setIsAssistantTyping(false);
       }, 2500);
       return () => clearTimeout(timer);
     }
@@ -1445,7 +1703,18 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
                           >
                             {msg.text ? (
                               msg.isTypingEffect && msg.sender === "bot" ? (
-                                <TypingText text={msg.text} />
+                                <TypingText 
+                                  text={msg.text} 
+                                  onComplete={() => {
+                                    setMessages(prev => {
+                                      const next = [...prev];
+                                      if (next[index] && next[index].isTypingEffect) {
+                                        next[index] = { ...next[index], isTypingEffect: false };
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                />
                               ) : (
                                 msg.text.replace(/\*/g, "")
                               )

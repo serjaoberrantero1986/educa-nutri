@@ -40,7 +40,12 @@ import {
   Snowflake,
   Coins,
   ShoppingBag,
-  ChefHat
+  ChefHat,
+  Award,
+  ShieldAlert,
+  ArrowUpCircle,
+  Star,
+  Sparkles
 } from 'lucide-react';
 import { 
   PieChart, 
@@ -107,6 +112,22 @@ const formatTime = (isoString: string) => {
   } catch (e) {
     return "";
   }
+};
+
+export const getWeekId = (date: Date = new Date()) => {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day; // Adjust to Sunday
+  const sunday = new Date(d.setDate(diff));
+  return `${sunday.getFullYear()}-${(sunday.getMonth() + 1).toString().padStart(2, '0')}-${sunday.getDate().toString().padStart(2, '0')}`;
+};
+
+export const getSeededRandom = (seedStr: string) => {
+  let hash = 0;
+  for (let i = 0; i < seedStr.length; i++) {
+    hash = seedStr.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return Math.abs(Math.sin(hash) * 1000) % 1;
 };
 
 // Helper to determine the muscle group of a logged exercise using active routine lookup or fallback Portuguese/English keywords mapping
@@ -302,9 +323,55 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showStreakMenu, setShowStreakMenu] = useState(false);
   const [weekOffset, setWeekOffset] = useState<number>(0);
+  const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null);
   const [confirmMealDeleteId, setConfirmMealDeleteId] = useState<string | null>(null);
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
   const [touchEnd, setTouchEnd] = useState<{ x: number; y: number } | null>(null);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const isDown = useRef(false);
+  const startX = useRef(0);
+  const scrollLeft = useRef(0);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    isDown.current = true;
+    if (scrollRef.current) {
+      startX.current = e.pageX - scrollRef.current.offsetLeft;
+      scrollLeft.current = scrollRef.current.scrollLeft;
+    }
+  };
+
+  const handleMouseLeave = () => {
+    isDown.current = false;
+  };
+
+  const handleMouseUp = () => {
+    isDown.current = false;
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDown.current || !scrollRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - scrollRef.current.offsetLeft;
+    const walk = (x - startX.current) * 1.5;
+    scrollRef.current.scrollLeft = scrollLeft.current - walk;
+  };
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      const centerSelected = () => {
+        const selectedEl = scrollRef.current?.querySelector('[data-selected="true"]');
+        if (selectedEl) {
+          selectedEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+      };
+      centerSelected();
+      if (showStreakMenu) {
+        const timer = setTimeout(centerSelected, 150);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [selectedDate, streakTab, showStreakMenu]);
 
   const getLogDateWithCurrentTime = () => {
     const now = new Date();
@@ -1264,68 +1331,217 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [profile, user.email]);
 
   const fetchRanking = async () => {
-    const userLeague = profile?.league || 'Bronze';
-    const userXP = profile?.xp || 0;
+    if (!profile) return;
+    const userLeague = profile.league || 'Bronze';
+    const userXP = profile.xp || 0;
+    const currentWeekId = getWeekId();
     
     const generateBotsForLeague = (leagueName: string) => {
-      return [];
+      const botNames = [
+        "Lucas Silva", "Mariana Costa", "Felipe Souza", "Beatriz Santos", 
+        "Thiago Oliveira", "Juliana Lima", "Rodrigo Alves", "Camila Rocha", 
+        "Gabriel Ferreira", "Sofia Ribeiro", "Bruno Gomes", "Larissa Martins"
+      ];
+      
+      const currentDay = new Date().getDay(); // 0 (Sunday) to 6 (Saturday)
+      
+      let minXP = 50, maxXP = 220;
+      if (leagueName === 'Prata') { minXP = 200; maxXP = 420; }
+      else if (leagueName === 'Ouro') { minXP = 400; maxXP = 720; }
+      else if (leagueName === 'Safira') { minXP = 700; maxXP = 1150; }
+      else if (leagueName === 'Diamante') { minXP = 1100; maxXP = 2200; }
+      
+      const bots: Profile[] = [];
+      for (let i = 0; i < 9; i++) {
+        const name = botNames[(i + leagueName.length) % botNames.length];
+        const seed1 = `${currentWeekId}-${name}-target`;
+        const seed2 = `${currentWeekId}-${name}-base`;
+        
+        const randTarget = getSeededRandom(seed1);
+        const randBase = getSeededRandom(seed2);
+        
+        const targetXP = Math.round(minXP + randTarget * (maxXP - minXP));
+        const startXP = Math.round(minXP * 0.3 + randBase * (minXP * 0.4));
+        
+        const progress = currentDay / 6;
+        const currentXP = Math.round(startXP + (targetXP - startXP) * progress);
+        
+        bots.push({
+          id: `bot_user_${leagueName}_${i}`,
+          username: name,
+          xp: currentXP,
+          league: leagueName as any,
+          streak: Math.round(2 + getSeededRandom(`${currentWeekId}-${name}-streak`) * 15),
+          avatar_url: `https://api.dicebear.com/7.x/adventurer/svg?seed=${name.replace(/\s+/g, '')}`
+        } as Profile);
+      }
+      return bots;
     };
+
+    let finalRankingList: Profile[] = [];
 
     if (!isFirebaseConfigured) {
       const bots = generateBotsForLeague(userLeague);
-      setRanking([
+      finalRankingList = [
         ...bots,
-        { id: user.uid, username: profile?.username || 'Você', xp: userXP, league: userLeague, streak: profile?.streak || 0, avatar_url: profile?.avatar_url }
-      ].sort((a, b) => b.xp - a.xp));
-      return;
-    }
-    try {
-      const profilesCol = collection(db, 'profiles');
-      const q = query(profilesCol, where('league', '==', userLeague), orderBy('xp', 'desc'), limit(10));
-      const querySnapshot = await getDocs(q);
-      const data: Profile[] = [];
-      querySnapshot.forEach((doc) => {
-        data.push(doc.data() as Profile);
-      });
-      
-      if (data.length < 10) {
-        const bots = generateBotsForLeague(userLeague);
-        const existingIds = new Set(data.map(p => p.id));
-        const needed = 10 - data.length;
-        let padded = 0;
-        for (const bot of bots) {
-          if (padded >= needed) break;
-          if (!existingIds.has(bot.id) && bot.id !== user.uid) {
-            data.push(bot as Profile);
-            padded++;
+        { id: user.uid, username: profile.username || 'Você', xp: userXP, league: userLeague, streak: profile.streak || 0, avatar_url: profile.avatar_url }
+      ].sort((a, b) => b.xp - a.xp);
+    } else {
+      try {
+        const profilesCol = collection(db, 'profiles');
+        const q = query(profilesCol, where('league', '==', userLeague), orderBy('xp', 'desc'), limit(10));
+        const querySnapshot = await getDocs(q);
+        const data: Profile[] = [];
+        querySnapshot.forEach((docSnap) => {
+          data.push(docSnap.data() as Profile);
+        });
+        
+        if (data.length < 10) {
+          const bots = generateBotsForLeague(userLeague);
+          const existingIds = new Set(data.map(p => p.id));
+          const needed = 10 - data.length;
+          let padded = 0;
+          for (const bot of bots) {
+            if (padded >= needed) break;
+            if (!existingIds.has(bot.id) && bot.id !== user.uid) {
+              data.push(bot as Profile);
+              padded++;
+            }
           }
         }
+        
+        if (!data.some(p => p.id === user.uid)) {
+          data.push({
+            id: user.uid,
+            username: profile.username || 'Você',
+            xp: userXP,
+            league: userLeague,
+            streak: profile.streak || 0,
+            avatar_url: profile.avatar_url
+          } as Profile);
+        }
+        finalRankingList = data.sort((a, b) => b.xp - a.xp);
+      } catch (err) {
+        console.error('Error fetching ranking:', err);
+        const bots = generateBotsForLeague(userLeague);
+        finalRankingList = [
+          ...bots,
+          { id: user.uid, username: profile.username || 'Você', xp: userXP, league: userLeague, streak: profile.streak || 0, avatar_url: profile.avatar_url }
+        ].sort((a, b) => b.xp - a.xp);
       }
+    }
+
+    setRanking(finalRankingList);
+
+    // --- Automatic End-of-Week Transition Logic ---
+    const LEAGUE_FLOW = ['Bronze', 'Prata', 'Ouro', 'Safira', 'Diamante'];
+    const lastProcessedWeek = profile.last_processed_week_id;
+
+    if (!lastProcessedWeek) {
+      const updatedFields = { last_processed_week_id: currentWeekId };
+      const updatedProfile = { ...profile, ...updatedFields };
+      if (isFirebaseConfigured) {
+        try {
+          await updateDoc(doc(db, 'profiles', user.uid), updatedFields);
+        } catch (e) {
+          console.error("Error setting initial week ID:", e);
+        }
+      }
+      localStorage.setItem(`profile_${user.uid}`, JSON.stringify(updatedProfile));
+      setProfile(updatedProfile);
+    } else if (lastProcessedWeek !== currentWeekId) {
+      const userIndex = finalRankingList.findIndex(player => player.id === user.uid);
+      const position = userIndex !== -1 ? userIndex + 1 : 10;
       
-      if (!data.some(p => p.id === user.uid)) {
-        data.push({
-          id: user.uid,
-          username: profile?.username || 'Você',
-          xp: userXP,
-          league: userLeague,
-          streak: profile?.streak || 0,
-          avatar_url: profile?.avatar_url
-        } as Profile);
+      let resultType: 'promoted' | 'demoted' | 'remained' = 'remained';
+      const currentLeagueIndex = LEAGUE_FLOW.indexOf(userLeague);
+      let newLeague = userLeague;
+      let bonusNC = 0;
+
+      if (position <= 3) {
+        if (currentLeagueIndex < LEAGUE_FLOW.length - 1) {
+          newLeague = LEAGUE_FLOW[currentLeagueIndex + 1] as any;
+          resultType = 'promoted';
+          bonusNC = position === 1 ? 100 : position === 2 ? 60 : 30;
+        }
+      } else if (position >= 8) {
+        if (currentLeagueIndex > 0) {
+          newLeague = LEAGUE_FLOW[currentLeagueIndex - 1] as any;
+          resultType = 'demoted';
+        }
       }
-      setRanking(data.sort((a, b) => b.xp - a.xp));
-    } catch (err) {
-      console.error('Error fetching ranking:', err);
-      const bots = generateBotsForLeague(userLeague);
-      setRanking([
-        ...bots,
-        { id: user.uid, username: profile?.username || 'Você', xp: userXP, league: userLeague, streak: profile?.streak || 0, avatar_url: profile?.avatar_url }
-      ].sort((a, b) => b.xp - a.xp));
+
+      const summaryObj = {
+        position,
+        oldLeague: userLeague,
+        newLeague,
+        resultType,
+        bonusNC,
+        weekId: lastProcessedWeek
+      };
+
+      const finalCoins = (profile.xp || 0) + bonusNC;
+      const updatedFields = {
+        league: newLeague,
+        xp: finalCoins,
+        last_processed_week_id: currentWeekId,
+        pending_weekly_summary: summaryObj
+      };
+
+      const updatedProfile = {
+        ...profile,
+        ...updatedFields
+      } as Profile;
+
+      if (isFirebaseConfigured) {
+        try {
+          await updateDoc(doc(db, 'profiles', user.uid), updatedFields);
+        } catch (e) {
+          console.error("Error saving automatic week transition to Firestore:", e);
+        }
+      }
+      localStorage.setItem(`profile_${user.uid}`, JSON.stringify(updatedProfile));
+      setProfile(updatedProfile);
     }
   };
 
   const onCropComplete = useCallback((_croppedArea: any, croppedAreaPixels: any) => {
     setCroppedAreaPixels(croppedAreaPixels);
   }, []);
+
+  const handleCloseWeeklySummary = async () => {
+    if (!profile) return;
+    const updatedProfile = {
+      ...profile,
+      pending_weekly_summary: null
+    };
+    if (isFirebaseConfigured) {
+      try {
+        await updateDoc(doc(db, 'profiles', user.uid), {
+          pending_weekly_summary: null
+        });
+      } catch (err) {
+        console.error('Error clearing pending weekly summary:', err);
+      }
+    }
+    localStorage.setItem(`profile_${user.uid}`, JSON.stringify(updatedProfile));
+    setProfile(updatedProfile);
+  };
+
+  useEffect(() => {
+    if (profile?.pending_weekly_summary) {
+      const summary = profile.pending_weekly_summary;
+      if (summary.resultType === 'promoted' || summary.position <= 3) {
+        try {
+          confetti({
+            particleCount: 150,
+            spread: 80,
+            origin: { y: 0.6 }
+          });
+        } catch (e) {}
+      }
+    }
+  }, [profile?.pending_weekly_summary]);
 
   const createImage = (url: string): Promise<HTMLImageElement> =>
     new Promise((resolve, reject) => {
@@ -2129,7 +2345,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <motion.button 
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => setShowStreakMenu(!showStreakMenu)}
+              onClick={() => {
+                const newShow = !showStreakMenu;
+                setShowStreakMenu(newShow);
+                if (newShow) {
+                  setSelectedDate(new Date());
+                }
+              }}
               className={`flex items-center gap-1.5 font-bold px-3 py-1 rounded-full cursor-pointer transition-colors border leading-none ${
                 showStreakMenu 
                   ? 'bg-orange-100/80 dark:bg-orange-950/40 text-orange-600 dark:text-orange-450 border-orange-200/50 dark:border-orange-900/40' 
@@ -2201,72 +2423,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
               {/* Weeks view / Months view inside a clean card */}
               <div className="w-full max-w-xl bg-slate-50/50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-[2rem] p-5 shadow-sm">
                 {streakTab === 'week' ? (
-                  <div 
-                    onTouchStart={(e) => {
-                      setTouchStart({
-                        x: e.targetTouches[0].clientX,
-                        y: e.targetTouches[0].clientY
-                      });
-                    }}
-                    onTouchMove={(e) => {
-                      setTouchEnd({
-                        x: e.targetTouches[0].clientX,
-                        y: e.targetTouches[0].clientY
-                      });
-                    }}
-                    onTouchEnd={() => {
-                      if (!touchStart || !touchEnd) return;
-                      const distanceX = touchStart.x - touchEnd.x;
-                      const distanceY = touchStart.y - touchEnd.y;
-                      
-                      // Check dominant horizontal swipe and threshold
-                      if (Math.abs(distanceX) > 40 && Math.abs(distanceX) > Math.abs(distanceY)) {
-                        if (distanceX > 0) {
-                          // Swipe left -> next week
-                          setWeekOffset(prev => prev + 1);
-                        } else {
-                          // Swipe right -> previous week
-                          setWeekOffset(prev => prev - 1);
-                        }
-                      }
-                      setTouchStart(null);
-                      setTouchEnd(null);
-                    }}
-                    className="overflow-hidden select-none touch-pan-y"
-                  >
+                  <div className="w-full">
                     {/* Discreet Month Name Header for Week View */}
                     <div className="text-center mb-4">
                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500/80">
-                        {(() => {
-                          const refDate = getWeekDayDate(2); // Tuesday as reference for the displayed week's month
-                          const mNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-                          return `${mNames[refDate.getMonth()]} de ${refDate.getFullYear()}`;
-                        })()}
+                        {selectedDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
                       </span>
                     </div>
 
-                    <motion.div
-                      key={weekOffset}
-                      initial={{ opacity: 0.3, x: touchStart && touchEnd ? (touchStart.x - touchEnd.x > 0 ? 20 : -20) : 0 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.2, ease: "easeOut" }}
-                      className="flex justify-between items-center gap-2"
+                    <div
+                      ref={scrollRef}
+                      onMouseDown={handleMouseDown}
+                      onMouseLeave={handleMouseLeave}
+                      onMouseUp={handleMouseUp}
+                      onMouseMove={handleMouseMove}
+                      className="flex overflow-x-auto scrollbar-none gap-3 py-2 px-1 w-full select-none touch-pan-x cursor-grab active:cursor-grabbing snap-none"
                     >
                       {(() => {
-                        const todayIndex = new Date().getDay();
-                        const daysData = [
-                          { label: 'Sáb', dayNum: 6 },
-                          { label: 'Dom', dayNum: 0 },
-                          { label: 'Seg', dayNum: 1 },
-                          { label: 'Ter', dayNum: 2 },
-                          { label: 'Qua', dayNum: 3 },
-                          { label: 'Qui', dayNum: 4 },
-                          { label: 'Sex', dayNum: 5 }
-                        ];
+                        const daysRange = [];
+                        // Generates 31 days centered around selectedDate so user has a wide scroll range
+                        for (let i = -15; i <= 15; i++) {
+                          const d = new Date(selectedDate);
+                          d.setDate(selectedDate.getDate() + i);
+                          daysRange.push(d);
+                        }
 
-                        return daysData.map((day, idx) => {
-                          const cellDate = getWeekDayDate(day.dayNum);
-                          
+                        return daysRange.map((cellDate, idx) => {
                           // Check if it's the selected date
                           const isSelected = cellDate.getDate() === selectedDate.getDate() &&
                                              cellDate.getMonth() === selectedDate.getMonth() &&
@@ -2295,13 +2477,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             });
                           }
 
+                          const weekdayLabel = cellDate.toLocaleDateString('pt-BR', { weekday: 'short' })
+                            .replace('.', '')
+                            .substring(0, 3)
+                            .replace(/^\w/, c => c.toUpperCase());
+
                           return (
                             <div 
                               key={idx} 
+                              data-selected={isSelected ? "true" : "false"}
                               onClick={() => setSelectedDate(cellDate)}
-                              className={`flex flex-col items-center gap-2 flex-1 cursor-pointer py-2 px-1 rounded-2xl transition-all ${
+                              className={`flex flex-col items-center gap-2 w-14 min-w-[3.5rem] flex-shrink-0 cursor-pointer py-2 px-1 rounded-2xl transition-all ${
                                 isSelected 
-                                  ? 'bg-orange-500/10 border border-orange-200/50' 
+                                  ? 'bg-orange-500/10 border border-orange-200/50 scale-105' 
                                   : 'border border-transparent hover:bg-slate-100/50 dark:hover:bg-slate-800/30'
                               }`}
                             >
@@ -2314,7 +2502,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                       ? 'text-slate-300 dark:text-slate-600' 
                                       : 'text-slate-500 dark:text-slate-400'
                               }`}>
-                                {day.label}
+                                {weekdayLabel}
                               </span>
 
                               {isCompleted ? (
@@ -2336,7 +2524,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               {/* Numeric Day of Month */}
                               <span className={`text-[11px] font-black ${
                                 isSelected 
-                                  ? 'text-orange-500' 
+                                  ? 'text-orange-500 font-black' 
                                   : isToday 
                                     ? 'text-purple-600 dark:text-purple-400' 
                                     : isFuture 
@@ -2349,7 +2537,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           );
                         });
                       })()}
-                    </motion.div>
+                    </div>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center">
@@ -3125,6 +3313,142 @@ export const Dashboard: React.FC<DashboardProps> = ({
         targetFat={targetFat}
         totalFat={totalFat}
       />
+
+      {/* Automatic End of Week League Results Celebration Modal */}
+      <AnimatePresence>
+        {profile?.pending_weekly_summary && (
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={handleCloseWeeklySummary}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            
+            {/* Modal Body */}
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              transition={{ type: "spring", duration: 0.5 }}
+              className="relative w-full max-w-md overflow-hidden bg-white dark:bg-[#0f172a] border border-slate-100 dark:border-slate-800 rounded-[2.5rem] shadow-2xl p-6 sm:p-8 text-center"
+            >
+              {profile.pending_weekly_summary.resultType === 'promoted' && (
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+              )}
+              {profile.pending_weekly_summary.resultType === 'demoted' && (
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-48 bg-rose-500/10 rounded-full blur-3xl pointer-events-none" />
+              )}
+              {profile.pending_weekly_summary.resultType === 'remained' && (
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+              )}
+
+              {/* Status Header */}
+              <div className="relative flex justify-center mb-6">
+                {profile.pending_weekly_summary.resultType === 'promoted' ? (
+                  <div className="p-5 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-full shadow-lg shadow-emerald-500/10 animate-bounce">
+                    <Trophy size={48} className="stroke-[2]" />
+                  </div>
+                ) : profile.pending_weekly_summary.resultType === 'demoted' ? (
+                  <div className="p-5 bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-full shadow-lg shadow-rose-500/10">
+                    <ShieldAlert size={48} className="stroke-[2]" />
+                  </div>
+                ) : (
+                  <div className="p-5 bg-purple-100 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 rounded-full shadow-lg shadow-purple-500/10">
+                    <Award size={48} className="stroke-[2]" />
+                  </div>
+                )}
+              </div>
+
+              {/* Title & Badge */}
+              <div className="space-y-2 mb-4">
+                <h3 className="text-2xl font-black tracking-tight text-slate-800 dark:text-white">
+                  {profile.pending_weekly_summary.resultType === 'promoted'
+                    ? "Parabéns! Você Subiu de Divisão!"
+                    : profile.pending_weekly_summary.resultType === 'demoted'
+                    ? "Fim da Disputa Semanal"
+                    : "Você Permaneceu na Divisão"}
+                </h3>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-center gap-1.5">
+                  <Sparkles size={12} className="text-amber-500" />
+                  <span>Temporada Finalizada</span>
+                </p>
+              </div>
+
+              {/* Detailed Explanation */}
+              <div className="text-sm text-slate-600 dark:text-slate-300 space-y-4 mb-6 leading-relaxed">
+                <p>
+                  Você terminou a disputa semanal na{" "}
+                  <span className="text-slate-800 dark:text-white font-black">
+                    {profile.pending_weekly_summary.position}ª colocação
+                  </span>.
+                </p>
+
+                {/* League Evolution Visualizer */}
+                <div className="flex items-center justify-center gap-4 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-800/60 shadow-sm max-w-xs mx-auto">
+                  <div className="flex flex-col items-center">
+                    <span className="text-[10px] font-black uppercase text-slate-400 mb-1">Anterior</span>
+                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200/50 dark:border-slate-700/50">
+                      {profile.pending_weekly_summary.oldLeague}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center text-slate-400">
+                    <ArrowUpCircle size={20} className={`stroke-[2.5] ${
+                      profile.pending_weekly_summary.resultType === 'promoted' ? 'text-emerald-500 rotate-90 sm:rotate-0' :
+                      profile.pending_weekly_summary.resultType === 'demoted' ? 'text-rose-500 rotate-90 sm:rotate-0' :
+                      'text-purple-500 rotate-90 sm:rotate-0'
+                    }`} />
+                  </div>
+
+                  <div className="flex flex-col items-center">
+                    <span className="text-[10px] font-black uppercase text-slate-400 mb-1">Atual</span>
+                    <span className={`text-xs font-black px-3 py-1.5 rounded-xl border shadow-sm ${
+                      profile.pending_weekly_summary.resultType === 'promoted' ? 'bg-emerald-500/10 border-emerald-200/50 dark:border-emerald-900/40 text-emerald-600 dark:text-emerald-400' :
+                      profile.pending_weekly_summary.resultType === 'demoted' ? 'bg-rose-500/10 border-rose-200/50 dark:border-rose-900/40 text-rose-600 dark:text-rose-400' :
+                      'bg-purple-500/10 border-purple-200/50 dark:border-purple-900/40 text-purple-600 dark:text-purple-400'
+                    }`}>
+                      {profile.pending_weekly_summary.newLeague}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Reward Card */}
+                {profile.pending_weekly_summary.bonusNC > 0 && (
+                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3.5 flex items-center justify-between max-w-xs mx-auto">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl">
+                        <Coins size={18} className="stroke-[2.5] animate-pulse" />
+                      </div>
+                      <div className="text-left">
+                        <span className="text-[10px] font-black uppercase text-amber-500 block leading-none">Bônus de Posição</span>
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Recompensa Recebida</span>
+                      </div>
+                    </div>
+                    <span className="text-sm font-black text-amber-600 dark:text-amber-400">
+                      +{profile.pending_weekly_summary.bonusNC} NC
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Button */}
+              <div className="flex justify-center">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleCloseWeeklySummary}
+                  className="w-full py-3.5 rounded-2xl font-bold text-sm text-white shadow-xl transition-all cursor-pointer bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-purple-500/20"
+                >
+                  Continuar
+                </motion.button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
