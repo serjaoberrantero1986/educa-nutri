@@ -101,7 +101,10 @@ export class MercadoPagoProvider implements PaymentProvider {
 
   public async createPayment(data: CreatePaymentDTO): Promise<PaymentResponse> {
     if (!this.isConfigured || (data.paymentMethod === "card" && (!data.token || data.token === "card_token_sandbox"))) {
-      return this.createSimulatedPayment(data);
+      if (process.env.PAYMENT_MODE === "sandbox") {
+        return this.createSimulatedPayment(data);
+      }
+      throw new Error("Mercado Pago não está configurado ou token de cartão inválido para ambiente de produção.");
     }
 
     try {
@@ -165,8 +168,11 @@ export class MercadoPagoProvider implements PaymentProvider {
         initPoint: mpResponse.sandbox_init_point || mpResponse.init_point || undefined
       };
     } catch (error: any) {
-      console.error("[MercadoPago Provider] Error creating payment, falling back to simulation:", error);
-      return this.createSimulatedPayment(data);
+      console.error("[MercadoPago Provider] Error creating payment:", error);
+      if (process.env.PAYMENT_MODE === "sandbox") {
+        return this.createSimulatedPayment(data);
+      }
+      throw error;
     }
   }
 
@@ -184,7 +190,10 @@ export class MercadoPagoProvider implements PaymentProvider {
 
     // If it's a simulated payment id, return the simulated status
     if (paymentId.startsWith("sim-")) {
-      return this.getSimulatedPaymentStatus(paymentId);
+      if (process.env.PAYMENT_MODE === "sandbox") {
+        return this.getSimulatedPaymentStatus(paymentId);
+      }
+      throw new Error("ID de pagamento simulado não é permitido em ambiente de produção.");
     }
 
     if (!this.isConfigured) {
@@ -221,8 +230,11 @@ export class MercadoPagoProvider implements PaymentProvider {
         qrCodeCopyPaste: transactionData.qr_code || undefined
       };
     } catch (error: any) {
-      console.error(`[MercadoPago Provider] Error fetching status for payment ${paymentId}, falling back to simulation:`, error);
-      return this.getSimulatedPaymentStatus(paymentId);
+      console.error(`[MercadoPago Provider] Error fetching status for payment ${paymentId}:`, error);
+      if (process.env.PAYMENT_MODE === "sandbox") {
+        return this.getSimulatedPaymentStatus(paymentId);
+      }
+      throw error;
     }
   }
 

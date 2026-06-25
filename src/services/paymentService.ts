@@ -41,7 +41,13 @@ export const createPaymentApi = async (params: CreatePaymentParams): Promise<Cli
 
     return await response.json();
   } catch (error: any) {
-    console.warn("[PaymentService] API call failed, falling back to client-side sandbox simulation:", error);
+    console.warn("[PaymentService] API call failed:", error);
+    
+    // Check if VITE_PAYMENT_MODE is sandbox
+    const isSandbox = import.meta.env.VITE_PAYMENT_MODE === "sandbox";
+    if (!isSandbox) {
+      throw error;
+    }
     
     // Check if it's a "Failed to fetch" (Network Error / CORS) or server issue
     const randomId = `sim-payment-${Date.now()}`;
@@ -70,7 +76,12 @@ export const createPaymentApi = async (params: CreatePaymentParams): Promise<Cli
 };
 
 export const getPaymentStatusApi = async (paymentId: string): Promise<ClientPaymentResponse> => {
+  const isSandbox = import.meta.env.VITE_PAYMENT_MODE === "sandbox";
+
   if (paymentId && paymentId.startsWith("sim-")) {
+    if (!isSandbox) {
+      throw new Error("ID de pagamento simulado não é permitido em ambiente de produção.");
+    }
     // Return approved status block after a short delay (or immediately for quick confirmation)
     const storedStr = sessionStorage.getItem(`check-${paymentId}`);
     let callCount = 0;
@@ -109,7 +120,10 @@ export const getPaymentStatusApi = async (paymentId: string): Promise<ClientPaym
 
     return await response.json();
   } catch (error) {
-    console.warn("[PaymentStatus] Failed to query status from API, falling back to simulated APPROVED status:", error);
+    console.warn("[PaymentStatus] Failed to query status from API:", error);
+    if (!isSandbox) {
+      throw error;
+    }
     return {
       id: paymentId,
       status: "approved",
