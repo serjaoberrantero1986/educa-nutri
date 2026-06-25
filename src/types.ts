@@ -28,6 +28,7 @@ export interface UserData {
   hasMedicalCondition?: boolean;
   medicalConditions?: string;
   dietRestrictions?: string[];
+  useOnlyIMC?: boolean;
 }
 
 export interface Food {

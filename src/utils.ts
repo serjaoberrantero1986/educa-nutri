@@ -206,15 +206,24 @@ export const generateDiet = (data: UserData, foods: Food[], customMeals?: { id: 
   const targetCalories = Math.max(1200, tdee + adjustment);
   const macros = calculateMacros(data.weight, data.goal, targetCalories);
 
-  // Calculate body fat if not known using US Navy and Visual Assessment combined for higher precision
+  // Calculate body fat if not known using US Navy or IMC and Visual Assessment combined for higher precision
   const knowsBF = data.knowsBodyFat || false;
   const customBF = data.customBodyFat || 15;
-  const navyBF = calculateNavyBodyFat(data.sex, data.height, data.waist || 85, data.neck || 38, data.hip || 95);
+  let baseBF = 15;
+  if (data.useOnlyIMC) {
+    const heightInMeters = data.height / 100;
+    const bmi = data.weight / (heightInMeters * heightInMeters);
+    const factor = data.sex === 'male' ? 16.2 : 5.4;
+    const estimatedBF = (1.20 * bmi) + (0.23 * data.age) - factor;
+    baseBF = Math.max(3, Math.min(50, Number(estimatedBF.toFixed(1))));
+  } else {
+    baseBF = calculateNavyBodyFat(data.sex, data.height, data.waist || 85, data.neck || 38, data.hip || 95);
+  }
   const visualBF = data.visualBodyFat;
   
-  let bodyFat = knowsBF ? customBF : navyBF;
+  let bodyFat = knowsBF ? customBF : baseBF;
   if (!knowsBF && visualBF) {
-    bodyFat = Number(((navyBF + visualBF) / 2).toFixed(1));
+    bodyFat = Number(((baseBF + visualBF) / 2).toFixed(1));
   }
   const lbm = data.weight * (1 - bodyFat / 100);
 

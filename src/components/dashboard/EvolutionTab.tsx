@@ -170,6 +170,10 @@ export const EvolutionTab: React.FC<EvolutionTabProps> = ({
   const [knowsBF, setKnowsBF] = useState<boolean>(userData.knowsBodyFat || false);
   const [customBF, setCustomBF] = useState<string>(userData.customBodyFat?.toString() || '15');
   const [visualBF, setVisualBF] = useState<number | undefined>(userData.visualBodyFat);
+  const [useOnlyIMC, setUseOnlyIMC] = useState<boolean>(() => {
+    const activeData = userData;
+    return !activeData?.waist || activeData?.waist === 85;
+  });
 
   const [localSex, setLocalSex] = useState<"male" | "female">(userData.sex || 'male');
   const [localAge, setLocalAge] = useState<number>(userData.age || 25);
@@ -204,6 +208,7 @@ export const EvolutionTab: React.FC<EvolutionTabProps> = ({
       setKnowsBF(activeData.knowsBodyFat || false);
       setCustomBF(activeData.customBodyFat?.toString() || '15');
       setVisualBF(activeData.visualBodyFat);
+      setUseOnlyIMC(!activeData.waist || activeData.waist === 85);
       setLocalSex(activeData.sex || 'male');
       setLocalAge(activeData.age || 25);
       setLocalHeight(activeData.height || 170);
@@ -343,12 +348,22 @@ export const EvolutionTab: React.FC<EvolutionTabProps> = ({
 
   const currentEstimatedBF = useMemo(() => {
     if (knowsBF) return Number(customBF) || 15;
-    const navyBF = calculateNavyBodyFat(localSex, localHeight, Number(logWaist) || 85, Number(logNeck) || 38, Number(logHip) || 95);
-    if (visualBF) {
-      return Number(((navyBF + visualBF) / 2).toFixed(1));
+    let bFat = 15;
+    if (useOnlyIMC) {
+      const heightInMeters = localHeight / 100;
+      const weightNum = Number(logWeight) || userData.weight || 70;
+      const bmi = weightNum / (heightInMeters * heightInMeters);
+      const factor = localSex === 'male' ? 16.2 : 5.4;
+      const estimatedBF = (1.20 * bmi) + (0.23 * localAge) - factor;
+      bFat = Math.max(3, Math.min(50, Number(estimatedBF.toFixed(1))));
+    } else {
+      bFat = calculateNavyBodyFat(localSex, localHeight, Number(logWaist) || 85, Number(logNeck) || 38, Number(logHip) || 95);
     }
-    return navyBF;
-  }, [knowsBF, customBF, localSex, localHeight, logWaist, logNeck, logHip, visualBF]);
+    if (visualBF) {
+      return Number(((bFat + visualBF) / 2).toFixed(1));
+    }
+    return bFat;
+  }, [knowsBF, customBF, useOnlyIMC, localSex, localHeight, localAge, logWeight, userData.weight, logWaist, logNeck, logHip, visualBF]);
 
   const currentLBM = useMemo(() => {
     const activeWeight = Number(logWeight) || userData.weight;
@@ -743,73 +758,100 @@ export const EvolutionTab: React.FC<EvolutionTabProps> = ({
                     </div>
                   </div>
 
-                  <div className="space-y-3 pt-2">
+                  <div className="space-y-4 pt-2">
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                       <Sliders size={14} className="text-purple-500" /> 2. Medidas de Circunferência (Fórmula da Marinha)
                     </label>
                     
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <span className="text-[11px] text-slate-404 dark:text-slate-500">Circunferência Cintura (cm)</span>
-                        <input 
-                          type="number" 
-                          value={logWaist}
-                          onChange={(e) => setLogWaist(e.target.value)}
-                          className="w-full bg-slate-55 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
-                          placeholder="Cintura"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <span className="text-[11px] text-slate-404 dark:text-slate-500">Circunferência Pescoço (cm)</span>
-                        <input 
-                          type="number" 
-                          value={logNeck}
-                          onChange={(e) => setLogNeck(e.target.value)}
-                          className="w-full bg-slate-55 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
-                          placeholder="Pescoço"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <span className="text-[11px] text-slate-404 dark:text-slate-500">Circunferência Quadril (cm)</span>
-                        <input 
-                          type="number" 
-                          value={logHip}
-                          onChange={(e) => setLogHip(e.target.value)}
-                          className="w-full bg-slate-55 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
-                          placeholder="Quadril"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <span className="text-[11px] text-slate-404 dark:text-slate-500">Circunferência Bíceps (cm)</span>
-                        <input 
-                          type="number" 
-                          value={logBiceps}
-                          onChange={(e) => setLogBiceps(e.target.value)}
-                          className="w-full bg-slate-55 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
-                          placeholder="Bíceps"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <span className="text-[11px] text-slate-404 dark:text-slate-500">Circunferência Peitoral (cm)</span>
-                        <input 
-                          type="number" 
-                          value={logPeitoral}
-                          onChange={(e) => setLogPeitoral(e.target.value)}
-                          className="w-full bg-slate-55 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
-                          placeholder="Peitoral"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <span className="text-[11px] text-slate-404 dark:text-slate-500">Circunferência Coxas (cm)</span>
-                        <input 
-                          type="number" 
-                          value={logCoxas}
-                          onChange={(e) => setLogCoxas(e.target.value)}
-                          className="w-full bg-slate-55 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
-                          placeholder="Coxas"
-                        />
-                      </div>
+                    {/* Toggle to use only IMC or advanced circumferences */}
+                    <div className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-sm">
+                      <span className="text-xs text-slate-600 dark:text-slate-350 font-bold">Deseja usar apenas o IMC?</span>
+                      <button 
+                        type="button"
+                        onClick={() => setUseOnlyIMC(!useOnlyIMC)}
+                        className={`text-[10px] tracking-wider px-3.5 py-1.5 rounded-xl font-black transition-all border-none cursor-pointer ${
+                          useOnlyIMC 
+                            ? 'bg-purple-600 text-white shadow-xs' 
+                            : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        {useOnlyIMC ? 'SIM' : 'NÃO'}
+                      </button>
                     </div>
+
+                    {!useOnlyIMC && (
+                      <motion.div 
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        className="space-y-4 pt-2"
+                      >
+                        <p className="text-[11px] text-slate-404 dark:text-slate-500">
+                          Registre suas circunferências corporais abaixo para calcular o percentual de gordura via Fórmula da Marinha:
+                        </p>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <span className="text-[11px] text-slate-404 dark:text-slate-500">Circunferência Cintura (cm)</span>
+                            <input 
+                              type="number" 
+                              value={logWaist}
+                              onChange={(e) => setLogWaist(e.target.value)}
+                              className="w-full bg-slate-55 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
+                              placeholder="Cintura"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[11px] text-slate-404 dark:text-slate-500">Circunferência Pescoço (cm)</span>
+                            <input 
+                              type="number" 
+                              value={logNeck}
+                              onChange={(e) => setLogNeck(e.target.value)}
+                              className="w-full bg-slate-55 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
+                              placeholder="Pescoço"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[11px] text-slate-404 dark:text-slate-500">Circunferência Quadril (cm)</span>
+                            <input 
+                              type="number" 
+                              value={logHip}
+                              onChange={(e) => setLogHip(e.target.value)}
+                              className="w-full bg-slate-55 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
+                              placeholder="Quadril"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[11px] text-slate-404 dark:text-slate-500">Circunferência Bíceps (cm)</span>
+                            <input 
+                              type="number" 
+                              value={logBiceps}
+                              onChange={(e) => setLogBiceps(e.target.value)}
+                              className="w-full bg-slate-55 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
+                              placeholder="Bíceps"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[11px] text-slate-404 dark:text-slate-500">Circunferência Peitoral (cm)</span>
+                            <input 
+                              type="number" 
+                              value={logPeitoral}
+                              onChange={(e) => setLogPeitoral(e.target.value)}
+                              className="w-full bg-slate-55 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
+                              placeholder="Peitoral"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[11px] text-slate-404 dark:text-slate-500">Circunferência Coxas (cm)</span>
+                            <input 
+                              type="number" 
+                              value={logCoxas}
+                              onChange={(e) => setLogCoxas(e.target.value)}
+                              className="w-full bg-slate-55 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
+                              placeholder="Coxas"
+                            />
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
                   </div>
                 </div>
               )}

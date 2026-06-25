@@ -212,7 +212,7 @@ export const WeeklyPlanTab: React.FC<WeeklyPlanTabProps> = ({
                         <div>
                           <div className="text-sm font-bold text-slate-800 dark:text-slate-100">{item.food ? formatFoodName(item.food.name) : "Alimento desconhecido"}</div>
                           <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
-                            {item.food ? formatMeasure(item.amount, item.food) : `${item.amount}g`} ({item.amount}g) • {item.food ? Math.round(item.food.calories * item.amount / 100) : 0} kcal
+                            {item.food && formatMeasure(item.amount, item.food) ? `${formatMeasure(item.amount, item.food)} (${item.amount}g)` : `${item.amount}g`} • {item.food ? Math.round(item.food.calories * item.amount / 100) : 0} kcal
                           </div>
                         </div>
                       </div>

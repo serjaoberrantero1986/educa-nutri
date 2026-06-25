@@ -161,7 +161,8 @@ export default function App() {
     targetBodyFatPreset: "fitness",
     journeySpeed: "moderate",
     dailySteps: 5000,
-    stepsCategory: "Não sei (estimar em 5.000 passos)"
+    stepsCategory: "Não sei (estimar em 5.000 passos)",
+    useOnlyIMC: true
   });
 
 
@@ -719,6 +720,13 @@ export default function App() {
   };
 
   const formatMeasure = (amountGrams: number, food: Food) => {
+    if (food.measure_unit) {
+      const unitLower = food.measure_unit.toLowerCase().trim();
+      if (unitLower === 'g' || unitLower === 'g.' || unitLower === 'grama' || unitLower === 'gramas') {
+        return "";
+      }
+    }
+
     if (!food.grams_per_unit || food.grams_per_unit === 0) return `${amountGrams}g`;
     const units = amountGrams / food.grams_per_unit;
     const roundedUnits = Math.round(units * 2) / 2; // Round to nearest 0.5
@@ -727,7 +735,7 @@ export default function App() {
     
     const unitStr = roundedUnits === 1 ? food.measure_unit : `${food.measure_unit}s`;
     // Handle specific pluralization if needed, but simple 's' works for most PT-BR measures in this context
-    return `${roundedUnits} ${food.measure_unit}${roundedUnits > 1 ? 's' : ''}`;
+    return `${roundedUnits} ${food.measure_unit}${roundedUnits > 1 && !food.measure_unit.endsWith('s') ? 's' : ''}`;
   };
 
   const macroData = (dietPlan && dietPlan.macros) ? [
@@ -1130,85 +1138,121 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="space-y-3 pt-2">
+                      <div className="space-y-4 pt-2">
                         <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                           <Activity size={14} className="text-purple-500" /> 2. Medidas de Circunferência (Fórmula da Marinha)
                         </label>
                         
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <span className="text-[11px] text-slate-400 dark:text-slate-500">Circunferência Cintura (cm)</span>
-                            <input 
-                              type="number" 
-                              value={userData.waist || ''}
-                              onChange={(e) => setUserData({...userData, waist: Number(e.target.value)})}
-                              className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
-                              placeholder="Cintura"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[11px] text-slate-400 dark:text-slate-500">Circunferência Pescoço (cm)</span>
-                            <input 
-                              type="number" 
-                              value={userData.neck || ''}
-                              onChange={(e) => setUserData({...userData, neck: Number(e.target.value)})}
-                              className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
-                              placeholder="Pescoço"
-                            />
-                          </div>
+                        {/* Toggle to use only IMC or advanced circumferences */}
+                        <div className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-sm">
+                          <span className="text-xs text-slate-600 dark:text-slate-350 font-bold">Deseja usar apenas o IMC?</span>
+                          <button 
+                            type="button"
+                            onClick={() => setUserData({...userData, useOnlyIMC: !userData.useOnlyIMC})}
+                            className={`text-[10px] tracking-wider px-3.5 py-1.5 rounded-xl font-black transition-all border-none cursor-pointer ${
+                              userData.useOnlyIMC 
+                                ? 'bg-purple-600 text-white shadow-xs' 
+                                : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                            }`}
+                          >
+                            {userData.useOnlyIMC ? 'SIM' : 'NÃO'}
+                          </button>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <span className="text-[11px] text-slate-400 dark:text-slate-500">Circunferência Quadril (cm)</span>
-                            <input 
-                              type="number" 
-                              value={userData.hip || ''}
-                              onChange={(e) => setUserData({...userData, hip: Number(e.target.value)})}
-                              className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
-                              placeholder="Quadril"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[11px] text-slate-400 dark:text-slate-500">Circunferência Bíceps (cm)</span>
-                            <input 
-                              type="number" 
-                              value={userData.biceps || ''}
-                              onChange={(e) => setUserData({...userData, biceps: Number(e.target.value)})}
-                              className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
-                              placeholder="Bíceps"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[11px] text-slate-400 dark:text-slate-500">Circunferência Peitoral (cm)</span>
-                            <input 
-                              type="number" 
-                              value={userData.peitoral || ''}
-                              onChange={(e) => setUserData({...userData, peitoral: Number(e.target.value)})}
-                              className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
-                              placeholder="Peitoral"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-[11px] text-slate-400 dark:text-slate-500">Circunferência Coxas (cm)</span>
-                            <input 
-                              type="number" 
-                              value={userData.coxas || ''}
-                              onChange={(e) => setUserData({...userData, coxas: Number(e.target.value)})}
-                              className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
-                              placeholder="Coxas"
-                            />
-                          </div>
-                        </div>
+                        {!userData.useOnlyIMC && (
+                          <motion.div 
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className="space-y-4 pt-2"
+                          >
+                            <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                              Registre suas circunferências corporais abaixo para calcular o percentual de gordura via Fórmula da Marinha:
+                            </p>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <span className="text-[11px] text-slate-400 dark:text-slate-500">Circunferência Cintura (cm)</span>
+                                <input 
+                                  type="number" 
+                                  value={userData.waist || ''}
+                                  onChange={(e) => setUserData({...userData, waist: Number(e.target.value)})}
+                                  className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
+                                  placeholder="Cintura"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-[11px] text-slate-400 dark:text-slate-500">Circunferência Pescoço (cm)</span>
+                                <input 
+                                  type="number" 
+                                  value={userData.neck || ''}
+                                  onChange={(e) => setUserData({...userData, neck: Number(e.target.value)})}
+                                  className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
+                                  placeholder="Pescoço"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <span className="text-[11px] text-slate-400 dark:text-slate-500">Circunferência Quadril (cm)</span>
+                                <input 
+                                  type="number" 
+                                  value={userData.hip || ''}
+                                  onChange={(e) => setUserData({...userData, hip: Number(e.target.value)})}
+                                  className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
+                                  placeholder="Quadril"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-[11px] text-slate-400 dark:text-slate-500">Circunferência Bíceps (cm)</span>
+                                <input 
+                                  type="number" 
+                                  value={userData.biceps || ''}
+                                  onChange={(e) => setUserData({...userData, biceps: Number(e.target.value)})}
+                                  className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
+                                  placeholder="Bíceps"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-[11px] text-slate-400 dark:text-slate-500">Circunferência Peitoral (cm)</span>
+                                <input 
+                                  type="number" 
+                                  value={userData.peitoral || ''}
+                                  onChange={(e) => setUserData({...userData, peitoral: Number(e.target.value)})}
+                                  className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
+                                  placeholder="Peitoral"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-[11px] text-slate-400 dark:text-slate-500">Circunferência Coxas (cm)</span>
+                                <input 
+                                  type="number" 
+                                  value={userData.coxas || ''}
+                                  onChange={(e) => setUserData({...userData, coxas: Number(e.target.value)})}
+                                  className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-purple-500/20 transition-all dark:text-white"
+                                  placeholder="Coxas"
+                                />
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
                       </div>
 
                       {/* Live Dynamic estimated result readout */}
                       {(() => {
-                        const navyBF = calculateNavyBodyFat(userData.sex, userData.height, userData.waist || 85, userData.neck || 38, userData.hip || 95);
+                        let baseBF = 15;
+                        if (userData.useOnlyIMC) {
+                          const heightInMeters = userData.height / 100;
+                          const bmi = userData.weight / (heightInMeters * heightInMeters);
+                          const factor = userData.sex === 'male' ? 16.2 : 5.4;
+                          const estimatedBF = (1.20 * bmi) + (0.23 * userData.age) - factor;
+                          baseBF = Math.max(3, Math.min(50, Number(estimatedBF.toFixed(1))));
+                        } else {
+                          baseBF = calculateNavyBodyFat(userData.sex, userData.height, userData.waist || 85, userData.neck || 38, userData.hip || 95);
+                        }
                         const visualBF = userData.visualBodyFat;
-                        let finalBF = navyBF;
+                        let finalBF = baseBF;
                         if (visualBF) {
-                          finalBF = Number(((navyBF + visualBF) / 2).toFixed(1));
+                          finalBF = Number(((baseBF + visualBF) / 2).toFixed(1));
                         }
                         return (
                           <div className="p-3.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl flex justify-between items-center text-xs text-slate-500 border border-slate-100 dark:border-slate-800">
@@ -1308,16 +1352,25 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* Sports nutritionist dynamic preview display */}
+                   {/* Sports nutritionist dynamic preview display */}
                   {(() => {
                     const calculatedBF = (() => {
                       if (userData.knowsBodyFat) return userData.customBodyFat || 15;
-                      const navy = calculateNavyBodyFat(userData.sex, userData.height, userData.waist || 85, userData.neck || 38, userData.hip || 95);
+                      let baseBF = 15;
+                      if (userData.useOnlyIMC) {
+                        const heightInMeters = userData.height / 100;
+                        const bmi = userData.weight / (heightInMeters * heightInMeters);
+                        const factor = userData.sex === 'male' ? 16.2 : 5.4;
+                        const estimatedBF = (1.20 * bmi) + (0.23 * userData.age) - factor;
+                        baseBF = Math.max(3, Math.min(50, Number(estimatedBF.toFixed(1))));
+                      } else {
+                        baseBF = calculateNavyBodyFat(userData.sex, userData.height, userData.waist || 85, userData.neck || 38, userData.hip || 95);
+                      }
                       const visual = userData.visualBodyFat;
                       if (visual) {
-                        return Number(((navy + visual) / 2).toFixed(1));
+                        return Number(((baseBF + visual) / 2).toFixed(1));
                       }
-                      return navy;
+                      return baseBF;
                     })();
                     const lbm = userData.weight * (1 - calculatedBF / 100);
                     let targetBF = userData.targetBodyFat || 15;
@@ -1686,7 +1739,7 @@ export default function App() {
                               <div>
                                 <div className="text-sm font-bold text-slate-800 dark:text-slate-100">{item.food ? formatFoodName(item.food.name) : "Alimento desconhecido"}</div>
                                 <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
-                                  {item.food ? formatMeasure(item.amount, item.food) : `${item.amount}g`} ({item.amount}g) • {item.food ? Math.round(item.food.calories * item.amount / 100) : 0} kcal
+                                  {item.food && formatMeasure(item.amount, item.food) ? `${formatMeasure(item.amount, item.food)} (${item.amount}g)` : `${item.amount}g`} • {item.food ? Math.round(item.food.calories * item.amount / 100) : 0} kcal
                                 </div>
                               </div>
                             </div>
@@ -1785,7 +1838,7 @@ export default function App() {
                       <div className="space-y-1">
                         {(meal.foods || []).map((f, fIdx) => (
                           <div key={fIdx} className="text-[9px] font-bold text-slate-700 dark:text-slate-300 leading-tight">
-                            {f.food ? `${formatMeasure(f.amount, f.food)} ${formatFoodName(f.food.name)}` : `${f.amount}g de Alimento`}
+                            {f.food ? (formatMeasure(f.amount, f.food) ? `${formatMeasure(f.amount, f.food)} ${formatFoodName(f.food.name)}` : `${f.amount}g de ${formatFoodName(f.food.name)}`) : `${f.amount}g de Alimento`}
                           </div>
                         ))}
                       </div>
