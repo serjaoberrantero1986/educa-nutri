@@ -61,7 +61,6 @@ import { formatFoodName, calculateStreakFromLogs, getLocalDateString } from '../
 
 import { SummaryHeader } from './dashboard/SummaryHeader';
 import { WaterTracker } from './dashboard/WaterTracker';
-import { DailyMissions } from './dashboard/DailyMissions';
 import { MealCard } from './dashboard/MealCard';
 import { AddFoodModal } from './dashboard/AddFoodModal';
 import { MealManagementModal } from './dashboard/MealManagementModal';
@@ -2476,23 +2475,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
               macroData={macroData}
               COLORS={COLORS}
               caloriesBurned={cardioCaloriesBurned}
-            />
-
-            <DailyMissions 
-              profile={profile}
-              foodLogs={foodLogs}
-              waterAmount={waterAmount}
-              waterGoal={waterGoal}
-              exerciseHistory={exerciseHistory}
-              targetCalories={targetCalories}
-              totalCalories={totalCalories}
-              targetProtein={targetProtein}
-              totalProtein={totalProtein}
-              targetCarbs={targetCarbs}
-              totalCarbs={totalCarbs}
-              targetFat={targetFat}
-              totalFat={totalFat}
-              onClaimMission={handleClaimMission}
             />
 
             <WaterTracker 
