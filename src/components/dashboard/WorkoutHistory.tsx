@@ -70,17 +70,21 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
     .filter(l => l.exercicio.toLowerCase() === selectedExForChart.toLowerCase())
     .sort((a, b) => new Date(a.loggedAt).getTime() - new Date(b.loggedAt).getTime())
     .map(log => {
-      // Find maximum load lifted in this session
-      const maxCarga = Math.max(...log.series.map(s => s.carga), 0);
+      const isCardio = log.type === 'cardio';
+      // If cardio, plot either calories_burned or duration_minutes. Otherwise, max carga.
+      const mainVal = isCardio 
+        ? (log.calories_burned || log.duration_minutes || 0)
+        : Math.max(...log.series.map(s => s.carga), 0);
       try {
         const formattedDate = new Date(log.loggedAt).toLocaleDateString([], { day: '2-digit', month: '2-digit' });
         return {
           date: formattedDate,
-          carga: maxCarga,
-          esforco: log.esforco
+          carga: mainVal,
+          esforco: log.esforco,
+          isCardio
         };
       } catch (e) {
-        return { date: '??', carga: maxCarga, esforco: log.esforco };
+        return { date: '??', carga: mainVal, esforco: log.esforco, isCardio };
       }
     });
 
@@ -126,9 +130,9 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
                 <div>
                   <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
                     <TrendingUp className="text-cyan-400" size={18} />
-                    Gráfico de Progressão de Sobrecarga
+                    Gráfico de Progressão
                   </h3>
-                  <p className="text-[10px] uppercase font-bold text-slate-400 mt-1">Evolução de Carga Máxima (kg)</p>
+                  <p className="text-[10px] uppercase font-bold text-slate-400 mt-1">Evolução</p>
                 </div>
 
                 {/* Filter for choosing exercise */}
@@ -173,7 +177,7 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
                       <Line 
                         type="monotone" 
                         dataKey="carga" 
-                        name="Carga (kg)"
+                        name={chartData[0]?.isCardio ? "Energia (kcal) / Tempo (min)" : "Carga (kg)"}
                         stroke="#06b6d4" 
                         strokeWidth={3} 
                         dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}
@@ -267,16 +271,44 @@ export const WorkoutHistory: React.FC<WorkoutHistoryProps> = ({
                       )}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
-                      {log.series.map((seriesRecord, sIdx) => (
-                        <span 
-                          key={sIdx} 
-                          className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 px-2.5 py-1 rounded-lg text-[10px] font-bold text-slate-600 dark:text-slate-300"
-                        >
-                          Série {sIdx+1}: <span className="font-mono text-cyan-600 dark:text-cyan-400">{seriesRecord.carga}kg</span> • {seriesRecord.reps} repetições
+                    {log.type === 'cardio' ? (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <span className="bg-cyan-50 dark:bg-cyan-950/30 border border-cyan-100 dark:border-cyan-800/40 px-2.5 py-1 rounded-lg text-[10px] font-bold text-cyan-600 dark:text-cyan-400">
+                          🏃‍♂️ Cardio • {log.duration_minutes} min
                         </span>
-                      ))}
-                    </div>
+                        {log.distance_km ? (
+                          <span className="bg-purple-50 dark:bg-purple-950/30 border border-purple-100 dark:border-purple-800/40 px-2.5 py-1 rounded-lg text-[10px] font-bold text-purple-600 dark:text-purple-400">
+                            📍 {log.distance_km} km
+                          </span>
+                        ) : null}
+                        {log.calories_burned ? (
+                          <span className="bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-800/40 px-2.5 py-1 rounded-lg text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                            🔥 {log.calories_burned} kcal
+                          </span>
+                        ) : null}
+                        {log.pace && (
+                          <span className="bg-slate-50 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-850 px-2.5 py-1 rounded-lg text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                            ⚡ Ritmo: {log.pace}
+                          </span>
+                        )}
+                        {log.reps_count && (
+                          <span className="bg-slate-50 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-850 px-2.5 py-1 rounded-lg text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                            🔄 {log.reps_count} repetições
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        {log.series.map((seriesRecord, sIdx) => (
+                          <span 
+                            key={sIdx} 
+                            className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 px-2.5 py-1 rounded-lg text-[10px] font-bold text-slate-600 dark:text-slate-300"
+                          >
+                            Série {sIdx+1}: <span className="font-mono text-cyan-600 dark:text-cyan-400">{seriesRecord.carga}kg</span> • {seriesRecord.reps} repetições
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
                     <div className="flex items-center gap-4 text-[10px] font-bold text-slate-500 pt-1 border-t border-slate-100/50 dark:border-slate-800/50">
                       <span>Subjetivo: <span className="text-cyan-500">{getRpeLabel(log.esforco)}</span></span>

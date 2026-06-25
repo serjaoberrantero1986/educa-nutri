@@ -1327,20 +1327,86 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({
                 </div>
               )}
 
-              <div className="space-y-4">
-                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inserções Recentes</h4>
-                <div className="max-h-40 overflow-y-auto pr-1 no-scrollbar">
-                  <div className="flex flex-wrap gap-2">
-                    {recentFoods.map(food => (
-                      <button 
-                        key={food}
-                        onClick={() => setFoodInput(food)}
-                        className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold hover:bg-purple-50 hover:text-purple-600 transition-colors"
-                      >
-                        {formatFoodName(food)}
-                      </button>
-                    ))}
-                  </div>
+              <div id="modal-missions-container" className="space-y-3 bg-purple-50/20 dark:bg-purple-950/10 p-4 rounded-3xl border border-purple-50 dark:border-purple-950/20">
+                <div className="flex items-center gap-1.5 text-[10px] font-black text-purple-600 dark:text-purple-400 uppercase tracking-widest mb-1">
+                  <Sparkles size={12} className="animate-pulse" />
+                  <span>Missões Diárias de Hoje</span>
+                </div>
+                <div className="space-y-2">
+                  {(() => {
+                    const getDaySeed = (dateStr: string) => {
+                      let hash = 0;
+                      for (let i = 0; i < dateStr.length; i++) {
+                        hash = dateStr.charCodeAt(i) + ((hash << 5) - hash);
+                      }
+                      return Math.abs(hash);
+                    };
+
+                    const mealTemplates = [
+                      { id: 'meal_cafe', title: 'Café da Manhã de Campeão', rewardXP: 15 },
+                      { id: 'meal_almoco', title: 'Almoço Nutritivo', rewardXP: 15 },
+                      { id: 'meal_jantar', title: 'Jantar Consistente', rewardXP: 15 },
+                      { id: 'meal_lanche_tarde', title: 'Lanche Energético', rewardXP: 15 },
+                      { id: 'meal_ceia', title: 'Ceia Regenerativa', rewardXP: 15 },
+                    ];
+
+                    const healthTemplates = [
+                      { id: 'health_water_goal', title: 'Hidratação Suprema', rewardXP: 15 },
+                      { id: 'health_water_vol', title: 'Foco na Água', rewardXP: 15 },
+                      { id: 'health_protein', title: 'Meta de Proteínas', rewardXP: 15 },
+                      { id: 'health_veg', title: 'Fibra & Vitalidade', rewardXP: 15 },
+                    ];
+
+                    const workoutTemplates = [
+                      { id: 'workout_log', title: 'Guerreiro de Ferro', rewardXP: 20 },
+                      { id: 'workout_calories', title: 'Precisão Calórica', rewardXP: 20 },
+                      { id: 'workout_fat', title: 'Gorduras sob Controle', rewardXP: 20 },
+                      { id: 'workout_carbs', title: 'Combustível de Carboidratos', rewardXP: 20 },
+                    ];
+
+                    const local = new Date();
+                    const offset = local.getTimezoneOffset();
+                    const localDate = new Date(local.getTime() - offset * 60 * 1000);
+                    const todayStr = localDate.toISOString().split('T')[0];
+                    const seed = getDaySeed(todayStr);
+
+                    const dailyMeal = mealTemplates[seed % mealTemplates.length];
+                    const dailyHealth = healthTemplates[(seed + 1) % healthTemplates.length];
+                    const dailyWorkout = workoutTemplates[(seed + 2) % workoutTemplates.length];
+
+                    const claimedIds = profile?.daily_missions_today?.date === todayStr
+                      ? (profile.daily_missions_today as any).claimed_ids || []
+                      : [];
+
+                    return [dailyMeal, dailyHealth, dailyWorkout].map((m) => {
+                      const isClaimed = claimedIds.includes(m.id);
+                      return (
+                        <div 
+                          key={m.id} 
+                          id={`modal-mission-item-${m.id}`}
+                          className="flex items-center justify-between py-1.5 px-2.5 bg-white dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800/40"
+                        >
+                          <div className="flex items-center gap-2">
+                            {isClaimed ? (
+                              <Check className="text-emerald-500" size={14} />
+                            ) : (
+                              <div className="w-3.5 h-3.5 rounded-full border border-slate-350 dark:border-slate-600" />
+                            )}
+                            <span className={`text-[11px] font-bold ${isClaimed ? 'text-slate-400 dark:text-slate-500 line-through font-medium' : 'text-slate-700 dark:text-slate-300'}`}>
+                              {m.title}
+                            </span>
+                          </div>
+                          <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                            isClaimed 
+                              ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-555' 
+                              : 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400'
+                          }`}>
+                            +{m.rewardXP} NC
+                          </span>
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             </div>

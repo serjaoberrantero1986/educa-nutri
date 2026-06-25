@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Bot, Send, X, Sparkles, RefreshCw, MessageSquare, ArrowRight, Lock, Mic, MicOff, Camera, Image as ImageIcon, Check, Trash2, Pencil } from "lucide-react";
+import { Bot, Send, X, Sparkles, RefreshCw, MessageSquare, ArrowRight, Lock, Mic, MicOff, Camera, Image as ImageIcon, Check, Trash2, Pencil, Trophy, Coins, Coffee, ChefHat, Utensils, Droplets, Dumbbell } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { getApiUrl, formatFoodName } from "../../utils";
 import { db, isFirebaseConfigured } from "../../lib/firebase";
@@ -316,6 +316,15 @@ interface NutriAssistantProps {
   activeRoutine?: any;
   waterAmount?: number;
   waterGoal?: number;
+  exerciseHistory?: any[];
+  targetCalories?: number;
+  totalCalories?: number;
+  targetProtein?: number;
+  totalProtein?: number;
+  targetCarbs?: number;
+  totalCarbs?: number;
+  targetFat?: number;
+  totalFat?: number;
 }
 
 export const NutriAssistant: React.FC<NutriAssistantProps> = ({ 
@@ -329,7 +338,16 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
   workoutProfile = null,
   activeRoutine = null,
   waterAmount = 0,
-  waterGoal = 2000
+  waterGoal = 2000,
+  exerciseHistory = [],
+  targetCalories = 2500,
+  totalCalories = 0,
+  targetProtein = 150,
+  totalProtein = 0,
+  targetCarbs = 250,
+  totalCarbs = 0,
+  targetFat = 70,
+  totalFat = 0
 }) => {
   const isPremiumActive = profile?.premium_access_until 
     ? (profile.premium_access_until === 'unlimited' || new Date(profile.premium_access_until).getTime() > Date.now())
@@ -340,6 +358,7 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
     (typeof profile?.nutri_assistant_active === 'string' && new Date(profile.nutri_assistant_active).getTime() > Date.now());
 
   const [isOpen, setIsOpen] = useState(false);
+  const [assistantSubTab, setAssistantSubTab] = useState<'conversa' | 'missoes'>('conversa');
   const defaultMeals = [
     { id: 'cafe', name: 'Café da Manhã', icon: '☕' },
     { id: 'lanche_manha', name: 'Lanche da Manhã', icon: '🍎' },
@@ -1018,49 +1037,131 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
     ]);
   };
 
-  const suggestions = React.useMemo(() => {
-    let recentSearches: string[] = [];
-    try {
-      const userId = user?.uid || 'guest';
-      const stored = localStorage.getItem(`recent_typed_foods_${userId}`);
-      if (stored) {
-        recentSearches = JSON.parse(stored);
+  const dailyMissions = React.useMemo(() => {
+    const getTodayStr = () => {
+      const local = new Date();
+      const offset = local.getTimezoneOffset();
+      const localDate = new Date(local.getTime() - offset * 60 * 1000);
+      return localDate.toISOString().split('T')[0];
+    };
+
+    const getDaySeed = (dateStr: string) => {
+      let hash = 0;
+      for (let i = 0; i < dateStr.length; i++) {
+        hash = dateStr.charCodeAt(i) + ((hash << 5) - hash);
       }
-    } catch (e) {
-      console.error(e);
-    }
+      return Math.abs(hash);
+    };
 
-    // Filter out empty or invalid entries
-    recentSearches = (recentSearches || []).map(f => typeof f === 'string' ? f.trim() : '').filter(Boolean);
+    const todayStr = getTodayStr();
+    const seed = getDaySeed(todayStr);
 
-    // If there are less than 3, pad with nice defaults
-    const defaults = ["Arroz Branco Cozido", "Leite Integral", "Feijão Carioca Cozido"];
-    const uniqueFoods = [...recentSearches];
-    for (const d of defaults) {
-      if (uniqueFoods.length >= 3) break;
-      if (!uniqueFoods.some(f => f.toLowerCase() === d.toLowerCase())) {
-        uniqueFoods.push(d);
-      }
-    }
-
-    // Take top 3
-    const topThree = uniqueFoods.slice(0, 3);
-
-    return [
-      {
-        label: `Registrar ${topThree[0]} 🍎`,
-        query: `Adiciona ${topThree[0]} no meu lanche`
-      },
-      {
-        label: `Adicionar ${topThree[1]} 🥛`,
-        query: `Registra ${topThree[1]} no almoço`
-      },
-      {
-        label: `Comi ${topThree[2]} 🥚`,
-        query: `Adiciona ${topThree[2]} no meu café da manhã`
-      }
+    const mealTemplates = [
+      { id: 'meal_cafe', title: 'Café da Manhã de Campeão', description: 'Registre seu café da manhã no diário de refeições hoje.', type: 'meal', meta: 'cafe', targetValue: 1, rewardXP: 15, icon: '☕' },
+      { id: 'meal_almoco', title: 'Almoço Nutritivo', description: 'Registre seu almoço completo no diário de refeições hoje.', type: 'meal', meta: 'almoco', targetValue: 1, rewardXP: 15, icon: '🍛' },
+      { id: 'meal_jantar', title: 'Jantar Consistente', description: 'Registre seu jantar saudável no diário de refeições hoje.', type: 'meal', meta: 'jantar', targetValue: 1, rewardXP: 15, icon: '🥗' },
+      { id: 'meal_lanche_tarde', title: 'Lanche Energético', description: 'Registre seu lanche da tarde no diário de refeições hoje.', type: 'meal', meta: 'lanche_tarde', targetValue: 1, rewardXP: 15, icon: '🥪' },
+      { id: 'meal_ceia', title: 'Ceia Regenerativa', description: 'Registre sua ceia leve no diário de refeições hoje.', type: 'meal', meta: 'ceia', targetValue: 1, rewardXP: 15, icon: '🥛' },
     ];
-  }, [user?.uid]);
+
+    const healthTemplates = [
+      { id: 'health_water_goal', title: 'Hidratação Suprema', description: 'Bata 100% da sua meta diária de água hoje.', type: 'water', meta: 'water_goal', targetValue: 100, rewardXP: 15, icon: '💧' },
+      { id: 'health_water_vol', title: 'Foco na Água', description: 'Consuma pelo menos 2000ml de água hoje.', type: 'water', meta: 'water_ml', targetValue: 2000, rewardXP: 15, icon: '🥤' },
+      { id: 'health_protein', title: 'Meta de Proteínas', description: 'Atinja pelo menos 90% da sua meta diária de proteínas hoje.', type: 'macro', meta: 'protein', targetValue: 90, rewardXP: 15, icon: '🥚' },
+      { id: 'health_veg', title: 'Fibra & Vitalidade', description: 'Registre vegetais, saladas ou frutas em alguma refeição hoje.', type: 'meal', meta: 'vegetables', targetValue: 1, rewardXP: 15, icon: '🥗' },
+    ];
+
+    const workoutTemplates = [
+      { id: 'workout_log', title: 'Guerreiro de Ferro', description: 'Registre seu treino de hoje no diário de treinos.', type: 'workout', meta: 'workout_log', targetValue: 1, rewardXP: 20, icon: '💪' },
+      { id: 'workout_calories', title: 'Precisão Calórica', description: 'Consuma de 85% a 105% das suas calorias diárias de meta hoje.', type: 'macro', meta: 'calories', targetValue: 85, rewardXP: 20, icon: '⚡' },
+      { id: 'workout_fat', title: 'Gorduras sob Controle', description: 'Mantenha o consumo de gorduras abaixo ou igual à sua meta diária.', type: 'macro', meta: 'fat_limit', targetValue: 100, rewardXP: 20, icon: '🐟' },
+      { id: 'workout_carbs', title: 'Combustível de Carboidratos', description: 'Atinja pelo menos 80% da sua meta diária de carboidratos hoje.', type: 'macro', meta: 'carbs', targetValue: 80, rewardXP: 20, icon: '🍠' },
+    ];
+
+    const dailyMealTemplate = mealTemplates[seed % mealTemplates.length];
+    const dailyHealthTemplate = healthTemplates[(seed + 1) % healthTemplates.length];
+    const dailyWorkoutTemplate = workoutTemplates[(seed + 2) % workoutTemplates.length];
+
+    const currentMissions = [dailyMealTemplate, dailyHealthTemplate, dailyWorkoutTemplate];
+
+    return currentMissions.map(m => {
+      let currentValue = 0;
+      let completed = false;
+
+      if (m.type === 'meal') {
+        if (m.meta === 'vegetables') {
+          const keywords = [
+            'salada', 'alface', 'tomate', 'cenoura', 'brócolis', 'brocolis', 'vegetal', 'legume', 
+            'couve', 'rúcula', 'espinafre', 'folhas', 'abobrinha', 'berinjela', 'repolho', 
+            'chuchu', 'vagem', 'fruta', 'banana', 'maçã', 'maca', 'morango', 'mamão', 'mamao', 
+            'abacaxi', 'uva', 'laranja', 'limão', 'limao', 'melancia', 'melão', 'melao'
+          ];
+          const hasVeg = foodLogs.some(log => 
+            keywords.some(kw => (log.food_name || '').toLowerCase().includes(kw))
+          );
+          currentValue = hasVeg ? 1 : 0;
+          completed = hasVeg;
+        } else {
+          const hasMeal = foodLogs.some(log => log.meal_type === m.meta);
+          currentValue = hasMeal ? 1 : 0;
+          completed = hasMeal;
+        }
+      } else if (m.type === 'water') {
+        if (m.meta === 'water_goal') {
+          const pct = waterGoal > 0 ? Math.round((waterAmount / waterGoal) * 100) : 0;
+          currentValue = pct;
+          completed = pct >= 100;
+        } else if (m.meta === 'water_ml') {
+          currentValue = waterAmount;
+          completed = waterAmount >= m.targetValue;
+        }
+      } else if (m.type === 'macro') {
+        if (m.meta === 'protein') {
+          const pct = (targetProtein || 150) > 0 ? Math.round(((totalProtein || 0) / (targetProtein || 150)) * 100) : 0;
+          currentValue = pct;
+          completed = pct >= m.targetValue;
+        } else if (m.meta === 'carbs') {
+          const pct = (targetCarbs || 250) > 0 ? Math.round(((totalCarbs || 0) / (targetCarbs || 250)) * 100) : 0;
+          currentValue = pct;
+          completed = pct >= m.targetValue;
+        } else if (m.meta === 'calories') {
+          const pct = (targetCalories || 2500) > 0 ? Math.round(((totalCalories || 0) / (targetCalories || 2500)) * 100) : 0;
+          currentValue = pct;
+          completed = pct >= 85 && pct <= 105;
+        } else if (m.meta === 'fat_limit') {
+          currentValue = totalFat || 0;
+          completed = (totalCalories || 0) > 0 && (totalFat || 0) <= (targetFat || 70);
+        }
+      } else if (m.type === 'workout') {
+        const hasWorkout = (exerciseHistory || []).some(log => {
+          if (!log.loggedAt) return false;
+          const logDateStr = log.loggedAt.split('T')[0];
+          return logDateStr === todayStr;
+        });
+        currentValue = hasWorkout ? 1 : 0;
+        completed = hasWorkout;
+      }
+
+      return {
+        ...m,
+        currentValue,
+        completed
+      };
+    });
+  }, [
+    foodLogs,
+    waterAmount,
+    waterGoal,
+    exerciseHistory,
+    targetCalories,
+    totalCalories,
+    targetProtein,
+    totalProtein,
+    targetCarbs,
+    totalCarbs,
+    targetFat,
+    totalFat
+  ]);
 
   const hasAlertNotification = React.useMemo(() => {
     return hasNewOutreachNotification || messages.some(m => 
@@ -1180,7 +1281,147 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
                 </div>
               ) : (
                 <>
-                  {/* Chat Message Lists Area */}
+                  {/* Sub-Tabs Selector inside NutriAssistant */}
+                  <div className="flex border-b border-slate-150 dark:border-slate-800/85 bg-white dark:bg-slate-900 px-4 py-2 gap-2 shadow-xs shrink-0">
+                    <button
+                      onClick={() => setAssistantSubTab('conversa')}
+                      className={`flex-1 py-1.5 text-center rounded-xl text-xs font-bold transition-all ${
+                        assistantSubTab === 'conversa'
+                          ? 'bg-purple-100 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 font-extrabold'
+                          : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                      }`}
+                    >
+                      Conversa
+                    </button>
+                    <button
+                      onClick={() => setAssistantSubTab('missoes')}
+                      className={`flex-1 py-1.5 text-center rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                        assistantSubTab === 'missoes'
+                          ? 'bg-purple-100 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 font-extrabold'
+                          : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                      }`}
+                    >
+                      <Trophy size={13} className={assistantSubTab === 'missoes' ? 'text-purple-500' : 'text-slate-400'} />
+                      Missões de Hoje
+                    </button>
+                  </div>
+
+                  {assistantSubTab === 'missoes' ? (
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 dark:bg-slate-950">
+                      {/* Overall Progress Panel */}
+                      <div className="p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/60 rounded-3xl shadow-sm text-center space-y-2">
+                        <div className="flex items-center justify-center gap-2">
+                          <Trophy size={18} className="text-amber-500 animate-pulse" />
+                          <span className="text-sm font-black text-slate-800 dark:text-slate-100">Progresso do Desafio</span>
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Complete os desafios para garantir o melhor desempenho nos treinos e dieta!
+                        </p>
+                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase px-1 pt-1">
+                          <span>Desafios Concluídos</span>
+                          <span>{dailyMissions.filter(m => m.completed).length} / 3</span>
+                        </div>
+                        <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-500"
+                            style={{ width: `${(dailyMissions.filter(m => m.completed).length / 3) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Missions Cards List */}
+                      <div className="space-y-3">
+                        {dailyMissions.map((m) => {
+                          let progressPct = 0;
+                          if (m.type === 'meal' || m.type === 'workout') {
+                            progressPct = m.completed ? 100 : 0;
+                          } else if (m.type === 'water') {
+                            progressPct = Math.min(100, Math.round((m.currentValue / m.targetValue) * 100));
+                          } else if (m.type === 'macro') {
+                            if (m.meta === 'fat_limit') {
+                              progressPct = m.completed ? 100 : 0;
+                            } else {
+                              progressPct = Math.min(100, Math.round((m.currentValue / m.targetValue) * 100));
+                            }
+                          }
+
+                          return (
+                            <div
+                              key={m.id}
+                              className={`p-4 rounded-3xl border transition-all flex flex-col justify-between ${
+                                m.completed
+                                  ? 'bg-emerald-50/20 dark:bg-emerald-950/10 border-emerald-100 dark:border-emerald-900/20 shadow-xs'
+                                  : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800/60'
+                              }`}
+                            >
+                              <div className="space-y-3">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xl">{m.icon}</span>
+                                    <span className={`text-xs font-black ${m.completed ? 'text-slate-400 dark:text-slate-500 line-through' : 'text-slate-800 dark:text-slate-100'}`}>
+                                      {m.title}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] font-black text-amber-500 flex items-center gap-0.5 shrink-0">
+                                    <Coins size={11} /> +{m.rewardXP} NC
+                                  </span>
+                                </div>
+
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
+                                  {m.description}
+                                </p>
+
+                                {/* Progress visualizer */}
+                                <div className="space-y-1.5 pt-1">
+                                  <div className="flex items-center justify-between text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase">
+                                    <span>Progresso</span>
+                                    <span>
+                                      {m.type === 'meal' || m.type === 'workout' ? (
+                                        m.completed ? 'Concluído' : 'Pendente'
+                                      ) : m.meta === 'fat_limit' ? (
+                                        m.completed ? 'Dentro do Limite' : totalCalories === 0 ? 'Sem Registro' : 'Estourou Limite'
+                                      ) : m.meta === 'calories' ? (
+                                        `${m.currentValue}% da meta`
+                                      ) : (
+                                        `${Math.round(m.currentValue)} / ${m.targetValue}${m.meta === 'water_ml' ? 'ml' : m.type === 'macro' ? '%' : ''}`
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                    <div 
+                                      className={`h-full transition-all duration-500 ${
+                                        m.completed ? 'bg-emerald-500' : 'bg-purple-500'
+                                      }`}
+                                      style={{ width: `${progressPct}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="mt-3.5 flex items-center gap-2">
+                                {m.completed ? (
+                                  <div className="w-full py-1.5 bg-emerald-500/10 text-emerald-500 rounded-xl text-[10px] font-black text-center flex items-center justify-center gap-1 select-none">
+                                    <Check size={11} className="stroke-[3]" /> Missão Cumprida!
+                                  </div>
+                                ) : (
+                                  <div className="w-full py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-450 dark:text-slate-500 rounded-xl text-[10px] font-black text-center select-none border border-transparent">
+                                    Pendente no Diário
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Informative Footer */}
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center leading-normal max-w-xs mx-auto py-2">
+                        O Nutri-Assistant atualiza seu progresso automaticamente ao varrer seu diário de refeições, água ou treinos. Não é necessário resgatar manualmente!
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Chat Message Lists Area */}
                   <div className="flex-1 overflow-y-auto p-4 space-y-4">
                     {messages.map((msg, index) => (
                       <motion.div
@@ -1664,22 +1905,48 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
                     <div ref={chatEndRef} />
                   </div>
 
-                  {/* Suggestions Pills Box */}
+                  {/* Informative Missions Checklist under Chat */}
                   {messages.length < 3 && !isLoading && (
-                    <div className="p-3 px-4 bg-slate-100/50 dark:bg-slate-900/50 border-t border-b border-slate-100 dark:border-slate-900">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-2 tracking-wide flex items-center gap-1">
-                        <Sparkles size={11} className="text-purple-500" /> Experimente enviar:
+                    <div className="p-3 px-4 bg-slate-100/50 dark:bg-slate-900/50 border-t border-b border-slate-100 dark:border-slate-900/40">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 block mb-2.5 tracking-wide flex items-center gap-1">
+                        <Trophy size={11} className="text-purple-500" /> Missões de Hoje
                       </span>
-                      <div className="space-y-1.5">
-                        {suggestions.map((s, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => handleSendMessage(s.query)}
-                            className="w-full text-left p-2 text-xs bg-white dark:bg-slate-950 hover:bg-slate-100 border border-slate-200/60 dark:border-slate-800 rounded-lg text-slate-600 dark:text-slate-300 flex items-center justify-between group transition-all"
+                      <div className="space-y-2">
+                        {dailyMissions.map((m) => (
+                          <div
+                            key={m.id}
+                            className={`flex items-start gap-2.5 p-2 bg-white dark:bg-slate-950 border rounded-xl transition-all ${
+                              m.completed
+                                ? "border-emerald-100 dark:border-emerald-900/20 bg-emerald-50/10 dark:bg-emerald-950/5 opacity-80"
+                                : "border-slate-100 dark:border-slate-850 bg-white dark:bg-slate-950"
+                            }`}
                           >
-                            <span className="truncate mr-2">{s.label}</span>
-                            <ArrowRight size={12} className="text-slate-400 group-hover:translate-x-1 transition" />
-                          </button>
+                            {/* Checkbox */}
+                            <div className="mt-0.5 shrink-0">
+                              {m.completed ? (
+                                <div className="h-4.5 w-4.5 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[9px]">
+                                  ✓
+                                </div>
+                              ) : (
+                                <div className="h-4.5 w-4.5 rounded-full border-2 border-slate-200 dark:border-slate-800 bg-transparent" />
+                              )}
+                            </div>
+                            {/* Title & Description */}
+                            <div className="flex-1">
+                              <span
+                                className={`text-xs font-bold block ${
+                                  m.completed
+                                    ? "text-slate-400 dark:text-slate-500 line-through"
+                                    : "text-slate-700 dark:text-slate-200"
+                                }`}
+                              >
+                                {m.icon} {m.title}
+                              </span>
+                              <span className="text-[10px] text-slate-450 dark:text-slate-400 leading-normal block">
+                                {m.description}
+                              </span>
+                            </div>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -1840,6 +2107,8 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
                       </div>
                     )}
                   </AnimatePresence>
+                    </>
+                  )}
                 </>
               )}
             </motion.div>

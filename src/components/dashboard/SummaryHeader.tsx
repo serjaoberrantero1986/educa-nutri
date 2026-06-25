@@ -13,6 +13,7 @@ interface SummaryHeaderProps {
   targetFat: number;
   macroData: any[];
   COLORS: string[];
+  caloriesBurned?: number;
 }
 
 export const SummaryHeader: React.FC<SummaryHeaderProps> = ({
@@ -25,12 +26,15 @@ export const SummaryHeader: React.FC<SummaryHeaderProps> = ({
   totalFat,
   targetFat,
   macroData,
-  COLORS
+  COLORS,
+  caloriesBurned = 0
 }) => {
   // Safe calculation to avoid NaN inside pie labels
   const totalMacrosValue = macroData.reduce((acc, curr) => acc + (curr.value || 0), 0);
 
-  const remainingCalories = Math.max(0, Math.round(targetCalories - totalCalories));
+  // Remaining calories considering net balance (Consumed - Burned) vs Target
+  const netCalories = Math.max(0, Math.round(totalCalories - caloriesBurned));
+  const remainingCalories = Math.max(0, Math.round(targetCalories - netCalories));
   const remainingPercent = targetCalories > 0 ? Math.round((remainingCalories / targetCalories) * 100) : 0;
 
   const render3DLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, value, name }: any) => {
@@ -184,9 +188,31 @@ export const SummaryHeader: React.FC<SummaryHeaderProps> = ({
               </div>
             </div>
             
-            <div className="text-center sm:text-left pt-2">
-              <span className="text-slate-400 font-bold text-sm">Faltam: {remainingCalories} kcal ({remainingPercent}%)</span>
-            </div>
+            {caloriesBurned > 0 ? (
+              <div className="bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl border border-slate-100 dark:border-slate-800/60 mt-3 space-y-2">
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider">Ingerido</span>
+                    <span className="text-xs font-black text-slate-700 dark:text-slate-300">{Math.round(totalCalories)} kcal</span>
+                  </div>
+                  <div>
+                    <span className="block text-[9px] font-bold text-cyan-500 uppercase tracking-wider">Cardio 🔥</span>
+                    <span className="text-xs font-black text-cyan-600 dark:text-cyan-400">-{Math.round(caloriesBurned)} kcal</span>
+                  </div>
+                  <div>
+                    <span className="block text-[9px] font-bold text-purple-500 uppercase tracking-wider">Saldo Líq.</span>
+                    <span className="text-xs font-black text-purple-600 dark:text-purple-400">{Math.round(netCalories)} kcal</span>
+                  </div>
+                </div>
+                <div className="text-center pt-1 border-t border-slate-200/50 dark:border-slate-800/50">
+                  <span className="text-slate-400 font-bold text-[10px]">Faltam para a meta: {remainingCalories} kcal ({remainingPercent}%)</span>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center sm:text-left pt-2">
+                <span className="text-slate-400 font-bold text-sm">Faltam: {remainingCalories} kcal ({remainingPercent}%)</span>
+              </div>
+            )}
           </div>
 
         </div>

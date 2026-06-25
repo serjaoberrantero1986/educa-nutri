@@ -137,6 +137,25 @@ export interface Profile {
   recipe_generations?: any[];
   recipes_generated_today?: { date: string; count: number };
   ai_diet_generated?: boolean;
+  daily_missions_today?: DailyMissionsToday;
+}
+
+export interface DailyMission {
+  id: string;
+  type: 'meal' | 'macro' | 'water' | 'workout';
+  title: string;
+  description: string;
+  rewardXP: number;
+  targetValue: number;
+  currentValue: number;
+  completed: boolean;
+  claimed: boolean;
+  meta?: any;
+}
+
+export interface DailyMissionsToday {
+  date: string;
+  claimed_ids: string[];
 }
 
 export interface FoodLog {
@@ -245,5 +264,12 @@ export interface ExerciseLog {
   series: { carga: number; reps: number }[];
   esforco: number; // 0 to 5
   observacoes?: string;
+  type?: 'strength' | 'cardio';
+  duration_minutes?: number;
+  distance_km?: number;
+  intensity?: 'low' | 'medium' | 'high';
+  calories_burned?: number;
+  pace?: string;
+  reps_count?: number;
 }
 

@@ -61,6 +61,7 @@ import { formatFoodName, calculateStreakFromLogs, getLocalDateString } from '../
 
 import { SummaryHeader } from './dashboard/SummaryHeader';
 import { WaterTracker } from './dashboard/WaterTracker';
+import { DailyMissions } from './dashboard/DailyMissions';
 import { MealCard } from './dashboard/MealCard';
 import { AddFoodModal } from './dashboard/AddFoodModal';
 import { MealManagementModal } from './dashboard/MealManagementModal';
@@ -113,6 +114,14 @@ const formatTime = (isoString: string) => {
 export const getMuscleGroupForExercise = (exerciseName: string, activeRoutine: WorkoutRoutine | null): string => {
   const exName = (exerciseName || "").toLowerCase().trim();
   if (!exName) return "abdome";
+
+  // 0. Cardio exercises target leg muscles predominantly in terms of local dynamic fatigue
+  const cardioKeywords = [
+    "corrida", "caminhada", "cardio", "aerobico", "aeróbico", "ciclismo", "spinning", "bike", "pedalar", "pular corda", "corda", "polichinelo", "eliptico", "elíptico", "dança", "danca", "zumba", "sprint", "trote"
+  ];
+  if (cardioKeywords.some(kw => exName.includes(kw))) {
+    return "pernas";
+  }
 
   // 1. Check in Active Routine first for precise matching
   if (activeRoutine && activeRoutine.days) {
@@ -808,7 +817,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
       ? `log_${Date.now()}`
       : doc(collection(db, 'exercise_logs')).id;
     
-    const fullLog: ExerciseLog = { id, ...logPayload };
+    // Clean undefined fields to avoid Firebase Unsupported field value: undefined error
+    const cleanedPayload = Object.fromEntries(
+      Object.entries(logPayload).filter(([_, v]) => v !== undefined)
+    ) as Omit<ExerciseLog, 'id'>;
+    
+    const fullLog: ExerciseLog = { id, ...cleanedPayload };
     const updatedHistory = [fullLog, ...exerciseHistory];
     setExerciseHistory(updatedHistory);
     localStorage.setItem(`workout_history_${user.uid}`, JSON.stringify(updatedHistory));
@@ -845,7 +859,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     if (isFirebaseConfigured) {
       try {
         const logRef = doc(db, 'exercise_logs', id);
-        await setDoc(logRef, logPayload);
+        await setDoc(logRef, cleanedPayload);
       } catch (err) {
         console.error("Erro ao salvar log de exercício no Firebase:", err);
         handleFirestoreError(err, OperationType.WRITE, `exercise_logs/${id}`);
@@ -1086,6 +1100,44 @@ export const Dashboard: React.FC<DashboardProps> = ({
       setProfile(prev => prev ? { ...prev, xp: (prev.xp || 0) + amount } : null);
     } catch (err) {
       console.error('Error updating XP:', err);
+    }
+  };
+
+  const handleClaimMission = async (missionId: string, amount: number) => {
+    if (!profile || !isFirebaseConfigured) return;
+    try {
+      const today = new Date();
+      const offset = today.getTimezoneOffset();
+      const localDate = new Date(today.getTime() - offset * 60 * 1000);
+      const todayStr = localDate.toISOString().split('T')[0];
+
+      const currentMissions = profile.daily_missions_today?.date === todayStr
+        ? profile.daily_missions_today
+        : { date: todayStr, claimed_ids: [] as string[] };
+      
+      const claimedIds = currentMissions.claimed_ids || [];
+      if (claimedIds.includes(missionId)) return;
+
+      const updatedClaimed = [...claimedIds, missionId];
+      const updatedMissions = {
+        date: todayStr,
+        claimed_ids: updatedClaimed
+      };
+
+      const profileRef = doc(db, 'profiles', user.uid);
+      await updateDoc(profileRef, {
+        xp: (profile.xp || 0) + amount,
+        daily_missions_today: updatedMissions
+      });
+
+      setProfile((prev: any) => prev ? {
+        ...prev,
+        xp: (prev.xp || 0) + amount,
+        daily_missions_today: updatedMissions
+      } : null);
+
+    } catch (err) {
+      console.error('Error claiming daily mission:', err);
     }
   };
 
@@ -1991,6 +2043,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const COLORS = ['#9333ea', '#06b6d4', '#f59e0b'];
 
+  const targetDateStr = getLocalDateString(selectedDate);
+  const cardioCaloriesBurned = exerciseHistory.reduce((sum, log) => {
+    if (log.loggedAt && log.type === 'cardio' && log.calories_burned) {
+      const logDateStr = getLocalDateString(new Date(log.loggedAt));
+      if (logDateStr === targetDateStr) {
+        return sum + log.calories_burned;
+      }
+    }
+    return sum;
+  }, 0);
+
   if (loadingProfile && !profile) return (
     <div className="flex items-center justify-center min-h-screen">
       <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
@@ -2001,11 +2064,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-24">
       {/* Top Bar */}
       <header className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 sticky top-0 z-40 px-4 py-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-4xl mx-auto flex items-end justify-between">
+          <div className="flex items-end gap-3">
             <div 
               onClick={() => setActiveTab('profile')}
-              className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 overflow-hidden flex items-center justify-center text-purple-600 dark:text-purple-400 font-bold border-2 border-white dark:border-slate-800 shadow-sm cursor-pointer hover:opacity-85 active:scale-95 transition-all"
+              className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 overflow-hidden flex items-center justify-center text-purple-600 dark:text-purple-400 font-bold border-2 border-white dark:border-slate-800 shadow-sm cursor-pointer hover:opacity-85 active:scale-95 transition-all self-center"
             >
               {profile?.avatar_url ? (
                 <img src={profile.avatar_url} alt={profile.username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -2013,24 +2076,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 profile?.username?.[0]?.toUpperCase() || 'U'
               )}
             </div>
-            <div>
-              <h2 className="text-sm font-bold dark:text-white">Olá, {profile?.username || 'Usuário'}</h2>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1 text-[10px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full">
+            <div className="flex flex-col justify-end">
+              <h2 className="text-sm font-bold dark:text-white mb-1.5 leading-none">Olá, {profile?.username || 'Usuário'}</h2>
+              <div className="flex items-baseline gap-2">
+                <div className="flex items-center gap-1 text-[10px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1 rounded-full border border-transparent leading-none">
                   <Trophy size={10} /> {profile?.league || 'Bronze'}
                 </div>
-                <div className="flex items-center gap-1 text-[10px] font-bold text-purple-500 bg-purple-50 dark:bg-purple-900/20 px-2 py-0.5 rounded-full">
+                <div className="flex items-center gap-1 text-[10px] font-bold text-purple-500 bg-purple-50 dark:bg-purple-900/20 px-2.5 py-1 rounded-full border border-transparent leading-none">
                   <TrendingUp size={10} /> {profile?.xp || 0} NC
                 </div>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-end gap-3">
             <motion.button 
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               onClick={() => setActiveTab('ranking')}
-              className={`flex flex-col items-center gap-0.5 transition-all text-center ${
+              className={`flex flex-col items-center gap-1 transition-all text-center pb-[5px] border border-transparent ${
                 activeTab === 'ranking' 
                   ? 'text-purple-600 dark:text-cyan-400' 
                   : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
@@ -2038,26 +2101,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
               title="Classificação / Ranking"
             >
               <Trophy size={22} className={activeTab === 'ranking' ? 'text-purple-600 dark:text-cyan-400' : 'text-amber-500'} />
-              <span className="text-[9px] font-bold uppercase tracking-wider">Ranking</span>
+              <span className="text-[9px] font-bold uppercase tracking-wider leading-none">Ranking</span>
             </motion.button>
             <motion.button 
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => setShowStreakMenu(!showStreakMenu)}
-              className={`flex items-center gap-1.5 font-bold px-3 py-1.5 rounded-full cursor-pointer transition-colors border ${
+              className={`flex items-center gap-1.5 font-bold px-3 py-1 rounded-full cursor-pointer transition-colors border leading-none ${
                 showStreakMenu 
                   ? 'bg-orange-100/80 dark:bg-orange-950/40 text-orange-600 dark:text-orange-450 border-orange-200/50 dark:border-orange-900/40' 
                   : 'text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-950/20 border-transparent hover:border-orange-100/50 dark:hover:border-orange-950/40'
               }`}
             >
-              <Flame size={20} className="fill-orange-500 animate-pulse" />
-              <span>{profile?.streak || 0} {profile?.streak === 1 ? 'dia' : 'dias'}</span>
+              <Flame size={16} className="fill-orange-500 animate-pulse" />
+              <span className="text-xs leading-none">{profile?.streak || 0} {profile?.streak === 1 ? 'dia' : 'dias'}</span>
             </motion.button>
             <motion.button 
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               onClick={onLogout} 
-              className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+              className="p-2 text-slate-400 hover:text-red-500 transition-colors self-center mb-0.5"
             >
               <LogOut size={20} />
             </motion.button>
@@ -2412,6 +2475,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
               targetFat={targetFat}
               macroData={macroData}
               COLORS={COLORS}
+              caloriesBurned={cardioCaloriesBurned}
+            />
+
+            <DailyMissions 
+              profile={profile}
+              foodLogs={foodLogs}
+              waterAmount={waterAmount}
+              waterGoal={waterGoal}
+              exerciseHistory={exerciseHistory}
+              targetCalories={targetCalories}
+              totalCalories={totalCalories}
+              targetProtein={targetProtein}
+              totalProtein={totalProtein}
+              targetCarbs={targetCarbs}
+              totalCarbs={totalCarbs}
+              targetFat={targetFat}
+              totalFat={totalFat}
+              onClaimMission={handleClaimMission}
             />
 
             <WaterTracker 
@@ -2668,6 +2749,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             currentRoutine={activeRoutine}
             onLogExercise={handleLogExercise}
             exerciseHistory={exerciseHistory}
+            selectedDate={selectedDate}
           />
         )}
 
@@ -3027,6 +3109,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
         activeRoutine={activeRoutine}
         waterAmount={waterAmount}
         waterGoal={waterGoal}
+        exerciseHistory={exerciseHistory}
+        targetCalories={targetCalories}
+        totalCalories={totalCalories}
+        targetProtein={targetProtein}
+        totalProtein={totalProtein}
+        targetCarbs={targetCarbs}
+        totalCarbs={totalCarbs}
+        targetFat={targetFat}
+        totalFat={totalFat}
       />
     </div>
   );

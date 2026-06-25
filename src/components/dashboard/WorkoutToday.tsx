@@ -28,6 +28,7 @@ interface WorkoutTodayProps {
   currentRoutine: WorkoutRoutine | null;
   onLogExercise: (log: Omit<ExerciseLog, 'id'>) => Promise<void>;
   exerciseHistory: ExerciseLog[];
+  selectedDate?: Date;
 }
 
 export const WorkoutToday: React.FC<WorkoutTodayProps> = ({
@@ -36,8 +37,17 @@ export const WorkoutToday: React.FC<WorkoutTodayProps> = ({
   userData,
   currentRoutine,
   onLogExercise,
-  exerciseHistory
+  exerciseHistory,
+  selectedDate
 }) => {
+  const getLogDate = () => {
+    if (!selectedDate) return new Date().toISOString();
+    const now = new Date();
+    const logDate = new Date(selectedDate);
+    logDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+    return logDate.toISOString();
+  };
+
   const availableDays = currentRoutine?.days || [];
   const [selectedDayId, setSelectedDayId] = useState<string>(availableDays[0]?.id || "");
   const currentDay = availableDays.find(d => d.id === selectedDayId) || availableDays[0];
@@ -49,6 +59,17 @@ export const WorkoutToday: React.FC<WorkoutTodayProps> = ({
   const [rpe, setRpe] = useState<number>(3); // 3: Difícil
   const [observations, setObservations] = useState<string>("");
   const [loggedToday, setLoggedToday] = useState<{ [exName: string]: boolean }>({});
+  
+  // Cardio state variables
+  const [trainingMode, setTrainingMode] = useState<'strength' | 'cardio'>('strength');
+  const [cardioActivity, setCardioActivity] = useState<string>('corrida_caminhada');
+  const [cardioDuration, setCardioDuration] = useState<string>('');
+  const [cardioDistance, setCardioDistance] = useState<string>('');
+  const [cardioIntensity, setCardioIntensity] = useState<'low' | 'medium' | 'high'>('medium');
+  const [cardioReps, setCardioReps] = useState<string>('');
+  const [cardioNotes, setCardioNotes] = useState<string>('');
+  const [cardioRpe, setCardioRpe] = useState<number>(3);
+  const [isSavingCardio, setIsSavingCardio] = useState<boolean>(false);
 
   // Keeps the checked indicators synced with the completed exercises of today in exerciseHistory
   useEffect(() => {
@@ -609,7 +630,7 @@ export const WorkoutToday: React.FC<WorkoutTodayProps> = ({
     const payload: Omit<ExerciseLog, 'id'> = {
       user_id: profile?.id || "demo",
       exercicio: activePlannedEx.exercise.nome,
-      loggedAt: new Date().toISOString(),
+      loggedAt: getLogDate(),
       series: finalSets.map(s => ({ carga: s.carga, reps: s.reps })),
       esforco: rpe,
       observacoes: observations
@@ -629,41 +650,251 @@ export const WorkoutToday: React.FC<WorkoutTodayProps> = ({
     }
   };
 
+  const calculateCardioCalories = (): {
+    calories: number;
+    speedKmh: number;
+    pace: string;
+    classification: string;
+    met: number;
+  } => {
+    const weight = userData?.weight || 75;
+    const dur = parseFloat(cardioDuration) || 0;
+    const dist = parseFloat(cardioDistance) || 0;
+    
+    let met = 3.0;
+    let speedKmh = 0;
+    let pace = "";
+    let classification = "Exercício Aeróbico";
+
+    if (cardioActivity === "corrida_caminhada") {
+      if (dur > 0 && dist > 0) {
+        speedKmh = (dist / dur) * 60;
+        const paceMin = dur / dist;
+        const paceSec = Math.round((paceMin - Math.floor(paceMin)) * 60);
+        pace = `${Math.floor(paceMin)}:${paceSec < 10 ? '0' : ''}${paceSec} min/km`;
+
+        if (speedKmh <= 4.0) {
+          met = 2.9;
+          classification = "Caminhada Leve";
+        } else if (speedKmh <= 6.0) {
+          met = 3.8;
+          classification = "Caminhada Moderada";
+        } else if (speedKmh <= 8.0) {
+          met = 5.0;
+          classification = "Caminhada Rápida / Trote Leve";
+        } else if (speedKmh <= 10.0) {
+          met = 8.3;
+          classification = "Corrida Leve (Trote)";
+        } else if (speedKmh <= 12.0) {
+          met = 10.0;
+          classification = "Corrida Moderada";
+        } else if (speedKmh <= 14.0) {
+          met = 11.8;
+          classification = "Corrida Rápida";
+        } else {
+          met = 14.5;
+          classification = "Corrida Intensa / Sprint";
+        }
+      } else {
+        met = 5.0;
+        classification = "Corrida / Caminhada";
+      }
+    } else if (cardioActivity === "pular_corda") {
+      if (cardioIntensity === "low") {
+        met = 8.8;
+        classification = "Pular Corda (Ritmo Leve)";
+      } else if (cardioIntensity === "high") {
+        met = 12.3;
+        classification = "Pular Corda (Ritmo Intenso)";
+      } else {
+        met = 11.0;
+        classification = "Pular Corda (Ritmo Moderado)";
+      }
+    } else if (cardioActivity === "polichinelo") {
+      if (cardioIntensity === "low") {
+        met = 5.0;
+        classification = "Polichinelo (Ritmo Leve)";
+      } else if (cardioIntensity === "high") {
+        met = 8.0;
+        classification = "Polichinelo (Ritmo Intenso)";
+      } else {
+        met = 6.5;
+        classification = "Polichinelo (Ritmo Moderado)";
+      }
+    } else if (cardioActivity === "ciclismo") {
+      if (dur > 0 && dist > 0) {
+        speedKmh = (dist / dur) * 60;
+        pace = `${speedKmh.toFixed(1)} km/h`;
+        if (speedKmh <= 15) {
+          met = 4.0;
+          classification = "Ciclismo de Passeio (<15 km/h)";
+        } else if (speedKmh <= 20) {
+          met = 6.0;
+          classification = "Ciclismo Moderado (15-20 km/h)";
+        } else if (speedKmh <= 25) {
+          met = 8.5;
+          classification = "Ciclismo Rápido (20-25 km/h)";
+        } else {
+          met = 12.0;
+          classification = "Ciclismo Muito Rápido / Spinning (>25 km/h)";
+        }
+      } else {
+        if (cardioIntensity === "low") {
+          met = 4.5;
+          classification = "Ciclismo / Spinning (Leve)";
+        } else if (cardioIntensity === "high") {
+          met = 10.5;
+          classification = "Ciclismo / Spinning (Intenso)";
+        } else {
+          met = 7.5;
+          classification = "Ciclismo / Spinning (Moderado)";
+        }
+      }
+    } else if (cardioActivity === "eliptico") {
+      if (cardioIntensity === "low") {
+        met = 4.5;
+        classification = "Elíptico (Intensidade Baixa)";
+      } else if (cardioIntensity === "high") {
+        met = 8.0;
+        classification = "Elíptico (Intensidade Alta)";
+      } else {
+        met = 6.0;
+        classification = "Elíptico (Intensidade Moderada)";
+      }
+    } else if (cardioActivity === "danca") {
+      if (cardioIntensity === "low") {
+        met = 4.0;
+        classification = "Dança / Zumba (Ritmo Leve)";
+      } else if (cardioIntensity === "high") {
+        met = 7.3;
+        classification = "Dança / Zumba (Ritmo Intenso)";
+      } else {
+        met = 5.5;
+        classification = "Dança / Zumba (Ritmo Moderado)";
+      }
+    }
+
+    // Calories = MET * 3.5 * weight / 200 * duration_minutes
+    const calories = Math.round((met * 3.5 * weight / 200) * dur);
+    return { calories, speedKmh, pace, classification, met };
+  };
+
+  const handleSaveCardio = async () => {
+    const dur = parseFloat(cardioDuration) || 0;
+    if (dur <= 0) {
+      alert("Por favor, preencha a duração do exercício aeróbico.");
+      return;
+    }
+
+    setIsSavingCardio(true);
+    try {
+      const calcResult = calculateCardioCalories();
+      let activityLabel = "Cardio";
+      if (cardioActivity === "corrida_caminhada") activityLabel = "Corrida / Caminhada";
+      else if (cardioActivity === "pular_corda") activityLabel = "Pular Corda";
+      else if (cardioActivity === "polichinelo") activityLabel = "Polichinelos";
+      else if (cardioActivity === "ciclismo") activityLabel = "Ciclismo";
+      else if (cardioActivity === "eliptico") activityLabel = "Elíptico";
+      else if (cardioActivity === "danca") activityLabel = "Dança / Aeróbica";
+
+      const payload: Omit<ExerciseLog, 'id'> = {
+        user_id: profile?.id || "demo",
+        exercicio: `${activityLabel} (${calcResult.classification})`,
+        loggedAt: getLogDate(),
+        series: [],
+        esforco: cardioRpe,
+        observacoes: cardioNotes,
+        type: 'cardio',
+        duration_minutes: dur,
+        distance_km: parseFloat(cardioDistance) || 0,
+        intensity: cardioIntensity,
+        calories_burned: calcResult.calories,
+        pace: calcResult.pace || undefined,
+        reps_count: parseInt(cardioReps, 10) || undefined
+      };
+
+      await onLogExercise(payload);
+
+      // Clean inputs
+      setCardioDuration('');
+      setCardioDistance('');
+      setCardioReps('');
+      setCardioNotes('');
+      setCardioRpe(3);
+      
+      alert("Treino aeróbico (Cardio) salvo com sucesso e adicionado ao seu gasto calórico de hoje! 🔥🚀");
+    } catch (e) {
+      console.error("Error saving cardio workout:", e);
+      alert("Ocorreu um erro ao salvar o treino aeróbico.");
+    } finally {
+      setIsSavingCardio(false);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-12">
-      {availableDays.length === 0 ? (
-        <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-8 text-center space-y-4">
-          <Dumbbell className="text-slate-300 mx-auto animate-bounce" size={48} />
-          <h3 className="font-extrabold text-slate-800 dark:text-white">Nenhum treino gerado ainda!</h3>
-          <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-            Por favor, vá para a aba "Ficha", configure sua experiência e limitações físicas e gere seu treino personalizado primeiro.
-          </p>
-        </div>
-      ) : (
-        <>
-          {/* Day Selector Navigation Tabs */}
-          <div className="flex border-b border-slate-100 dark:border-slate-800 pb-1.5 overflow-x-auto gap-2">
-            {availableDays.map((day) => {
-              const isSelected = selectedDayId ? (day.id === selectedDayId) : (day.id === availableDays[0].id);
-              return (
-                <button
-                  key={day.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedDayId(day.id);
-                    setActiveExerciseIdx(0);
-                  }}
-                  className={`px-4 py-2 rounded-xl text-xs font-black shrink-0 transition-all cursor-pointer border ${
-                    isSelected
-                      ? "bg-cyan-500 text-white border-transparent shadow-sm"
-                      : "bg-white dark:bg-slate-900 text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 border-slate-100 dark:border-slate-800"
-                  }`}
-                >
-                  {day.name}
-                </button>
-              );
-            })}
+      {/* Selector toggle */}
+      <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1 rounded-2xl gap-1 w-full max-w-sm mx-auto mb-2">
+        <button
+          type="button"
+          onClick={() => setTrainingMode('strength')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-black transition-all cursor-pointer border-0 ${
+            trainingMode === 'strength'
+              ? "bg-purple-600 text-white shadow-xs"
+              : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 bg-transparent"
+          }`}
+        >
+          <Dumbbell size={14} />
+          Treino de Força
+        </button>
+        <button
+          type="button"
+          onClick={() => setTrainingMode('cardio')}
+          className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-black transition-all cursor-pointer border-0 ${
+            trainingMode === 'cardio'
+              ? "bg-purple-600 text-white shadow-xs"
+              : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 bg-transparent"
+          }`}
+        >
+          <span>🏃‍♂️</span>
+          Cardio (Aeróbico)
+        </button>
+      </div>
+
+      {trainingMode === 'strength' ? (
+        availableDays.length === 0 ? (
+          <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-8 text-center space-y-4">
+            <Dumbbell className="text-slate-300 mx-auto animate-bounce" size={48} />
+            <h3 className="font-extrabold text-slate-800 dark:text-white">Nenhum treino gerado ainda!</h3>
+            <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+              Por favor, vá para a aba "Ficha", configure sua experiência e limitações físicas e gere seu treino personalizado primeiro.
+            </p>
           </div>
+        ) : (
+          <>
+            {/* Day Selector Navigation Tabs */}
+            <div className="flex border-b border-slate-100 dark:border-slate-800 pb-1.5 overflow-x-auto gap-2">
+              {availableDays.map((day) => {
+                const isSelected = selectedDayId ? (day.id === selectedDayId) : (day.id === availableDays[0].id);
+                return (
+                  <button
+                    key={day.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedDayId(day.id);
+                      setActiveExerciseIdx(0);
+                    }}
+                    className={`px-4 py-2 rounded-xl text-xs font-black shrink-0 transition-all cursor-pointer border ${
+                      isSelected
+                        ? "bg-cyan-500 text-white border-transparent shadow-sm"
+                        : "bg-white dark:bg-slate-900 text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 border-slate-100 dark:border-slate-800"
+                    }`}
+                  >
+                    {day.name}
+                  </button>
+                );
+              })}
+            </div>
 
           {/* Active Training Session Panel */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
@@ -1037,7 +1268,200 @@ export const WorkoutToday: React.FC<WorkoutTodayProps> = ({
             </div>
           </div>
         </>
-      )}
+      )
+    ) : (
+      <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 md:p-8 space-y-6 max-w-2xl mx-auto shadow-xs">
+        <div className="space-y-1">
+          <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <span>🏃‍♂️</span> Registrar Treino de Cardio / Aeróbico
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Insira os dados do seu exercício aeróbico. O sistema calcula a queima calórica exata baseada em regras de intensidade e MET.
+          </p>
+        </div>
+
+        {/* Atividade Selector */}
+        <div className="space-y-2">
+          <label className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Escolha a Atividade</label>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {[
+              { id: 'corrida_caminhada', label: 'Corrida / Caminhada', icon: '🏃‍♂️' },
+              { id: 'pular_corda', label: 'Pular Corda', icon: '🪢' },
+              { id: 'polichinelo', label: 'Polichinelos', icon: '🤸‍♂️' },
+              { id: 'ciclismo', label: 'Ciclismo / Bike', icon: '🚴‍♂️' },
+              { id: 'eliptico', label: 'Elíptico / Simulador', icon: '🚶‍♂️' },
+              { id: 'danca', label: 'Dança / Zumba', icon: '💃' },
+            ].map((act) => {
+              const isSelected = cardioActivity === act.id;
+              return (
+                <button
+                  key={act.id}
+                  type="button"
+                  onClick={() => {
+                    setCardioActivity(act.id);
+                    setCardioDistance('');
+                    setCardioReps('');
+                  }}
+                  className={`flex items-center gap-2 p-3 rounded-2xl text-left border cursor-pointer transition-all ${
+                    isSelected
+                      ? "bg-cyan-500/10 border-cyan-500 text-cyan-600 dark:text-cyan-400 font-extrabold"
+                      : "bg-slate-50 dark:bg-slate-950 border-transparent hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                  }`}
+                >
+                  <span className="text-xl">{act.icon}</span>
+                  <span className="text-xs font-bold leading-tight">{act.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Inputs Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Duração Input */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Duração (Minutos)</label>
+            <input
+              type="number"
+              placeholder="Ex: 20"
+              value={cardioDuration}
+              onChange={(e) => setCardioDuration(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-xl px-4 py-2.5 text-xs focus:ring-1 focus:ring-cyan-500 focus:outline-none dark:text-white"
+            />
+          </div>
+
+          {/* Distância Input */}
+          {(cardioActivity === 'corrida_caminhada' || cardioActivity === 'ciclismo') && (
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Distância Percorrida (km)</label>
+              <input
+                type="number"
+                step="0.1"
+                placeholder="Ex: 3.2"
+                value={cardioDistance}
+                onChange={(e) => setCardioDistance(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-xl px-4 py-2.5 text-xs focus:ring-1 focus:ring-cyan-500 focus:outline-none dark:text-white"
+              />
+            </div>
+          )}
+
+          {/* Repetições */}
+          {(cardioActivity === 'pular_corda' || cardioActivity === 'polichinelo') && (
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Repetições (Opcional)</label>
+              <input
+                type="number"
+                placeholder="Ex: 150"
+                value={cardioReps}
+                onChange={(e) => setCardioReps(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-xl px-4 py-2.5 text-xs focus:ring-1 focus:ring-cyan-500 focus:outline-none dark:text-white"
+              />
+            </div>
+          )}
+
+          {/* Ritmo / Intensidade */}
+          {cardioActivity !== 'corrida_caminhada' && cardioActivity !== 'ciclismo' && (
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Intensidade / Ritmo</label>
+              <div className="grid grid-cols-3 gap-1 bg-slate-50 dark:bg-slate-950 p-1 border border-slate-100 dark:border-slate-800 rounded-xl">
+                {[
+                  { id: 'low', label: 'Leve / Baixo' },
+                  { id: 'medium', label: 'Moderado' },
+                  { id: 'high', label: 'Intenso / Alto' },
+                ].map((int) => (
+                  <button
+                    key={int.id}
+                    type="button"
+                    onClick={() => setCardioIntensity(int.id as any)}
+                    className={`py-1.5 rounded-lg text-[10px] font-bold text-center border-0 cursor-pointer transition-all ${
+                      cardioIntensity === int.id
+                        ? "bg-cyan-500 text-white shadow-xs font-black"
+                        : "bg-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    {int.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Dynamic Real-time Calculations Box */}
+        {parseFloat(cardioDuration) > 0 && (() => {
+          const result = calculateCardioCalories();
+          return (
+            <div className="bg-gradient-to-r from-cyan-500/10 via-purple-500/5 to-transparent border border-cyan-500/20 rounded-2xl p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                  <span>🔥</span> Gasto Energético Estimado
+                </span>
+                <span className="text-lg font-black text-cyan-600 dark:text-cyan-400">{result.calories} kcal</span>
+              </div>
+              
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 border-t border-slate-200/50 dark:border-slate-800/50 pt-2 space-y-1">
+                <p>
+                  <strong className="text-slate-700 dark:text-slate-200">Tipo Identificado:</strong> {result.classification}
+                </p>
+                {result.speedKmh > 0 && (
+                  <p>
+                    <strong className="text-slate-700 dark:text-slate-200">Métricas:</strong> Velocidade Média de {result.speedKmh.toFixed(1)} km/h • Ritmo de {result.pace}
+                  </p>
+                )}
+                <p className="text-[10px] italic text-slate-400 mt-1">
+                  Calculado usando MET de {result.met.toFixed(1)} para seu peso de {userData?.weight || 75}kg.
+                </p>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* RPE Selector & Notes */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Esforço RPE */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Nível de Esforço (RPE)</label>
+            <select
+              value={cardioRpe}
+              onChange={(e) => setCardioRpe(parseInt(e.target.value, 10))}
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-xl px-4 py-2.5 text-xs focus:ring-1 focus:ring-cyan-500 focus:outline-none dark:text-white"
+            >
+              <option value={1}>Muito Fácil</option>
+              <option value={2}>Fácil / Confortável</option>
+              <option value={3}>Médio / Ritmo Constante</option>
+              <option value={4}>Difícil / Suando Bastante</option>
+              <option value={5}>Intensidade Máxima / Limite</option>
+            </select>
+          </div>
+
+          {/* Observações */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Observações / Como se sentiu</label>
+            <input
+              type="text"
+              placeholder="Ex: Treino em jejum, vento forte contra"
+              value={cardioNotes}
+              onChange={(e) => setCardioNotes(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-xl px-4 py-2.5 text-xs focus:ring-1 focus:ring-cyan-500 focus:outline-none dark:text-white"
+            />
+          </div>
+        </div>
+
+        {/* Submit button */}
+        <button
+          type="button"
+          disabled={isSavingCardio || !cardioDuration}
+          onClick={handleSaveCardio}
+          className={`w-full py-3.5 rounded-2xl text-xs font-black text-white shadow-lg transition-all cursor-pointer border-0 ${
+            !cardioDuration
+              ? "bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none"
+              : "bg-purple-cyan hover:opacity-90 shadow-cyan-500/10 active:scale-[0.98]"
+          }`}
+        >
+          {isSavingCardio ? "Salvando..." : "Salvar Treino Aeróbico 🔥"}
+        </button>
+      </div>
+    )}
 
       {/* Full-Screen Digital Bomb Timer Rest Overlay */}
       <AnimatePresence>
