@@ -929,14 +929,29 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
       
       const isChallengeCompleted = completedChallenges.includes(challenge.id);
       if (!isChallengeCompleted) {
+        const isWaterChallenge = challenge.id === "challenge_water";
         const outreachMsg: Message = {
           sender: "bot",
           text: `Fala campeão! Trago o desafio de hoje para turbinar sua rotina e faturar umas NutriCoins extras! ⚡🏆\n\n${challenge.title}\n\n${challenge.description}\n\nAceita o desafio?`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          quickActions: [
-            { label: `Concluir Desafio (+${challenge.xpReward} NC)`, action: "challenge_complete", value: { id: challenge.id, xp: challenge.xpReward }, completed: false },
-            { label: "🏆 Ver Ranking", action: "link", value: "ranking" }
-          ]
+          quickActions: isWaterChallenge
+            ? [
+                { label: "🏆 Ver Ranking", action: "link", value: "ranking" }
+              ]
+            : [
+                { label: "🏋️‍♂️ Ir para Treino de Hoje", action: "link", value: "workout_today" },
+                { label: "🏆 Ver Ranking", action: "link", value: "ranking" }
+              ],
+          pendingActions: isWaterChallenge
+            ? [
+                {
+                  type: "ADD_WATER",
+                  amount_ml: 500,
+                  amount: 500,
+                  checked: true
+                }
+              ]
+            : undefined
         };
         setPendingOutreach(outreachMsg);
         setHasNewOutreachNotification(true);
@@ -1550,6 +1565,30 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
 
                                             if (activeActions.length > 0) {
                                               await onExecuteActions(activeActions, lastQueryMethod);
+                                              try {
+                                                const today = new Date().toDateString();
+                                                const challenge = getTodayChallenge();
+                                                if (challenge.id === "challenge_water" && activeActions.some(a => a.type === "ADD_WATER")) {
+                                                  const userId = profile?.id || "guest";
+                                                  let completedChallenges: string[] = [];
+                                                  const stored = localStorage.getItem(`completed_challenges_${userId}`);
+                                                  if (stored) {
+                                                    const parsed = JSON.parse(stored);
+                                                    if (parsed.date === today) completedChallenges = parsed.challenges || [];
+                                                  }
+                                                  if (!completedChallenges.includes(challenge.id)) {
+                                                    completedChallenges.push(challenge.id);
+                                                    localStorage.setItem(
+                                                      `completed_challenges_${userId}`,
+                                                      JSON.stringify({ date: today, challenges: completedChallenges })
+                                                    );
+                                                    await handleUpdateXP(challenge.xpReward);
+                                                    alert(`Desafio de Hidratação Completo! Você ganhou +${challenge.xpReward} NC adicionais de bônus! 💧🪙`);
+                                                  }
+                                                }
+                                              } catch (challengeError) {
+                                                console.error("Error completing challenge_water on confirm:", challengeError);
+                                              }
                                             }
                                             setMessages(prev => prev.map((m, idx) => idx === index ? { ...m, actionsEvaluated: true } : m));
                                             setTimeout(() => {

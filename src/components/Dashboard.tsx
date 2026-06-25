@@ -813,6 +813,35 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setExerciseHistory(updatedHistory);
     localStorage.setItem(`workout_history_${user.uid}`, JSON.stringify(updatedHistory));
 
+    // Mark today's physical challenge as completed if there is one
+    try {
+      const today = new Date().toDateString();
+      const day = new Date().getDay();
+      const challenges = [
+        { id: "challenge_squat" },
+        { id: "challenge_water" },
+        { id: "challenge_stretching" }
+      ];
+      const todayChallenge = challenges[day % challenges.length];
+      if (todayChallenge.id !== "challenge_water") {
+        let completedChallenges: string[] = [];
+        const stored = localStorage.getItem(`completed_challenges_${user.uid}`);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.date === today) completedChallenges = parsed.challenges || [];
+        }
+        if (!completedChallenges.includes(todayChallenge.id)) {
+          completedChallenges.push(todayChallenge.id);
+          localStorage.setItem(
+            `completed_challenges_${user.uid}`,
+            JSON.stringify({ date: today, challenges: completedChallenges })
+          );
+        }
+      }
+    } catch (e) {
+      console.error("Erro ao marcar desafio concluído no treino:", e);
+    }
+
     if (isFirebaseConfigured) {
       try {
         const logRef = doc(db, 'exercise_logs', id);
