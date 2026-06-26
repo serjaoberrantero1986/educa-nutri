@@ -1992,35 +1992,6 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
                                                 </select>
                                               </div>
 
-                                              {/* Detailed Portion Info Section */}
-                                              {(() => {
-                                                const isLiquid = act.measure_unit === "ml" || currentUnit === "mililitros";
-                                                const unitSymbol = isLiquid ? "ml" : "g";
-                                                
-                                                return (
-                                                  <div className="bg-slate-50/70 dark:bg-slate-900/40 p-3 rounded-xl border border-slate-100 dark:border-slate-800 text-[10px] space-y-1 text-slate-500 dark:text-slate-400">
-                                                    <div className="flex justify-between">
-                                                      <span>Base nutricional de referência:</span>
-                                                      <span className="font-bold text-slate-700 dark:text-slate-300">100{unitSymbol}</span>
-                                                    </div>
-                                                    {currentUnit !== "gramas" && currentUnit !== "mililitros" && (
-                                                      <div className="flex justify-between">
-                                                        <span>Peso de 1 {currentUnit}:</span>
-                                                        <span className="font-bold text-slate-700 dark:text-slate-300">
-                                                          {unitGrams}{unitSymbol}
-                                                        </span>
-                                                      </div>
-                                                    )}
-                                                    <div className="flex justify-between border-t border-slate-100 dark:border-slate-800/60 pt-1 font-semibold">
-                                                      <span>Total calculado:</span>
-                                                      <span className="font-extrabold text-purple-700 dark:text-purple-400">
-                                                        {currentAmount} {currentUnit} ({totalGrams.toFixed(0)}{unitSymbol})
-                                                      </span>
-                                                    </div>
-                                                  </div>
-                                                );
-                                              })()}
-
                                               <div className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed italic bg-slate-50 dark:bg-slate-900/60 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
                                                 💡 {(act.confidence_explanation || `Estimativa nutricional de IA baseada em ${currentAmount} ${currentUnit}.`).replace(/\*/g, "")}
                                               </div>

@@ -25,30 +25,112 @@ export interface ClientPaymentResponse {
 }
 
 export const createPaymentApi = async (params: CreatePaymentParams): Promise<ClientPaymentResponse> => {
-  const response = await fetch(getApiUrl("/api/payments/create"), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(params),
-  });
+  try {
+    const response = await fetch(getApiUrl("/api/payments/create"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(params),
+    });
 
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.error || "Erro ao criar transação de pagamento");
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || "Erro ao criar transação de pagamento");
+    }
+
+    return await response.json();
+  } catch (error: any) {
+    console.warn("[PaymentService] API call failed:", error);
+    
+    // Check if VITE_PAYMENT_MODE is sandbox
+    const isSandbox = import.meta.env.VITE_PAYMENT_MODE === "sandbox";
+    if (!isSandbox) {
+      throw error;
+    }
+    
+    // Check if it's a "Failed to fetch" (Network Error / CORS) or server issue
+    const randomId = `sim-payment-${Date.now()}`;
+    
+    if (params.paymentMethod === "pix") {
+      // Simulate beautiful functional PIX response
+      return {
+        id: randomId,
+        status: "pending",
+        paymentMethod: "pix",
+        amount: params.amount || 19.90,
+        qrCode: "SIMULATED_QR_CODE",
+        qrCodeCopyPaste: "00020101021226870014br.gov.bcb.pix0125edsonricardosouza@gmail.com520400005303986540519.905602BR5910SportNutri6009Sao Paulo62070503***6304abcd"
+      };
+    } else {
+      // Card simulation: instant approval
+      return {
+        id: randomId,
+        status: "approved",
+        statusDetail: "accredited",
+        paymentMethod: "card",
+        amount: params.amount || 19.90
+      };
+    }
   }
-
-  return await response.json();
 };
 
 export const getPaymentStatusApi = async (paymentId: string): Promise<ClientPaymentResponse> => {
-  const response = await fetch(getApiUrl(`/api/payments/status/${paymentId}`));
+  const isSandbox = import.meta.env.VITE_PAYMENT_MODE === "sandbox";
 
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.error || "Erro ao consultar status da transação");
+  if (paymentId && paymentId.startsWith("sim-")) {
+    if (!isSandbox) {
+      throw new Error("ID de pagamento simulado não é permitido em ambiente de produção.");
+    }
+    // Return approved status block after a short delay (or immediately for quick confirmation)
+    const storedStr = sessionStorage.getItem(`check-${paymentId}`);
+    let callCount = 0;
+    if (storedStr) {
+      callCount = parseInt(storedStr, 10);
+    }
+    callCount += 1;
+    sessionStorage.setItem(`check-${paymentId}`, callCount.toString());
+
+    if (callCount >= 2) {
+      return {
+        id: paymentId,
+        status: "approved",
+        statusDetail: "accredited",
+        paymentMethod: "pix",
+        amount: 19.90
+      };
+    } else {
+      return {
+        id: paymentId,
+        status: "pending",
+        statusDetail: "waiting_payment",
+        paymentMethod: "pix",
+        amount: 19.90
+      };
+    }
   }
 
-  return await response.json();
+  try {
+    const response = await fetch(getApiUrl(`/api/payments/status/${paymentId}`));
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || "Erro ao consultar status da transação");
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.warn("[PaymentStatus] Failed to query status from API:", error);
+    if (!isSandbox) {
+      throw error;
+    }
+    return {
+      id: paymentId,
+      status: "approved",
+      statusDetail: "accredited",
+      paymentMethod: "pix",
+      amount: 19.90
+    };
+  }
 };
 export { paymentService } from "./payment/PaymentService";

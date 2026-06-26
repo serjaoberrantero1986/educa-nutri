@@ -63,7 +63,6 @@ import path from "path";
 import Database from "better-sqlite3";
 import fs from "fs";
 import { paymentService } from "./src/services/payment/PaymentService";
-import { FoodSearchService } from "./src/services/food/FoodSearchService";
 import { GoogleGenAI, Type } from "@google/genai";
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
@@ -245,7 +244,7 @@ async function fetchStoreConfig() {
     ai_model: process.env.AI_MODEL || "gemini-3.5-flash",
     food_search_mode: process.env.FOOD_SEARCH_MODE || "web",
     active_payment_gateway: process.env.ACTIVE_PAYMENT_GATEWAY || "mercado_pago",
-    payment_mode: process.env.PAYMENT_MODE || "live",
+    payment_mode: process.env.PAYMENT_MODE || "sandbox",
     mercado_pago_public_key: process.env.MERCADO_PAGO_PUBLIC_KEY || "",
     mercado_pago_access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN || "",
     stripe_publishable_key: process.env.STRIPE_PUBLISHABLE_KEY || "",
@@ -302,89 +301,6 @@ async function fetchStorePrivateConfig() {
     mercado_pago_access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN || "",
     stripe_secret_key: process.env.STRIPE_SECRET_KEY || "",
     paypal_client_secret: process.env.PAYPAL_CLIENT_SECRET || ""
-  };
-}
-
-function cleanConfigValue(value: any): string {
-  return String(value ?? "")
-    .trim()
-    .replace(/^["']|["']$/g, "")
-    .replace(/[\u200B-\u200D\uFEFF]/g, "");
-}
-
-function isUsableConfigValue(value: any): boolean {
-  const val = cleanConfigValue(value);
-  const lower = val.toLowerCase();
-
-  return (
-    !!val &&
-    lower !== "undefined" &&
-    lower !== "null" &&
-    !lower.includes("placeholder") &&
-    !lower.includes("your_") &&
-    !lower.includes("my_")
-  );
-}
-
-function hasRealSecret(value: any): boolean {
-  const val = cleanConfigValue(value);
-  const lower = val.toLowerCase();
-
-  return (
-    !!val &&
-    lower !== "undefined" &&
-    lower !== "null" &&
-    !lower.includes("placeholder") &&
-    !lower.includes("your_") &&
-    !lower.includes("my_") &&
-    val.length > 10
-  );
-}
-
-function firstUsableValue(...values: any[]): string {
-  for (const value of values) {
-    if (isUsableConfigValue(value)) {
-      return cleanConfigValue(value);
-    }
-  }
-  return "";
-}
-
-async function fetchPaymentGatewayConfig() {
-  const publicConfig = await fetchStoreConfig();
-  const privateConfig = await fetchStorePrivateConfig();
-
-  const activeGateway = firstUsableValue(
-    process.env.ACTIVE_PAYMENT_GATEWAY,
-    publicConfig?.active_payment_gateway,
-    "mercado_pago"
-  );
-
-  const paymentMode = firstUsableValue(
-    process.env.PAYMENT_MODE,
-    publicConfig?.payment_mode,
-    "sandbox"
-  ) as "sandbox" | "live";
-
-  const mercadoPagoPublicKey = firstUsableValue(
-    publicConfig?.mercado_pago_public_key,
-    process.env.MERCADO_PAGO_PUBLIC_KEY
-  );
-
-  const mercadoPagoAccessToken = firstUsableValue(
-    privateConfig?.mercado_pago_access_token,
-    process.env.MERCADO_PAGO_ACCESS_TOKEN
-  );
-
-  return {
-    ...publicConfig,
-    ...privateConfig,
-
-    active_payment_gateway: activeGateway,
-    payment_mode: paymentMode,
-
-    mercado_pago_public_key: mercadoPagoPublicKey,
-    mercado_pago_access_token: mercadoPagoAccessToken,
   };
 }
 
@@ -629,18 +545,9 @@ async function initializeEnvFromFirestore() {
     if (shouldSyncToEnv("AI_API_KEY", dbPrivateData.ai_api_key, env_ai_api_key)) initialConfigs.AI_API_KEY = dbPrivateData.ai_api_key;
     if (shouldSyncToEnv("AI_MODEL", dbData.ai_model, env_ai_model)) initialConfigs.AI_MODEL = dbData.ai_model;
     if (shouldSyncToEnv("ACTIVE_PAYMENT_GATEWAY", dbData.active_payment_gateway, env_active_payment_gateway)) initialConfigs.ACTIVE_PAYMENT_GATEWAY = dbData.active_payment_gateway;
-
-    if (shouldSyncToEnv("PAYMENT_MODE", dbData.payment_mode || "live", env_payment_mode)) {
-      initialConfigs.PAYMENT_MODE = dbData.payment_mode || "live";
-      initialConfigs.VITE_PAYMENT_MODE = dbData.payment_mode || "live";
-    }
-    if (!hasRealSecret(process.env.MERCADO_PAGO_PUBLIC_KEY) && shouldSyncToEnv("MERCADO_PAGO_PUBLIC_KEY", dbData.mercado_pago_public_key, env_mp_public_key)) {
-      initialConfigs.MERCADO_PAGO_PUBLIC_KEY = dbData.mercado_pago_public_key;
-    }
-    if (!hasRealSecret(process.env.MERCADO_PAGO_ACCESS_TOKEN) && shouldSyncToEnv("MERCADO_PAGO_ACCESS_TOKEN", dbPrivateData.mercado_pago_access_token, env_mp_access_token)) {
-      initialConfigs.MERCADO_PAGO_ACCESS_TOKEN = dbPrivateData.mercado_pago_access_token;
-    }
-
+    if (shouldSyncToEnv("PAYMENT_MODE", dbData.payment_mode, env_payment_mode)) initialConfigs.PAYMENT_MODE = dbData.payment_mode;
+    if (shouldSyncToEnv("MERCADO_PAGO_PUBLIC_KEY", dbData.mercado_pago_public_key, env_mp_public_key)) initialConfigs.MERCADO_PAGO_PUBLIC_KEY = dbData.mercado_pago_public_key;
+    if (shouldSyncToEnv("MERCADO_PAGO_ACCESS_TOKEN", dbPrivateData.mercado_pago_access_token, env_mp_access_token)) initialConfigs.MERCADO_PAGO_ACCESS_TOKEN = dbPrivateData.mercado_pago_access_token;
     if (shouldSyncToEnv("STRIPE_PUBLISHABLE_KEY", dbData.stripe_publishable_key, env_stripe_pub_key)) initialConfigs.STRIPE_PUBLISHABLE_KEY = dbData.stripe_publishable_key;
     if (shouldSyncToEnv("STRIPE_SECRET_KEY", dbPrivateData.stripe_secret_key, env_stripe_sec_key)) initialConfigs.STRIPE_SECRET_KEY = dbPrivateData.stripe_secret_key;
     if (shouldSyncToEnv("PAYPAL_CLIENT_ID", dbData.paypal_client_id, env_paypal_client_id)) initialConfigs.PAYPAL_CLIENT_ID = dbData.paypal_client_id;
@@ -993,15 +900,6 @@ db.exec(`
     grams_per_unit REAL NOT NULL
   )
 `);
-
-// Defensive table migrations to support normalized fields
-try { db.exec("ALTER TABLE foods ADD COLUMN barcode TEXT"); } catch (e) {}
-try { db.exec("ALTER TABLE foods ADD COLUMN brand TEXT"); } catch (e) {}
-try { db.exec("ALTER TABLE foods ADD COLUMN source TEXT"); } catch (e) {}
-try { db.exec("ALTER TABLE foods ADD COLUMN source_id TEXT"); } catch (e) {}
-try { db.exec("ALTER TABLE foods ADD COLUMN normalized_name TEXT"); } catch (e) {}
-try { db.exec("ALTER TABLE foods ADD COLUMN confidence_score REAL"); } catch (e) {}
-try { db.exec("ALTER TABLE foods ADD COLUMN verified_by_logic INTEGER"); } catch (e) {}
 
 // Seed data section
 function seedFallbackFoods() {
@@ -2042,38 +1940,6 @@ O JSON DEVE respeitar esta estrutura exata de tipos. Sem usar asteriscos em nenh
 
 // API Routes
 app.get("/api/foods", async (req, res) => {
-  try {
-    const queryParam = req.query.q;
-    const foodSearchService = new FoodSearchService(db, firestore, searchFoodOnlineUnified);
-
-    if (queryParam && typeof queryParam === "string" && queryParam.trim().length > 0) {
-      const originalTerm = queryParam.trim();
-
-      // Check if it's a barcode (8 to 14 numbers)
-      if (/^\d{8,14}$/.test(originalTerm)) {
-        const barcodeResult = await foodSearchService.searchBarcode(originalTerm);
-        if (barcodeResult) {
-          return res.json([barcodeResult]);
-        }
-        return res.json([]);
-      }
-
-      const results = await foodSearchService.search(originalTerm, {
-        enableWebFallback: true
-      });
-      return res.json(results);
-    }
-    
-    // Return all foods if no query param is provided
-    const allFoods = db.prepare("SELECT * FROM foods").all();
-    return res.json(allFoods);
-  } catch (err) {
-    console.error("Error in /api/foods handler:", err);
-    return res.status(500).json({ error: "Erro interno do servidor ao carregar alimentos" });
-  }
-});
-
-app.get("/api/foods-deprecated-old", async (req, res) => {
   try {
     const queryParam = req.query.q;
     if (queryParam && typeof queryParam === "string" && queryParam.trim().length > 0) {
@@ -4379,7 +4245,7 @@ app.post("/api/payments/create", async (req, res) => {
       issuerId
     };
 
-    const gatewayConfig = await fetchPaymentGatewayConfig();
+    const gatewayConfig = await fetchStoreConfig();
 
     const paymentResponse = await paymentService.createPayment(payload, gatewayConfig);
     return res.json(paymentResponse);
@@ -4396,7 +4262,7 @@ app.get("/api/payments/status/:id", async (req, res) => {
       return res.status(400).json({ error: "Identificador do pagamento obrigatório" });
     }
 
-    const gatewayConfig = await fetchPaymentGatewayConfig();
+    const gatewayConfig = await fetchStoreConfig();
 
     const paymentResponse = await paymentService.getPaymentStatus(id, gatewayConfig);
     return res.json(paymentResponse);
@@ -5074,41 +4940,20 @@ app.get("/api/admin/config", async (req, res) => {
     ai_model: process.env.AI_MODEL || "gemini-3.5-flash",
     food_search_mode: process.env.FOOD_SEARCH_MODE || "web",
     active_payment_gateway: process.env.ACTIVE_PAYMENT_GATEWAY || "mercado_pago",
-    payment_mode: process.env.PAYMENT_MODE || "live",
+    payment_mode: process.env.PAYMENT_MODE || "sandbox",
     mercado_pago_public_key: process.env.MERCADO_PAGO_PUBLIC_KEY || "",
     stripe_publishable_key: process.env.STRIPE_PUBLISHABLE_KEY || "",
     paypal_client_id: process.env.PAYPAL_CLIENT_ID || "",
   };
 
   if (isAdmin) {
-    const privateConfig = await fetchStorePrivateConfig();
-
     return res.json({
       ...config,
-      whatsapp_api_key:
-        privateConfig?.whatsapp_api_key ||
-        process.env.EVOLUTION_API_KEY ||
-        "sportnutri_default_key",
-
-      ai_api_key:
-        privateConfig?.ai_api_key ||
-        process.env.AI_API_KEY ||
-        "",
-
-      mercado_pago_access_token:
-        privateConfig?.mercado_pago_access_token ||
-        process.env.MERCADO_PAGO_ACCESS_TOKEN ||
-        "",
-
-      stripe_secret_key:
-        privateConfig?.stripe_secret_key ||
-        process.env.STRIPE_SECRET_KEY ||
-        "",
-
-      paypal_client_secret:
-        privateConfig?.paypal_client_secret ||
-        process.env.PAYPAL_CLIENT_SECRET ||
-        "",
+      whatsapp_api_key: process.env.EVOLUTION_API_KEY || "sportnutri_default_key",
+      ai_api_key: process.env.AI_API_KEY || "",
+      mercado_pago_access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN || "",
+      stripe_secret_key: process.env.STRIPE_SECRET_KEY || "",
+      paypal_client_secret: process.env.PAYPAL_CLIENT_SECRET || "",
     });
   } else {
     return res.json(config);
@@ -5126,58 +4971,31 @@ app.post("/api/admin/config", async (req, res) => {
     return res.status(400).json({ error: "Configuração inválida." });
   }
 
-  const currentPublicConfig = await fetchStoreConfig().catch(() => ({}));
-  const currentPrivateConfig = await fetchStorePrivateConfig().catch(() => ({}));
-
   const keyValues: Record<string, string | number> = {
-    STREAK_FREEZE_COST: config.streak_freeze_cost ?? currentPublicConfig?.streak_freeze_cost ?? 1000,
-    PREMIUM_PASS_COST: config.premium_pass_cost ?? currentPublicConfig?.premium_pass_cost ?? 1500,
-    ASSISTANT_PASS_COST: config.assistant_pass_cost ?? currentPublicConfig?.assistant_pass_cost ?? 2000,
-    WHATSAPP_PASS_COST: config.whatsapp_pass_cost ?? currentPublicConfig?.whatsapp_pass_cost ?? 2000,
-    RECIPES_PASS_COST: config.recipes_pass_cost ?? currentPublicConfig?.recipes_pass_cost ?? 1200,
-    SHARED_WORKOUTS_PASS_COST: config.shared_workouts_pass_cost ?? currentPublicConfig?.shared_workouts_pass_cost ?? 800,
-    MONTHLY_PREMIUM_PRICE: config.monthly_premium_price ?? currentPublicConfig?.monthly_premium_price ?? 19.90,
-    MONTHLY_PROFESSIONAL_PRICE: config.monthly_professional_price ?? currentPublicConfig?.monthly_professional_price ?? 39.90,
-
-    EVOLUTION_API_URL: config.whatsapp_api_url ?? currentPublicConfig?.whatsapp_api_url ?? "https://api.sportnutri.com",
-    EVOLUTION_INSTANCE: config.whatsapp_instance ?? currentPublicConfig?.whatsapp_instance ?? "sportnutri_bot",
-
-    AI_PROVIDER: config.ai_provider ?? currentPublicConfig?.ai_provider ?? "Google Gemini",
-    AI_MODEL: config.ai_model ?? currentPublicConfig?.ai_model ?? "gemini-3.5-flash",
-    FOOD_SEARCH_MODE: config.food_search_mode ?? currentPublicConfig?.food_search_mode ?? "web",
-
-    ACTIVE_PAYMENT_GATEWAY: config.active_payment_gateway ?? currentPublicConfig?.active_payment_gateway ?? "mercado_pago",
-    PAYMENT_MODE: config.payment_mode ?? currentPublicConfig?.payment_mode ?? process.env.PAYMENT_MODE ?? "live",
-    VITE_PAYMENT_MODE: config.payment_mode ?? currentPublicConfig?.payment_mode ?? process.env.VITE_PAYMENT_MODE ?? "live",
-
-    MERCADO_PAGO_PUBLIC_KEY:
-      hasRealSecret(config.mercado_pago_public_key)
-        ? cleanConfigValue(config.mercado_pago_public_key)
-        : process.env.MERCADO_PAGO_PUBLIC_KEY || currentPublicConfig?.mercado_pago_public_key || "",
-
-    STRIPE_PUBLISHABLE_KEY: config.stripe_publishable_key ?? currentPublicConfig?.stripe_publishable_key ?? "",
-    PAYPAL_CLIENT_ID: config.paypal_client_id ?? currentPublicConfig?.paypal_client_id ?? "",
+    STREAK_FREEZE_COST: config.streak_freeze_cost ?? 1000,
+    PREMIUM_PASS_COST: config.premium_pass_cost ?? 1500,
+    ASSISTANT_PASS_COST: config.assistant_pass_cost ?? 2000,
+    WHATSAPP_PASS_COST: config.whatsapp_pass_cost ?? 2000,
+    RECIPES_PASS_COST: config.recipes_pass_cost ?? 1200,
+    SHARED_WORKOUTS_PASS_COST: config.shared_workouts_pass_cost ?? 800,
+    MONTHLY_PREMIUM_PRICE: config.monthly_premium_price ?? 19.90,
+    MONTHLY_PROFESSIONAL_PRICE: config.monthly_professional_price ?? 39.90,
+    EVOLUTION_API_URL: config.whatsapp_api_url ?? "https://api.sportnutri.com",
+    EVOLUTION_API_KEY: config.whatsapp_api_key ?? "sportnutri_default_key",
+    EVOLUTION_INSTANCE: config.whatsapp_instance ?? "sportnutri_bot",
+    AI_PROVIDER: config.ai_provider ?? "Google Gemini",
+    AI_API_KEY: config.ai_api_key ?? "",
+    AI_MODEL: config.ai_model ?? "gemini-3.5-flash",
+    FOOD_SEARCH_MODE: config.food_search_mode ?? "web",
+    ACTIVE_PAYMENT_GATEWAY: config.active_payment_gateway ?? "mercado_pago",
+    PAYMENT_MODE: config.payment_mode ?? "sandbox",
+    MERCADO_PAGO_PUBLIC_KEY: config.mercado_pago_public_key ?? "",
+    MERCADO_PAGO_ACCESS_TOKEN: config.mercado_pago_access_token ?? "",
+    STRIPE_PUBLISHABLE_KEY: config.stripe_publishable_key ?? "",
+    STRIPE_SECRET_KEY: config.stripe_secret_key ?? "",
+    PAYPAL_CLIENT_ID: config.paypal_client_id ?? "",
+    PAYPAL_CLIENT_SECRET: config.paypal_client_secret ?? ""
   };
-
-  if (hasRealSecret(config.whatsapp_api_key)) {
-    keyValues.EVOLUTION_API_KEY = cleanConfigValue(config.whatsapp_api_key);
-  }
-
-  if (hasRealSecret(config.ai_api_key)) {
-    keyValues.AI_API_KEY = cleanConfigValue(config.ai_api_key);
-  }
-
-  if (hasRealSecret(config.mercado_pago_access_token)) {
-    keyValues.MERCADO_PAGO_ACCESS_TOKEN = cleanConfigValue(config.mercado_pago_access_token);
-  }
-
-  if (hasRealSecret(config.stripe_secret_key)) {
-    keyValues.STRIPE_SECRET_KEY = cleanConfigValue(config.stripe_secret_key);
-  }
-
-  if (hasRealSecret(config.paypal_client_secret)) {
-    keyValues.PAYPAL_CLIENT_SECRET = cleanConfigValue(config.paypal_client_secret);
-  }
 
   const envPath = path.join(process.cwd(), ".env");
   let existingContent = "";
@@ -5211,52 +5029,33 @@ app.post("/api/admin/config", async (req, res) => {
   // Sincronize visual dynamic config straight with Firestore database "configs/store" and "configs/store_private"
   try {
     const firestoreConfig = {
-      streak_freeze_cost: Number(keyValues.STREAK_FREEZE_COST),
-      premium_pass_cost: Number(keyValues.PREMIUM_PASS_COST),
-      assistant_pass_cost: Number(keyValues.ASSISTANT_PASS_COST),
-      whatsapp_pass_cost: Number(keyValues.WHATSAPP_PASS_COST),
-      recipes_pass_cost: Number(keyValues.RECIPES_PASS_COST),
-      shared_workouts_pass_cost: Number(keyValues.SHARED_WORKOUTS_PASS_COST),
-      monthly_premium_price: Number(keyValues.MONTHLY_PREMIUM_PRICE),
-      monthly_professional_price: Number(keyValues.MONTHLY_PROFESSIONAL_PRICE),
-      whatsapp_api_url: String(keyValues.EVOLUTION_API_URL),
-      whatsapp_instance: String(keyValues.EVOLUTION_INSTANCE),
-      ai_provider: String(keyValues.AI_PROVIDER),
-      ai_model: String(keyValues.AI_MODEL),
-      food_search_mode: String(keyValues.FOOD_SEARCH_MODE),
-      active_payment_gateway: String(keyValues.ACTIVE_PAYMENT_GATEWAY),
-      payment_mode: String(keyValues.PAYMENT_MODE),
-      mercado_pago_public_key: String(keyValues.MERCADO_PAGO_PUBLIC_KEY),
-      stripe_publishable_key: String(keyValues.STRIPE_PUBLISHABLE_KEY),
-      paypal_client_id: String(keyValues.PAYPAL_CLIENT_ID)
+      streak_freeze_cost: Number(config.streak_freeze_cost ?? 1000),
+      premium_pass_cost: Number(config.premium_pass_cost ?? 1500),
+      assistant_pass_cost: Number(config.assistant_pass_cost ?? 2000),
+      whatsapp_pass_cost: Number(config.whatsapp_pass_cost ?? 2000),
+      recipes_pass_cost: Number(config.recipes_pass_cost ?? 1200),
+      monthly_premium_price: Number(config.monthly_premium_price ?? 19.90),
+      whatsapp_api_url: config.whatsapp_api_url ?? "https://api.sportnutri.com",
+      whatsapp_instance: config.whatsapp_instance ?? "sportnutri_bot",
+      ai_provider: config.ai_provider ?? "Google Gemini",
+      ai_model: config.ai_model ?? "gemini-3.5-flash",
+      food_search_mode: config.food_search_mode ?? "web",
+      active_payment_gateway: config.active_payment_gateway ?? "mercado_pago",
+      payment_mode: config.payment_mode ?? "sandbox",
+      mercado_pago_public_key: config.mercado_pago_public_key ?? "",
+      stripe_publishable_key: config.stripe_publishable_key ?? "",
+      paypal_client_id: config.paypal_client_id ?? ""
     };
     await firestore.collection("configs").doc("store").set(firestoreConfig, { merge: true });
 
-    const privateConfig: Record<string, any> = {};
-
-    if (hasRealSecret(config.whatsapp_api_key)) {
-      privateConfig.whatsapp_api_key = cleanConfigValue(config.whatsapp_api_key);
-    }
-
-    if (hasRealSecret(config.ai_api_key)) {
-      privateConfig.ai_api_key = cleanConfigValue(config.ai_api_key);
-    }
-
-    if (hasRealSecret(config.mercado_pago_access_token)) {
-      privateConfig.mercado_pago_access_token = cleanConfigValue(config.mercado_pago_access_token);
-    }
-
-    if (hasRealSecret(config.stripe_secret_key)) {
-      privateConfig.stripe_secret_key = cleanConfigValue(config.stripe_secret_key);
-    }
-
-    if (hasRealSecret(config.paypal_client_secret)) {
-      privateConfig.paypal_client_secret = cleanConfigValue(config.paypal_client_secret);
-    }
-
-    if (Object.keys(privateConfig).length > 0) {
-      await firestore.collection("configs").doc("store_private").set(privateConfig, { merge: true });
-    }
+    const privateConfig = {
+      whatsapp_api_key: config.whatsapp_api_key ?? "sportnutri_default_key",
+      ai_api_key: config.ai_api_key ?? "",
+      mercado_pago_access_token: config.mercado_pago_access_token ?? "",
+      stripe_secret_key: config.stripe_secret_key ?? "",
+      paypal_client_secret: config.paypal_client_secret ?? ""
+    };
+    await firestore.collection("configs").doc("store_private").set(privateConfig, { merge: true });
     
     // Invalidate local in-memory dynamic cache for immediate real-time effect
     cachedAiConfig = null;

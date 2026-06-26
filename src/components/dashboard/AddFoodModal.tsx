@@ -1272,38 +1272,6 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Detailed Portion Info Section */}
-                  {(() => {
-                    const amtP = parseFloat(String(pendingFood.amount)) || 0;
-                    const unitGrams = getGramsForUnit(pendingFood.unit || "gramas", pendingFood);
-                    const totalGrams = amtP * unitGrams;
-                    const isLiquid = pendingFood.measure_unit === "ml" || pendingFood.unit === "mililitros";
-                    const unitSymbol = isLiquid ? "ml" : "g";
-                    
-                    return (
-                      <div className="bg-white/80 dark:bg-slate-800/80 p-3.5 rounded-2xl border border-purple-100/30 text-[11px] space-y-1.5 text-slate-500 dark:text-slate-400">
-                        <div className="flex justify-between">
-                          <span>Base nutricional de referência:</span>
-                          <span className="font-bold text-slate-700 dark:text-slate-300">100{unitSymbol}</span>
-                        </div>
-                        {pendingFood.unit !== "gramas" && pendingFood.unit !== "mililitros" && (
-                          <div className="flex justify-between">
-                            <span>Peso de 1 {pendingFood.unit}:</span>
-                            <span className="font-bold text-slate-700 dark:text-slate-300">
-                              {unitGrams}{unitSymbol}
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex justify-between border-t border-slate-100 dark:border-slate-800/60 pt-1.5 font-semibold">
-                          <span>Total calculado:</span>
-                          <span className="font-extrabold text-purple-700 dark:text-purple-400">
-                            {amtP} {pendingFood.unit} ({totalGrams.toFixed(0)}{unitSymbol})
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
                   {/* Real-time nutrients computation */}
                   {(() => {
                     const amtP = parseFloat(String(pendingFood.amount)) || 0;
