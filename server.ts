@@ -367,6 +367,14 @@ async function initializeEnvFromFirestore() {
     if (dbData.ai_provider !== undefined) initialConfigs.AI_PROVIDER = dbData.ai_provider;
     if (dbData.ai_api_key !== undefined) initialConfigs.AI_API_KEY = dbData.ai_api_key;
     if (dbData.ai_model !== undefined) initialConfigs.AI_MODEL = dbData.ai_model;
+    if (dbData.active_payment_gateway !== undefined) initialConfigs.ACTIVE_PAYMENT_GATEWAY = dbData.active_payment_gateway;
+    if (dbData.payment_mode !== undefined) initialConfigs.PAYMENT_MODE = dbData.payment_mode;
+    if (dbData.mercado_pago_public_key !== undefined) initialConfigs.MERCADO_PAGO_PUBLIC_KEY = dbData.mercado_pago_public_key;
+    if (dbData.mercado_pago_access_token !== undefined) initialConfigs.MERCADO_PAGO_ACCESS_TOKEN = dbData.mercado_pago_access_token;
+    if (dbData.stripe_publishable_key !== undefined) initialConfigs.STRIPE_PUBLISHABLE_KEY = dbData.stripe_publishable_key;
+    if (dbData.stripe_secret_key !== undefined) initialConfigs.STRIPE_SECRET_KEY = dbData.stripe_secret_key;
+    if (dbData.paypal_client_id !== undefined) initialConfigs.PAYPAL_CLIENT_ID = dbData.paypal_client_id;
+    if (dbData.paypal_client_secret !== undefined) initialConfigs.PAYPAL_CLIENT_SECRET = dbData.paypal_client_secret;
 
     if (Object.keys(initialConfigs).length > 0) {
       let lines = existingContent.split("\n");
@@ -4745,6 +4753,11 @@ app.get("/api/admin/config", async (req, res) => {
     ai_provider: process.env.AI_PROVIDER || "Google Gemini",
     ai_model: process.env.AI_MODEL || "gemini-3.5-flash",
     food_search_mode: process.env.FOOD_SEARCH_MODE || "web",
+    active_payment_gateway: process.env.ACTIVE_PAYMENT_GATEWAY || "mercado_pago",
+    payment_mode: process.env.PAYMENT_MODE || "sandbox",
+    mercado_pago_public_key: process.env.MERCADO_PAGO_PUBLIC_KEY || "",
+    stripe_publishable_key: process.env.STRIPE_PUBLISHABLE_KEY || "",
+    paypal_client_id: process.env.PAYPAL_CLIENT_ID || "",
   };
 
   if (isAdmin) {
@@ -4752,6 +4765,9 @@ app.get("/api/admin/config", async (req, res) => {
       ...config,
       whatsapp_api_key: process.env.EVOLUTION_API_KEY || "sportnutri_default_key",
       ai_api_key: process.env.AI_API_KEY || "",
+      mercado_pago_access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN || "",
+      stripe_secret_key: process.env.STRIPE_SECRET_KEY || "",
+      paypal_client_secret: process.env.PAYPAL_CLIENT_SECRET || "",
     });
   } else {
     return res.json(config);
@@ -4784,7 +4800,15 @@ app.post("/api/admin/config", async (req, res) => {
     AI_PROVIDER: config.ai_provider ?? "Google Gemini",
     AI_API_KEY: config.ai_api_key ?? "",
     AI_MODEL: config.ai_model ?? "gemini-3.5-flash",
-    FOOD_SEARCH_MODE: config.food_search_mode ?? "web"
+    FOOD_SEARCH_MODE: config.food_search_mode ?? "web",
+    ACTIVE_PAYMENT_GATEWAY: config.active_payment_gateway ?? "mercado_pago",
+    PAYMENT_MODE: config.payment_mode ?? "sandbox",
+    MERCADO_PAGO_PUBLIC_KEY: config.mercado_pago_public_key ?? "",
+    MERCADO_PAGO_ACCESS_TOKEN: config.mercado_pago_access_token ?? "",
+    STRIPE_PUBLISHABLE_KEY: config.stripe_publishable_key ?? "",
+    STRIPE_SECRET_KEY: config.stripe_secret_key ?? "",
+    PAYPAL_CLIENT_ID: config.paypal_client_id ?? "",
+    PAYPAL_CLIENT_SECRET: config.paypal_client_secret ?? ""
   };
 
   const envPath = path.join(process.cwd(), ".env");
@@ -4831,7 +4855,15 @@ app.post("/api/admin/config", async (req, res) => {
       ai_provider: config.ai_provider ?? "Google Gemini",
       ai_api_key: config.ai_api_key ?? "",
       ai_model: config.ai_model ?? "gemini-3.5-flash",
-      food_search_mode: config.food_search_mode ?? "web"
+      food_search_mode: config.food_search_mode ?? "web",
+      active_payment_gateway: config.active_payment_gateway ?? "mercado_pago",
+      payment_mode: config.payment_mode ?? "sandbox",
+      mercado_pago_public_key: config.mercado_pago_public_key ?? "",
+      mercado_pago_access_token: config.mercado_pago_access_token ?? "",
+      stripe_publishable_key: config.stripe_publishable_key ?? "",
+      stripe_secret_key: config.stripe_secret_key ?? "",
+      paypal_client_id: config.paypal_client_id ?? "",
+      paypal_client_secret: config.paypal_client_secret ?? ""
     };
     await firestore.collection("configs").doc("store").set(firestoreConfig, { merge: true });
     

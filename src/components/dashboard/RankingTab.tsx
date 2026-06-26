@@ -172,12 +172,16 @@ export const RankingTab: React.FC<RankingTabProps> = ({
     if (isFirebaseConfigured) {
       try {
         const profilesCol = collection(db, 'profiles');
-        const q = query(profilesCol, where('league', '==', newLeague), orderBy('xp', 'desc'), limit(10));
+        const q = query(profilesCol, orderBy('xp', 'desc'));
         const querySnapshot = await getDocs(q);
         querySnapshot.forEach((docSnap) => {
           const d = docSnap.data() as Profile;
-          if (d.id !== user.uid) {
-            realProfiles.push(d);
+          const pId = d.id || docSnap.id;
+          if (pId !== user.uid && !d.is_deleted) {
+            realProfiles.push({
+              ...d,
+              id: pId
+            } as Profile);
           }
         });
       } catch (err) {

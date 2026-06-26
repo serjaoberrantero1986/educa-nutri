@@ -18,6 +18,14 @@ export interface StoreConfig {
   ai_api_key?: string;
   ai_model?: string;
   food_search_mode?: 'apis' | 'web';
+  active_payment_gateway?: string;
+  payment_mode?: 'sandbox' | 'live';
+  mercado_pago_public_key?: string;
+  mercado_pago_access_token?: string;
+  stripe_publishable_key?: string;
+  stripe_secret_key?: string;
+  paypal_client_id?: string;
+  paypal_client_secret?: string;
 }
 
 export const DEFAULT_STORE_CONFIG: StoreConfig = {
@@ -36,6 +44,14 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   ai_api_key: "",
   ai_model: "gemini-3.5-flash",
   food_search_mode: "web",
+  active_payment_gateway: "mercado_pago",
+  payment_mode: "sandbox",
+  mercado_pago_public_key: "",
+  mercado_pago_access_token: "",
+  stripe_publishable_key: "",
+  stripe_secret_key: "",
+  paypal_client_id: "",
+  paypal_client_secret: "",
 };
 
 const CONFIG_PATH = "configs";
@@ -101,6 +117,14 @@ export async function getStoreConfig(): Promise<StoreConfig> {
           ai_api_key: data.ai_api_key || DEFAULT_STORE_CONFIG.ai_api_key,
           ai_model: data.ai_model || DEFAULT_STORE_CONFIG.ai_model,
           food_search_mode: data.food_search_mode || DEFAULT_STORE_CONFIG.food_search_mode || "web",
+          active_payment_gateway: data.active_payment_gateway || DEFAULT_STORE_CONFIG.active_payment_gateway,
+          payment_mode: data.payment_mode || DEFAULT_STORE_CONFIG.payment_mode,
+          mercado_pago_public_key: data.mercado_pago_public_key || DEFAULT_STORE_CONFIG.mercado_pago_public_key,
+          mercado_pago_access_token: data.mercado_pago_access_token || DEFAULT_STORE_CONFIG.mercado_pago_access_token,
+          stripe_publishable_key: data.stripe_publishable_key || DEFAULT_STORE_CONFIG.stripe_publishable_key,
+          stripe_secret_key: data.stripe_secret_key || DEFAULT_STORE_CONFIG.stripe_secret_key,
+          paypal_client_id: data.paypal_client_id || DEFAULT_STORE_CONFIG.paypal_client_id,
+          paypal_client_secret: data.paypal_client_secret || DEFAULT_STORE_CONFIG.paypal_client_secret,
         };
         try {
           localStorage.setItem("sportnutri_store_config", JSON.stringify(cfg));
@@ -155,6 +179,14 @@ export async function getStoreConfig(): Promise<StoreConfig> {
         ai_api_key: data.ai_api_key || DEFAULT_STORE_CONFIG.ai_api_key,
         ai_model: data.ai_model || DEFAULT_STORE_CONFIG.ai_model,
         food_search_mode: data.food_search_mode || DEFAULT_STORE_CONFIG.food_search_mode || "web",
+        active_payment_gateway: data.active_payment_gateway || DEFAULT_STORE_CONFIG.active_payment_gateway,
+        payment_mode: data.payment_mode || DEFAULT_STORE_CONFIG.payment_mode,
+        mercado_pago_public_key: data.mercado_pago_public_key || DEFAULT_STORE_CONFIG.mercado_pago_public_key,
+        mercado_pago_access_token: data.mercado_pago_access_token || DEFAULT_STORE_CONFIG.mercado_pago_access_token,
+        stripe_publishable_key: data.stripe_publishable_key || DEFAULT_STORE_CONFIG.stripe_publishable_key,
+        stripe_secret_key: data.stripe_secret_key || DEFAULT_STORE_CONFIG.stripe_secret_key,
+        paypal_client_id: data.paypal_client_id || DEFAULT_STORE_CONFIG.paypal_client_id,
+        paypal_client_secret: data.paypal_client_secret || DEFAULT_STORE_CONFIG.paypal_client_secret,
       };
       try {
         localStorage.setItem("sportnutri_store_config", JSON.stringify(cfg));

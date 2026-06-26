@@ -30,7 +30,8 @@ import {
   EyeOff,
   Sliders,
   ShoppingBag,
-  Download
+  Download,
+  CreditCard
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -122,6 +123,21 @@ export default function AdminTab({
   const [foodSearchMode, setFoodSearchMode] = useState<'apis' | 'web'>('web');
   const [savingSearchMode, setSavingSearchMode] = useState(false);
   const [searchModeSuccessMessage, setSearchModeSuccessMessage] = useState<string | null>(null);
+
+  // Payment Gateway Config States
+  const [activePaymentGateway, setActivePaymentGateway] = useState<string>('mercado_pago');
+  const [paymentMode, setPaymentMode] = useState<'sandbox' | 'live'>('sandbox');
+  const [mercadoPagoPublicKey, setMercadoPagoPublicKey] = useState<string>('');
+  const [mercadoPagoAccessToken, setMercadoPagoAccessToken] = useState<string>('');
+  const [stripePublishableKey, setStripePublishableKey] = useState<string>('');
+  const [stripeSecretKey, setStripeSecretKey] = useState<string>('');
+  const [paypalClientId, setPaypalClientId] = useState<string>('');
+  const [paypalClientSecret, setPaypalClientSecret] = useState<string>('');
+  const [savingPaymentConfig, setSavingPaymentConfig] = useState(false);
+  const [paymentConfigSuccessMessage, setPaymentConfigSuccessMessage] = useState<string | null>(null);
+  const [showMercadoPagoAccessToken, setShowMercadoPagoAccessToken] = useState(false);
+  const [showStripeSecretKey, setShowStripeSecretKey] = useState(false);
+  const [showPaypalClientSecret, setShowPaypalClientSecret] = useState(false);
 
   // Active sub-tab inside Admin Panel page
   const [activeAdminSubTab, setActiveAdminSubTab] = useState<'atletas' | 'vendas' | 'pricing' | 'connections' | 'foods' | 'logs'>('atletas');
@@ -436,6 +452,14 @@ export default function AdminTab({
       setAiApiKey(storeConfig.ai_api_key || '');
       setAiModel(storeConfig.ai_model || '');
       setFoodSearchMode(storeConfig.food_search_mode || 'web');
+      setActivePaymentGateway(storeConfig.active_payment_gateway || 'mercado_pago');
+      setPaymentMode(storeConfig.payment_mode || 'sandbox');
+      setMercadoPagoPublicKey(storeConfig.mercado_pago_public_key || '');
+      setMercadoPagoAccessToken(storeConfig.mercado_pago_access_token || '');
+      setStripePublishableKey(storeConfig.stripe_publishable_key || '');
+      setStripeSecretKey(storeConfig.stripe_secret_key || '');
+      setPaypalClientId(storeConfig.paypal_client_id || '');
+      setPaypalClientSecret(storeConfig.paypal_client_secret || '');
     }
   }, [storeConfig]);
 
@@ -574,6 +598,50 @@ export default function AdminTab({
       alert('Falha ao salvar modo de pesquisa de alimentos.');
     } finally {
       setSavingSearchMode(false);
+    }
+  };
+
+  const handleSavePaymentConfig = async () => {
+    setSavingPaymentConfig(true);
+    setPaymentConfigSuccessMessage(null);
+    try {
+      const finalProvider = aiProvider === 'Outra' ? customAiProvider.trim() : aiProvider;
+      const updatedConfig: StoreConfig = {
+        streak_freeze_cost: Math.max(0, parseInt(String(streakFreezeCost)) || 0),
+        premium_pass_cost: Math.max(0, parseInt(String(premiumPassCost)) || 0),
+        assistant_pass_cost: Math.max(0, parseInt(String(assistantPassCost)) || 0),
+        whatsapp_pass_cost: Math.max(0, parseInt(String(whatsappPassCost)) || 0),
+        recipes_pass_cost: Math.max(0, parseInt(String(recipesPassCost)) || 0),
+        shared_workouts_pass_cost: Math.max(0, parseInt(String(sharedWorkoutsPassCost)) || 800),
+        monthly_premium_price: Math.max(0, parseFloat(String(monthlyPremiumPrice)) || 0),
+        monthly_professional_price: Math.max(0, parseFloat(String(monthlyProfessionalPrice)) || 0),
+        whatsapp_api_url: whatsappApiUrl.trim(),
+        whatsapp_api_key: whatsappApiKey.trim(),
+        whatsapp_instance: whatsappInstance.trim(),
+        ai_provider: finalProvider || 'Google Gemini',
+        ai_api_key: aiApiKey.trim(),
+        ai_model: aiModel.trim(),
+        food_search_mode: foodSearchMode,
+        active_payment_gateway: activePaymentGateway,
+        payment_mode: paymentMode,
+        mercado_pago_public_key: mercadoPagoPublicKey.trim(),
+        mercado_pago_access_token: mercadoPagoAccessToken.trim(),
+        stripe_publishable_key: stripePublishableKey.trim(),
+        stripe_secret_key: stripeSecretKey.trim(),
+        paypal_client_id: paypalClientId.trim(),
+        paypal_client_secret: paypalClientSecret.trim(),
+      };
+      await saveStoreConfig(updatedConfig);
+      if (onStoreConfigUpdated) {
+        onStoreConfigUpdated();
+      }
+      setPaymentConfigSuccessMessage('Configurações do gateway de pagamento salvas com sucesso!');
+      setTimeout(() => setPaymentConfigSuccessMessage(null), 4000);
+    } catch (e) {
+      console.error(e);
+      alert('Falha ao salvar configurações do gateway de pagamento.');
+    } finally {
+      setSavingPaymentConfig(false);
     }
   };
   

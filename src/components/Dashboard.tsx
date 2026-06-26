@@ -1298,9 +1298,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   useEffect(() => {
     if (!user?.uid) return;
-    fetchRanking();
     fetchWorkoutData();
   }, [user]);
+
+  useEffect(() => {
+    if (!user?.uid || !profile) return;
+    fetchRanking();
+  }, [user, profile, activeTab]);
 
   useEffect(() => {
     if (appMode === 'workout') {
@@ -1381,34 +1385,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
     let finalRankingList: Profile[] = [];
 
     if (!isFirebaseConfigured) {
-      const bots = generateBotsForLeague(userLeague);
       finalRankingList = [
-        ...bots,
         { id: user.uid, username: profile.username || 'Você', xp: userXP, league: userLeague, streak: profile.streak || 0, avatar_url: profile.avatar_url }
-      ].sort((a, b) => b.xp - a.xp);
+      ];
     } else {
       try {
         const profilesCol = collection(db, 'profiles');
-        const q = query(profilesCol, where('league', '==', userLeague), orderBy('xp', 'desc'), limit(10));
+        const q = query(profilesCol, orderBy('xp', 'desc'));
         const querySnapshot = await getDocs(q);
         const data: Profile[] = [];
         querySnapshot.forEach((docSnap) => {
-          data.push(docSnap.data() as Profile);
-        });
-        
-        if (data.length < 10) {
-          const bots = generateBotsForLeague(userLeague);
-          const existingIds = new Set(data.map(p => p.id));
-          const needed = 10 - data.length;
-          let padded = 0;
-          for (const bot of bots) {
-            if (padded >= needed) break;
-            if (!existingIds.has(bot.id) && bot.id !== user.uid) {
-              data.push(bot as Profile);
-              padded++;
-            }
+          const d = docSnap.data() as Profile;
+          if (!d.is_deleted) {
+            data.push({
+              ...d,
+              id: d.id || docSnap.id
+            } as Profile);
           }
-        }
+        });
         
         if (!data.some(p => p.id === user.uid)) {
           data.push({
@@ -1423,11 +1417,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
         finalRankingList = data.sort((a, b) => b.xp - a.xp);
       } catch (err) {
         console.error('Error fetching ranking:', err);
-        const bots = generateBotsForLeague(userLeague);
         finalRankingList = [
-          ...bots,
           { id: user.uid, username: profile.username || 'Você', xp: userXP, league: userLeague, streak: profile.streak || 0, avatar_url: profile.avatar_url }
-        ].sort((a, b) => b.xp - a.xp);
+        ];
       }
     }
 

@@ -121,6 +121,7 @@ export interface Profile {
   paid_professional?: boolean;
   role?: string | null;
   is_professional?: boolean;
+  is_deleted?: boolean;
   rewarded_goals_today?: {
     calories?: boolean;
     protein?: boolean;

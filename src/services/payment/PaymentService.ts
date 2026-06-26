@@ -1,11 +1,20 @@
 import { PaymentProvider, CreatePaymentDTO, PaymentResponse } from "./PaymentProvider";
 import { MercadoPagoProvider } from "./MercadoPagoProvider";
 import { GooglePlayBillingProvider } from "./GooglePlayBillingProvider";
+import { StripeProvider } from "./StripeProvider";
+import { PayPalProvider } from "./PayPalProvider";
 
 class PaymentService {
-  private activeProvider: PaymentProvider;
+  private activeProvider!: PaymentProvider;
 
   constructor() {
+    this.updateProviderFromConfig();
+  }
+
+  /**
+   * Determine and load active provider
+   */
+  private updateProviderFromConfig(): void {
     const isAndroidApp = typeof window !== "undefined" && 
       (window as any).Capacitor && 
       (window as any).Capacitor.getPlatform() === "android";
@@ -13,8 +22,32 @@ class PaymentService {
     if (isAndroidApp) {
       console.log("[PaymentService] Capacitor Android detected. Loading native Google Play Billing Provider.");
       this.activeProvider = new GooglePlayBillingProvider();
+      return;
+    }
+
+    let activeGateway = "mercado_pago";
+    
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("sportnutri_store_config");
+        if (cached) {
+          const config = JSON.parse(cached);
+          if (config.active_payment_gateway) {
+            activeGateway = config.active_payment_gateway;
+          }
+        }
+      } catch (err) {}
     } else {
-      console.log("[PaymentService] Browser or Web detected. Loading Mercado Pago Provider.");
+      activeGateway = process.env.ACTIVE_PAYMENT_GATEWAY || "mercado_pago";
+    }
+
+    console.log(`[PaymentService] Loading payment gateway: ${activeGateway}`);
+
+    if (activeGateway === "stripe") {
+      this.activeProvider = new StripeProvider();
+    } else if (activeGateway === "paypal") {
+      this.activeProvider = new PayPalProvider();
+    } else {
       this.activeProvider = new MercadoPagoProvider();
     }
   }
@@ -23,6 +56,7 @@ class PaymentService {
    * Safe getter to retrieve the current active provider instance
    */
   public getActiveProvider(): PaymentProvider {
+    this.updateProviderFromConfig();
     return this.activeProvider;
   }
 
@@ -38,23 +72,25 @@ class PaymentService {
    * Get the name of current active provider
    */
   public getProviderName(): string {
-    return this.activeProvider.name;
+    return this.getActiveProvider().name;
   }
 
   /**
    * Create a single payment session or transaction
    */
   public async createPayment(data: CreatePaymentDTO): Promise<PaymentResponse> {
-    console.log(`[PaymentService] Delegating payment creation to: ${this.activeProvider.name}`);
-    return this.activeProvider.createPayment(data);
+    const provider = this.getActiveProvider();
+    console.log(`[PaymentService] Delegating payment creation to: ${provider.name}`);
+    return provider.createPayment(data);
   }
 
   /**
    * Read status of a payment transaction
    */
   public async getPaymentStatus(paymentId: string): Promise<PaymentResponse> {
-    console.log(`[PaymentService] Requesting status for ID: ${paymentId} via ${this.activeProvider.name}`);
-    return this.activeProvider.getPaymentStatus(paymentId);
+    const provider = this.getActiveProvider();
+    console.log(`[PaymentService] Requesting status for ID: ${paymentId} via ${provider.name}`);
+    return provider.getPaymentStatus(paymentId);
   }
 }
 
