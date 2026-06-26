@@ -121,19 +121,15 @@ export class MercadoPagoProvider implements PaymentProvider {
   public async createPayment(data: CreatePaymentDTO, config?: PaymentGatewayConfig): Promise<PaymentResponse> {
     const paymentMode = config?.payment_mode || process.env.PAYMENT_MODE || "sandbox";
     
-    // For card payments, since there is no native front-end SDK card tokenization,
-    // we bypass real card API calls to prevent "Invalid Token" or "Unauthorized use of live credentials" blocks.
+    if (paymentMode === "sandbox") {
+      return this.createSimulatedPayment(data);
+    }
+
     if (data.paymentMethod === "card" && (!data.token || data.token === "card_token_sandbox")) {
-      if (paymentMode === "sandbox") {
-        return this.createSimulatedPayment(data);
-      }
       throw new Error("Pagamento por cartão não configurado para produção. É necessário gerar token real do cartão via SDK/Brick do Mercado Pago.");
     }
 
     if (!this.checkIsConfigured(config)) {
-      if (paymentMode === "sandbox") {
-        return this.createSimulatedPayment(data);
-      }
       throw new Error("Mercado Pago não está configurado para produção. Verifique o Access Token de produção (APP_USR-...) nas configurações.");
     }
 
@@ -209,6 +205,11 @@ export class MercadoPagoProvider implements PaymentProvider {
 
   public async getPaymentStatus(paymentId: string, config?: PaymentGatewayConfig): Promise<PaymentResponse> {
     const paymentMode = config?.payment_mode || process.env.PAYMENT_MODE || "sandbox";
+    
+    if (paymentMode === "sandbox" || paymentId.startsWith("sim-")) {
+      return this.getSimulatedPaymentStatus(paymentId);
+    }
+
     // If it's a failed transaction ID, return rejected immediately without API lookup
     if (paymentId.startsWith("failed-")) {
       return {

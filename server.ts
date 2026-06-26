@@ -304,33 +304,71 @@ async function fetchStorePrivateConfig() {
   };
 }
 
+function cleanConfigValue(value: any): string {
+  return String(value ?? "")
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "");
+}
+
+function isUsableConfigValue(value: any): boolean {
+  const val = cleanConfigValue(value);
+  const lower = val.toLowerCase();
+
+  return (
+    !!val &&
+    lower !== "undefined" &&
+    lower !== "null" &&
+    !lower.includes("placeholder") &&
+    !lower.includes("your_") &&
+    !lower.includes("my_")
+  );
+}
+
+function firstUsableValue(...values: any[]): string {
+  for (const value of values) {
+    if (isUsableConfigValue(value)) {
+      return cleanConfigValue(value);
+    }
+  }
+  return "";
+}
+
 async function fetchPaymentGatewayConfig() {
   const publicConfig = await fetchStoreConfig();
   const privateConfig = await fetchStorePrivateConfig();
+
+  const activeGateway = firstUsableValue(
+    process.env.ACTIVE_PAYMENT_GATEWAY,
+    publicConfig?.active_payment_gateway,
+    "mercado_pago"
+  );
+
+  const paymentMode = firstUsableValue(
+    process.env.PAYMENT_MODE,
+    publicConfig?.payment_mode,
+    "sandbox"
+  ) as "sandbox" | "live";
+
+  const mercadoPagoPublicKey = firstUsableValue(
+    process.env.MERCADO_PAGO_PUBLIC_KEY,
+    publicConfig?.mercado_pago_public_key
+  );
+
+  const mercadoPagoAccessToken = firstUsableValue(
+    process.env.MERCADO_PAGO_ACCESS_TOKEN,
+    privateConfig?.mercado_pago_access_token
+  );
 
   return {
     ...publicConfig,
     ...privateConfig,
 
-    active_payment_gateway:
-      publicConfig?.active_payment_gateway ||
-      process.env.ACTIVE_PAYMENT_GATEWAY ||
-      "mercado_pago",
+    active_payment_gateway: activeGateway,
+    payment_mode: paymentMode,
 
-    payment_mode:
-      publicConfig?.payment_mode ||
-      process.env.PAYMENT_MODE ||
-      "sandbox",
-
-    mercado_pago_public_key:
-      publicConfig?.mercado_pago_public_key ||
-      process.env.MERCADO_PAGO_PUBLIC_KEY ||
-      "",
-
-    mercado_pago_access_token:
-      privateConfig?.mercado_pago_access_token ||
-      process.env.MERCADO_PAGO_ACCESS_TOKEN ||
-      "",
+    mercado_pago_public_key: mercadoPagoPublicKey,
+    mercado_pago_access_token: mercadoPagoAccessToken,
   };
 }
 
@@ -575,9 +613,22 @@ async function initializeEnvFromFirestore() {
     if (shouldSyncToEnv("AI_API_KEY", dbPrivateData.ai_api_key, env_ai_api_key)) initialConfigs.AI_API_KEY = dbPrivateData.ai_api_key;
     if (shouldSyncToEnv("AI_MODEL", dbData.ai_model, env_ai_model)) initialConfigs.AI_MODEL = dbData.ai_model;
     if (shouldSyncToEnv("ACTIVE_PAYMENT_GATEWAY", dbData.active_payment_gateway, env_active_payment_gateway)) initialConfigs.ACTIVE_PAYMENT_GATEWAY = dbData.active_payment_gateway;
-    if (shouldSyncToEnv("PAYMENT_MODE", dbData.payment_mode, env_payment_mode)) initialConfigs.PAYMENT_MODE = dbData.payment_mode;
-    if (shouldSyncToEnv("MERCADO_PAGO_PUBLIC_KEY", dbData.mercado_pago_public_key, env_mp_public_key)) initialConfigs.MERCADO_PAGO_PUBLIC_KEY = dbData.mercado_pago_public_key;
-    if (shouldSyncToEnv("MERCADO_PAGO_ACCESS_TOKEN", dbPrivateData.mercado_pago_access_token, env_mp_access_token)) initialConfigs.MERCADO_PAGO_ACCESS_TOKEN = dbPrivateData.mercado_pago_access_token;
+
+    const isProdEnv = process.env.NODE_ENV === "production";
+    if (!isProdEnv) {
+      initialConfigs.PAYMENT_MODE = "sandbox";
+      initialConfigs.VITE_PAYMENT_MODE = "sandbox";
+      initialConfigs.MERCADO_PAGO_PUBLIC_KEY = "";
+      initialConfigs.MERCADO_PAGO_ACCESS_TOKEN = "";
+    } else {
+      if (shouldSyncToEnv("PAYMENT_MODE", dbData.payment_mode, env_payment_mode)) {
+        initialConfigs.PAYMENT_MODE = dbData.payment_mode;
+        initialConfigs.VITE_PAYMENT_MODE = dbData.payment_mode;
+      }
+      if (shouldSyncToEnv("MERCADO_PAGO_PUBLIC_KEY", dbData.mercado_pago_public_key, env_mp_public_key)) initialConfigs.MERCADO_PAGO_PUBLIC_KEY = dbData.mercado_pago_public_key;
+      if (shouldSyncToEnv("MERCADO_PAGO_ACCESS_TOKEN", dbPrivateData.mercado_pago_access_token, env_mp_access_token)) initialConfigs.MERCADO_PAGO_ACCESS_TOKEN = dbPrivateData.mercado_pago_access_token;
+    }
+
     if (shouldSyncToEnv("STRIPE_PUBLISHABLE_KEY", dbData.stripe_publishable_key, env_stripe_pub_key)) initialConfigs.STRIPE_PUBLISHABLE_KEY = dbData.stripe_publishable_key;
     if (shouldSyncToEnv("STRIPE_SECRET_KEY", dbPrivateData.stripe_secret_key, env_stripe_sec_key)) initialConfigs.STRIPE_SECRET_KEY = dbPrivateData.stripe_secret_key;
     if (shouldSyncToEnv("PAYPAL_CLIENT_ID", dbData.paypal_client_id, env_paypal_client_id)) initialConfigs.PAYPAL_CLIENT_ID = dbData.paypal_client_id;
@@ -5022,6 +5073,8 @@ app.post("/api/admin/config", async (req, res) => {
     return res.status(400).json({ error: "Configuração inválida." });
   }
 
+  const isProdEnv = process.env.NODE_ENV === "production";
+
   const keyValues: Record<string, string | number> = {
     STREAK_FREEZE_COST: config.streak_freeze_cost ?? 1000,
     PREMIUM_PASS_COST: config.premium_pass_cost ?? 1500,
@@ -5039,9 +5092,10 @@ app.post("/api/admin/config", async (req, res) => {
     AI_MODEL: config.ai_model ?? "gemini-3.5-flash",
     FOOD_SEARCH_MODE: config.food_search_mode ?? "web",
     ACTIVE_PAYMENT_GATEWAY: config.active_payment_gateway ?? "mercado_pago",
-    PAYMENT_MODE: config.payment_mode ?? "sandbox",
-    MERCADO_PAGO_PUBLIC_KEY: config.mercado_pago_public_key ?? "",
-    MERCADO_PAGO_ACCESS_TOKEN: config.mercado_pago_access_token ?? "",
+    PAYMENT_MODE: isProdEnv ? (config.payment_mode ?? "sandbox") : "sandbox",
+    VITE_PAYMENT_MODE: isProdEnv ? (config.payment_mode ?? "sandbox") : "sandbox",
+    MERCADO_PAGO_PUBLIC_KEY: isProdEnv ? (config.mercado_pago_public_key ?? "") : "",
+    MERCADO_PAGO_ACCESS_TOKEN: isProdEnv ? (config.mercado_pago_access_token ?? "") : "",
     STRIPE_PUBLISHABLE_KEY: config.stripe_publishable_key ?? "",
     STRIPE_SECRET_KEY: config.stripe_secret_key ?? "",
     PAYPAL_CLIENT_ID: config.paypal_client_id ?? "",
