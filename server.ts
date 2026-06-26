@@ -1,6 +1,9 @@
 import "dotenv/config";
 import dns from "node:dns";
-dns.setDefaultResultOrder("ipv4first");
+
+if (process.env.NODE_ENV !== "production") {
+  dns.setDefaultResultOrder("ipv4first");
+}
 
 // Global console sanitizer to prevent verification errors on unpreventable server-side Firestore connection bypass reports
 const originalConsoleLog = console.log;
@@ -185,6 +188,32 @@ console.error = function(...args: any[]) {
 };
 
 async function fetchStoreConfig() {
+  const envFallback = {
+    streak_freeze_cost: parseInt(process.env.STREAK_FREEZE_COST || "1000"),
+    premium_pass_cost: parseInt(process.env.PREMIUM_PASS_COST || "1500"),
+    assistant_pass_cost: parseInt(process.env.ASSISTANT_PASS_COST || "2000"),
+    whatsapp_pass_cost: parseInt(process.env.WHATSAPP_PASS_COST || "2000"),
+    recipes_pass_cost: parseInt(process.env.RECIPES_PASS_COST || "1200"),
+    shared_workouts_pass_cost: parseInt(process.env.SHARED_WORKOUTS_PASS_COST || "800"),
+    monthly_premium_price: parseFloat(process.env.MONTHLY_PREMIUM_PRICE || "19.90"),
+    monthly_professional_price: parseFloat(process.env.MONTHLY_PROFESSIONAL_PRICE || "39.90"),
+    whatsapp_api_url: process.env.EVOLUTION_API_URL || "https://api.sportnutri.com",
+    whatsapp_instance: process.env.EVOLUTION_INSTANCE || "sportnutri_bot",
+    ai_provider: process.env.AI_PROVIDER || "Google Gemini",
+    ai_model: process.env.AI_MODEL || "gemini-3.5-flash",
+    food_search_mode: process.env.FOOD_SEARCH_MODE || "web",
+    active_payment_gateway: process.env.ACTIVE_PAYMENT_GATEWAY || "mercado_pago",
+    payment_mode: process.env.PAYMENT_MODE || "sandbox",
+    mercado_pago_public_key: process.env.MERCADO_PAGO_PUBLIC_KEY || "",
+    mercado_pago_access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN || "",
+    stripe_publishable_key: process.env.STRIPE_PUBLISHABLE_KEY || "",
+    stripe_secret_key: process.env.STRIPE_SECRET_KEY || "",
+    paypal_client_id: process.env.PAYPAL_CLIENT_ID || "",
+    paypal_client_secret: process.env.PAYPAL_CLIENT_SECRET || ""
+  };
+
+  let dbConfig: any = null;
+
   // 1. Try REST API first (handles unauthenticated / missing service account environments like Vercel)
   try {
     const projectId = firebaseProjectId || "gen-lang-client-0240394848";
@@ -211,7 +240,7 @@ async function fetchStoreConfig() {
         }
       }
       if (Object.keys(config).length > 0) {
-        return config;
+        dbConfig = config;
       }
     }
   } catch (err) {
@@ -219,39 +248,37 @@ async function fetchStoreConfig() {
   }
 
   // 2. Try Admin SDK
-  try {
-    const configDoc = await firestore.collection("configs").doc("store").get();
-    if (configDoc.exists) {
-      return configDoc.data() || {};
+  if (!dbConfig) {
+    try {
+      const configDoc = await firestore.collection("configs").doc("store").get();
+      if (configDoc.exists) {
+        dbConfig = configDoc.data() || {};
+      }
+    } catch (err) {
+      // Admin SDK failed
     }
-  } catch (err) {
-    // Admin SDK failed
   }
 
-  // 3. Fallback to process.env
-  return {
-    streak_freeze_cost: parseInt(process.env.STREAK_FREEZE_COST || "1000"),
-    premium_pass_cost: parseInt(process.env.PREMIUM_PASS_COST || "1500"),
-    assistant_pass_cost: parseInt(process.env.ASSISTANT_PASS_COST || "2000"),
-    whatsapp_pass_cost: parseInt(process.env.WHATSAPP_PASS_COST || "2000"),
-    recipes_pass_cost: parseInt(process.env.RECIPES_PASS_COST || "1200"),
-    shared_workouts_pass_cost: parseInt(process.env.SHARED_WORKOUTS_PASS_COST || "800"),
-    monthly_premium_price: parseFloat(process.env.MONTHLY_PREMIUM_PRICE || "19.90"),
-    monthly_professional_price: parseFloat(process.env.MONTHLY_PROFESSIONAL_PRICE || "39.90"),
-    whatsapp_api_url: process.env.EVOLUTION_API_URL || "https://api.sportnutri.com",
-    whatsapp_instance: process.env.EVOLUTION_INSTANCE || "sportnutri_bot",
-    ai_provider: process.env.AI_PROVIDER || "Google Gemini",
-    ai_model: process.env.AI_MODEL || "gemini-3.5-flash",
-    food_search_mode: process.env.FOOD_SEARCH_MODE || "web",
-    active_payment_gateway: process.env.ACTIVE_PAYMENT_GATEWAY || "mercado_pago",
-    payment_mode: process.env.PAYMENT_MODE || "sandbox",
-    mercado_pago_public_key: process.env.MERCADO_PAGO_PUBLIC_KEY || "",
-    mercado_pago_access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN || "",
-    stripe_publishable_key: process.env.STRIPE_PUBLISHABLE_KEY || "",
-    stripe_secret_key: process.env.STRIPE_SECRET_KEY || "",
-    paypal_client_id: process.env.PAYPAL_CLIENT_ID || "",
-    paypal_client_secret: process.env.PAYPAL_CLIENT_SECRET || ""
+  const finalConfig = { ...envFallback, ...(dbConfig || {}) };
+
+  const isValidValue = (val: any): boolean => {
+    if (val === undefined || val === null) return false;
+    const str = String(val);
+    if (!str.trim()) return false;
+    const lower = str.toLowerCase();
+    return !lower.includes("placeholder") && !lower.includes("your_") && !lower.includes("my_") && str.trim().length > 3;
   };
+
+  // Ensure key values that are invalid/empty in DB but defined in envFallback are overwritten by envFallback
+  for (const key of Object.keys(envFallback)) {
+    const dbVal = dbConfig?.[key];
+    const envVal = (envFallback as any)[key];
+    if (!isValidValue(dbVal) && isValidValue(envVal)) {
+      (finalConfig as any)[key] = envVal;
+    }
+  }
+
+  return finalConfig;
 }
 
 interface CachedAiConfig {
@@ -1076,7 +1103,14 @@ app.use((req, res, next) => {
   } else {
     res.header("Access-Control-Allow-Origin", "*");
   }
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, x-ai-provider, x-ai-api-key, x-ai-model");
+  
+  const reqHeaders = req.headers["access-control-request-headers"];
+  if (reqHeaders) {
+    res.header("Access-Control-Allow-Headers", String(reqHeaders));
+  } else {
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, x-ai-provider, x-ai-api-key, x-ai-model");
+  }
+  
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   res.header("Access-Control-Allow-Credentials", "true");
   res.header("Access-Control-Max-Age", "86400");
