@@ -140,7 +140,7 @@ export default function AdminTab({
   const [showPaypalClientSecret, setShowPaypalClientSecret] = useState(false);
 
   // Active sub-tab inside Admin Panel page
-  const [activeAdminSubTab, setActiveAdminSubTab] = useState<'atletas' | 'vendas' | 'pricing' | 'connections' | 'foods' | 'logs'>('atletas');
+  const [activeAdminSubTab, setActiveAdminSubTab] = useState<'atletas' | 'vendas' | 'pricing' | 'connections' | 'gateways' | 'foods' | 'logs'>('atletas');
 
   // Diagnostics server logs states
   const [diagnosticsLogsList, setDiagnosticsLogsList] = useState<any[]>([]);
@@ -1276,6 +1276,18 @@ export default function AdminTab({
         </button>
 
         <button
+          onClick={() => setActiveAdminSubTab('gateways')}
+          className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-black text-xs transition-all border-0 cursor-pointer shrink-0 ${
+            activeAdminSubTab === 'gateways'
+              ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-md shadow-blue-500/10'
+              : 'bg-slate-50 dark:bg-slate-900 text-slate-400 dark:text-slate-500 hover:text-slate-600'
+          }`}
+        >
+          <CreditCard size={14} />
+          Gateways
+        </button>
+
+        <button
           onClick={() => setActiveAdminSubTab('foods')}
           className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-black text-xs transition-all border-0 cursor-pointer shrink-0 ${
             activeAdminSubTab === 'foods'
@@ -1989,6 +2001,270 @@ export default function AdminTab({
           </div>
         </div>
       </section>
+        </>
+      )}
+
+      {activeAdminSubTab === 'gateways' && (
+        <>
+          {/* Payment Gateways Panel */}
+          <section className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-100 dark:border-slate-800 pb-4 gap-2">
+              <div className="space-y-1">
+                <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <CreditCard size={18} className="text-blue-500" /> Configuração de Gateways de Pagamento
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Gerencie as credenciais e selecione o gateway de pagamento ativo para processamento de assinaturas e compras na loja.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Gateway Selection Card */}
+              <div className="bg-slate-50 dark:bg-slate-950 p-5 rounded-3xl border border-slate-150 dark:border-slate-800/80 space-y-4">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">Gateway Ativo</h4>
+                
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Gateway para Web/Desktop</label>
+                    <select
+                      id="active-payment-gateway-select"
+                      value={activePaymentGateway}
+                      onChange={(e) => setActivePaymentGateway(e.target.value)}
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-xs font-bold text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/50 outline-none"
+                    >
+                      <option value="mercado_pago">Mercado Pago</option>
+                      <option value="stripe">Stripe (Cartão de Crédito e Pix)</option>
+                      <option value="paypal">PayPal</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Modo de Operação</label>
+                    <select
+                      id="payment-mode-select"
+                      value={paymentMode}
+                      onChange={(e) => setPaymentMode(e.target.value as 'sandbox' | 'live')}
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-xs font-bold text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500/50 outline-none"
+                    >
+                      <option value="sandbox">Sandbox (Ambiente de Testes / Simulação)</option>
+                      <option value="live">Produção (Live - Dinheiro Real)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100/20 rounded-2xl text-[11px] text-blue-600 dark:text-blue-400 leading-relaxed">
+                  Para pagamentos no aplicativo Android (Mobile), o sistema detectará automaticamente o Google Play Billing para conformidade com a loja de aplicativos. O gateway selecionado se aplica ao ambiente web e desktop.
+                </div>
+              </div>
+
+              {/* General Settings Summary */}
+              <div className="bg-slate-50 dark:bg-slate-950 p-5 rounded-3xl border border-slate-150 dark:border-slate-800/80 flex flex-col justify-between">
+                <div className="space-y-3">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">Instruções de Integração</h4>
+                  <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-2 leading-relaxed">
+                    <li className="flex items-start gap-2">
+                      <span className="text-blue-500 font-bold">•</span>
+                      <span>Ao utilizar o modo Sandbox, o sistema simula aprovações automáticas instantâneas para fins de desenvolvimento rápido.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-blue-500 font-bold">•</span>
+                      <span>No modo Produção, você deve fornecer chaves reais do respectivo provedor para processar transações legítimas dos usuários.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-blue-500 font-bold">•</span>
+                      <span>Chaves secretas e tokens de acesso são mantidos em cache seguro no servidor, ocultos do cliente e transmitidos de forma criptografada.</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="pt-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                  <div>
+                    {paymentConfigSuccessMessage && (
+                      <span className="text-xs text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/20 px-3 py-1.5 rounded-xl border border-emerald-100/20 block">
+                        {paymentConfigSuccessMessage}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    id="save-payment-config-btn"
+                    onClick={handleSavePaymentConfig}
+                    disabled={savingPaymentConfig}
+                    className="px-6 py-2.5 rounded-2xl bg-gradient-to-r from-blue-500 to-blue-600 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-blue-500/10 disabled:opacity-55 w-full sm:w-auto cursor-pointer"
+                  >
+                    {savingPaymentConfig ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" /> Salvando...
+                      </>
+                    ) : (
+                      <>
+                        <Check size={14} /> Salvar Configurações
+                      </>
+                    )}
+                  </motion.button>
+                </div>
+              </div>
+            </div>
+
+            {/* Gateways Credentials Forms */}
+            <div className="space-y-6">
+              <h4 className="text-sm font-black text-slate-800 dark:text-slate-200">Configurações Específicas dos Gateways</h4>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                
+                {/* Mercado Pago */}
+                <div className={`p-5 rounded-3xl border transition-all duration-300 space-y-4 ${
+                  activePaymentGateway === 'mercado_pago'
+                    ? 'bg-blue-50/10 border-blue-200 dark:border-blue-900/30'
+                    : 'bg-slate-50 dark:bg-slate-950 border-slate-150 dark:border-slate-800/80 opacity-75'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <h5 className="font-bold text-xs text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#009ee3]" /> Mercado Pago
+                    </h5>
+                    {activePaymentGateway === 'mercado_pago' && (
+                      <span className="text-[10px] font-black uppercase tracking-wider text-blue-500 bg-blue-100/20 px-2 py-0.5 rounded-full">Ativo</span>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">Public Key</label>
+                      <input
+                        type="text"
+                        value={mercadoPagoPublicKey}
+                        onChange={(e) => setMercadoPagoPublicKey(e.target.value)}
+                        placeholder="APP_USR-..."
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-blue-500/50"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">Access Token</label>
+                      <div className="relative">
+                        <input
+                          type={showMercadoPagoAccessToken ? "text" : "password"}
+                          value={mercadoPagoAccessToken}
+                          onChange={(e) => setMercadoPagoAccessToken(e.target.value)}
+                          placeholder="APP_USR-..."
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-700 dark:text-slate-300 pr-10 focus:ring-2 focus:ring-blue-500/50"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowMercadoPagoAccessToken(!showMercadoPagoAccessToken)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer border-none bg-transparent p-0"
+                        >
+                          {showMercadoPagoAccessToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stripe */}
+                <div className={`p-5 rounded-3xl border transition-all duration-300 space-y-4 ${
+                  activePaymentGateway === 'stripe'
+                    ? 'bg-blue-50/10 border-blue-200 dark:border-blue-900/30'
+                    : 'bg-slate-50 dark:bg-slate-950 border-slate-150 dark:border-slate-800/80 opacity-75'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <h5 className="font-bold text-xs text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#635bff]" /> Stripe
+                    </h5>
+                    {activePaymentGateway === 'stripe' && (
+                      <span className="text-[10px] font-black uppercase tracking-wider text-blue-500 bg-blue-100/20 px-2 py-0.5 rounded-full">Ativo</span>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">Publishable Key</label>
+                      <input
+                        type="text"
+                        value={stripePublishableKey}
+                        onChange={(e) => setStripePublishableKey(e.target.value)}
+                        placeholder="pk_test_..."
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-blue-500/50"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">Secret Key</label>
+                      <div className="relative">
+                        <input
+                          type={showStripeSecretKey ? "text" : "password"}
+                          value={stripeSecretKey}
+                          onChange={(e) => setStripeSecretKey(e.target.value)}
+                          placeholder="sk_test_..."
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-700 dark:text-slate-300 pr-10 focus:ring-2 focus:ring-blue-500/50"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowStripeSecretKey(!showStripeSecretKey)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer border-none bg-transparent p-0"
+                        >
+                          {showStripeSecretKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* PayPal */}
+                <div className={`p-5 rounded-3xl border transition-all duration-300 space-y-4 ${
+                  activePaymentGateway === 'paypal'
+                    ? 'bg-blue-50/10 border-blue-200 dark:border-blue-900/30'
+                    : 'bg-slate-50 dark:bg-slate-950 border-slate-150 dark:border-slate-800/80 opacity-75'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <h5 className="font-bold text-xs text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#003087]" /> PayPal
+                    </h5>
+                    {activePaymentGateway === 'paypal' && (
+                      <span className="text-[10px] font-black uppercase tracking-wider text-blue-500 bg-blue-100/20 px-2 py-0.5 rounded-full">Ativo</span>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">Client ID</label>
+                      <input
+                        type="text"
+                        value={paypalClientId}
+                        onChange={(e) => setPaypalClientId(e.target.value)}
+                        placeholder="Ad_..."
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-blue-500/50"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">Client Secret</label>
+                      <div className="relative">
+                        <input
+                          type={showPaypalClientSecret ? "text" : "password"}
+                          value={paypalClientSecret}
+                          onChange={(e) => setPaypalClientSecret(e.target.value)}
+                          placeholder="EL_..."
+                          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-700 dark:text-slate-300 pr-10 focus:ring-2 focus:ring-blue-500/50"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPaypalClientSecret(!showPaypalClientSecret)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer border-none bg-transparent p-0"
+                        >
+                          {showPaypalClientSecret ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </section>
         </>
       )}
 
