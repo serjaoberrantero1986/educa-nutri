@@ -2,18 +2,22 @@ import { PaymentProvider, CreatePaymentDTO, PaymentResponse } from "./PaymentPro
 
 export class MercadoPagoProvider implements PaymentProvider {
   public name = "Mercado Pago";
-  private accessToken: string;
-  private isConfigured: boolean;
 
-  constructor() {
-    this.accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN || "";
+  constructor() {}
+
+  private getAccessToken(): string {
+    return process.env.MERCADO_PAGO_ACCESS_TOKEN || "";
+  }
+
+  private checkIsConfigured(): boolean {
+    const token = this.getAccessToken();
     const isSandboxMode = process.env.PAYMENT_MODE === "sandbox";
-    const isPlaceholder = !this.accessToken || 
-                          this.accessToken.includes("YOUR_") || 
-                          this.accessToken.includes("MY_") || 
-                          this.accessToken.includes("placeholder");
+    const isPlaceholder = !token || 
+                          token.includes("YOUR_") || 
+                          token.includes("MY_") || 
+                          token.includes("placeholder");
     // Configured if we have an access token and PAYMENT_MODE is not config-forced to sandbox simulation
-    this.isConfigured = this.accessToken.length > 10 && !isSandboxMode && !isPlaceholder;
+    return token.length > 10 && !isSandboxMode && !isPlaceholder;
   }
 
   /**
@@ -51,7 +55,7 @@ export class MercadoPagoProvider implements PaymentProvider {
   private async apiRequest(endpoint: string, method: string, body?: any): Promise<any> {
     const url = `https://api.mercadopago.com${endpoint}`;
     const headers: Record<string, string> = {
-      "Authorization": `Bearer ${this.accessToken}`,
+      "Authorization": `Bearer ${this.getAccessToken()}`,
       "Content-Type": "application/json",
       "x-idempotency-key": `idemp-${Date.now()}-${Math.floor(Math.random() * 100000)}`
     };
@@ -100,7 +104,7 @@ export class MercadoPagoProvider implements PaymentProvider {
   }
 
   public async createPayment(data: CreatePaymentDTO): Promise<PaymentResponse> {
-    if (!this.isConfigured || (data.paymentMethod === "card" && (!data.token || data.token === "card_token_sandbox"))) {
+    if (!this.checkIsConfigured() || (data.paymentMethod === "card" && (!data.token || data.token === "card_token_sandbox"))) {
       if (process.env.PAYMENT_MODE === "sandbox") {
         return this.createSimulatedPayment(data);
       }
@@ -196,7 +200,7 @@ export class MercadoPagoProvider implements PaymentProvider {
       throw new Error("ID de pagamento simulado não é permitido em ambiente de produção.");
     }
 
-    if (!this.isConfigured) {
+    if (!this.checkIsConfigured()) {
       throw new Error("Mercado Pago client is not configured with an access token");
     }
 

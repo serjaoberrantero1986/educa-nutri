@@ -183,7 +183,7 @@ service cloud.firestore {
     }
 
     match /foods/{foodId} {
-      allow get, list: if isSignedIn();
+      allow get, list: if true;
       allow write: if false;
     }
 
@@ -208,7 +208,8 @@ service cloud.firestore {
     }
 
     match /configs/{configId} {
-      allow get, list: if isSignedIn();
+      allow get: if true;
+      allow list: if isSignedIn();
       allow write, update: if isAdmin();
     }
 
