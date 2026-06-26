@@ -58,6 +58,7 @@ export const StoreTab: React.FC<StoreTabProps> = ({
   const [copiedKey, setCopiedKey] = useState(false);
   const [activePaymentResponse, setActivePaymentResponse] = useState<any | null>(null);
   const [pollingIntervalId, setPollingIntervalId] = useState<any>(null);
+  const [selectedPlanType, setSelectedPlanType] = useState<'premium' | 'professional'>('premium');
 
   // Check if premium is active
   const isPremiumActive = profile?.premium_access_until 
@@ -358,8 +359,8 @@ export const StoreTab: React.FC<StoreTabProps> = ({
   const handleInitiatePayment = async (method: 'pix' | 'card', planType: 'premium' | 'professional' = 'premium') => {
     if (!profile || !user) return;
     
+    setSelectedPlanType(planType);
     setPaymentError(null);
-    setIsCreatingPayment(true);
     setPaymentModal(method);
     setActivePaymentResponse(null);
     setCopiedKey(false);
@@ -369,61 +370,36 @@ export const StoreTab: React.FC<StoreTabProps> = ({
       setPollingIntervalId(null);
     }
 
-    try {
-      const rawName = profile.username || 'Usuário';
-      const nameParts = rawName.trim().split(' ');
-      const firstName = nameParts[0] || 'Nome';
-      const lastName = nameParts.slice(1).join(' ') || 'Sobrenome';
+    if (method === 'pix') {
+      setIsCreatingPayment(true);
+      try {
+        const rawName = profile.username || 'Usuário';
+        const nameParts = rawName.trim().split(' ');
+        const firstName = nameParts[0] || 'Nome';
+        const lastName = nameParts.slice(1).join(' ') || 'Sobrenome';
 
-      const price = planType === 'professional' ? (config.monthly_professional_price || 39.90) : config.monthly_premium_price;
-      const desc = planType === 'professional' ? 'Acesso Mensal Profissional - SportNutri' : 'Acesso Mensal Premium - SportNutri';
+        const price = planType === 'professional' ? (config.monthly_professional_price || 39.90) : config.monthly_premium_price;
+        const desc = planType === 'professional' ? 'Acesso Mensal Profissional - SportNutri' : 'Acesso Mensal Premium - SportNutri';
 
-      const payload = {
-        amount: price,
-        description: desc,
-        email: user.email || 'usuario@sportnutri.com',
-        firstName,
-        lastName,
-        paymentMethod: method,
-        token: method === 'card' ? 'card_token_sandbox' : undefined
-      };
-
-      const isAndroidApp = typeof window !== "undefined" && 
-        (window as any).Capacitor && 
-        (window as any).Capacitor.getPlatform() === "android";
-
-      let result;
-      if (isAndroidApp) {
-        console.log('[StoreTab] Executing local Google Play billing flow...');
-        result = await paymentService.createPayment({
+        const payload = {
           amount: price,
           description: desc,
           email: user.email || 'usuario@sportnutri.com',
           firstName,
           lastName,
-          paymentMethod: 'card'
-        });
-      } else {
-        console.log('[StoreTab] Calling web Mercado Pago back-end API...');
-        result = await createPaymentApi(payload);
-      }
-      
-      if (result.errorMessage || result.status === 'rejected') {
-        setPaymentError(result.errorMessage || 'Falha ao processar a criação do pagamento.');
-        return;
-      }
+          paymentMethod: 'pix' as const
+        };
 
-      setActivePaymentResponse(result);
-
-      if (isAndroidApp) {
-        if (result.status === 'approved' || result.statusDetail === 'sandbox_approved') {
-          if (planType === 'professional') {
-            await handleCompleteProfessionalPurchase();
-          } else {
-            await handleCompletePremiumPurchase();
-          }
+        console.log('[StoreTab] Calling web Mercado Pago back-end API for PIX...');
+        const result = await createPaymentApi(payload);
+        
+        if (result.errorMessage || result.status === 'rejected') {
+          setPaymentError(result.errorMessage || 'Falha ao processar a criação do pagamento por PIX.');
+          return;
         }
-      } else if (method === 'pix' && result.id) {
+
+        setActivePaymentResponse(result);
+
         const interval = setInterval(async () => {
           try {
             const statusCheck = await getPaymentStatusApi(result.id);
@@ -441,10 +417,98 @@ export const StoreTab: React.FC<StoreTabProps> = ({
           }
         }, 4000);
         setPollingIntervalId(interval);
+      } catch (err: any) {
+        console.error('Error initiating payment session:', err);
+        setPaymentError(err.message || 'Falha ao conectar com o servidor para criar pagamento por PIX.');
+      } finally {
+        setIsCreatingPayment(false);
+      }
+    } else {
+      // For credit card payments, we do not call the API yet.
+      // We wait for the user to type card details and submit via handleSubmitCardPayment().
+      setIsCreatingPayment(false);
+    }
+  };
+
+  const handleSubmitCardPayment = async () => {
+    if (!profile || !user) return;
+
+    if (!cardNumber || cardNumber.length < 13) {
+      setPaymentError("Por favor, insira um número de cartão de crédito válido.");
+      return;
+    }
+    if (!cardName || cardName.trim().length < 3) {
+      setPaymentError("Por favor, insira o nome impresso no cartão.");
+      return;
+    }
+    if (!cardExpiry || cardExpiry.length < 5) {
+      setPaymentError("Por favor, insira a validade do cartão (MM/AA).");
+      return;
+    }
+    if (!cardCvv || cardCvv.length < 3) {
+      setPaymentError("Por favor, insira o código de segurança (CVV).");
+      return;
+    }
+
+    setPaymentError(null);
+    setIsCreatingPayment(true);
+
+    try {
+      const rawName = profile.username || 'Usuário';
+      const nameParts = rawName.trim().split(' ');
+      const firstName = nameParts[0] || 'Nome';
+      const lastName = nameParts.slice(1).join(' ') || 'Sobrenome';
+
+      const price = selectedPlanType === 'professional' ? (config.monthly_professional_price || 39.90) : config.monthly_premium_price;
+      const desc = selectedPlanType === 'professional' ? 'Acesso Mensal Profissional - SportNutri' : 'Acesso Mensal Premium - SportNutri';
+
+      const isAndroidApp = typeof window !== "undefined" && 
+        (window as any).Capacitor && 
+        (window as any).Capacitor.getPlatform() === "android";
+
+      let result;
+      if (isAndroidApp) {
+        console.log('[StoreTab] Executing local Google Play billing flow...');
+        result = await paymentService.createPayment({
+          amount: price,
+          description: desc,
+          email: user.email || 'usuario@sportnutri.com',
+          firstName,
+          lastName,
+          paymentMethod: 'card'
+        });
+      } else {
+        console.log('[StoreTab] Calling web Mercado Pago back-end API for Credit Card...');
+        result = await createPaymentApi({
+          amount: price,
+          description: desc,
+          email: user.email || 'usuario@sportnutri.com',
+          firstName,
+          lastName,
+          paymentMethod: 'card',
+          token: 'card_token_sandbox' // Sandbox token bypass identifier
+        });
+      }
+
+      if (result.errorMessage || result.status === 'rejected') {
+        setPaymentError(result.errorMessage || 'Falha ao processar pagamento por cartão de crédito.');
+        return;
+      }
+
+      setActivePaymentResponse(result);
+
+      if (result.status === 'approved' || result.statusDetail === 'sandbox_approved') {
+        if (selectedPlanType === 'professional') {
+          await handleCompleteProfessionalPurchase();
+        } else {
+          await handleCompletePremiumPurchase();
+        }
+      } else {
+        setPaymentError('Transação não aprovada pelo intermediador de pagamentos.');
       }
     } catch (err: any) {
-      console.error('Error initiating payment session:', err);
-      setPaymentError(err.message || 'Falha ao conectar com o servidor para criar pagamento.');
+      console.error('Error submitting credit card payment:', err);
+      setPaymentError(err.message || 'Falha ao processar pagamento de cartão. Verifique as credenciais.');
     } finally {
       setIsCreatingPayment(false);
     }
@@ -1096,7 +1160,7 @@ export const StoreTab: React.FC<StoreTabProps> = ({
                   </div>
 
                   <button 
-                    onClick={handleCompletePremiumPurchase}
+                    onClick={handleSubmitCardPayment}
                     className="w-full py-4 mt-2 bg-purple-600 hover:bg-purple-500 text-white font-black text-xs uppercase tracking-widest rounded-2xl transition-all shadow-lg shadow-purple-500/20 flex items-center justify-center gap-1.5 cursor-pointer text-center border-none"
                     id="submit-card-payment-btn"
                   >

@@ -6,19 +6,17 @@ export class MercadoPagoProvider implements PaymentProvider {
   constructor() {}
 
   private getAccessToken(config?: PaymentGatewayConfig): string {
-    return config?.mercado_pago_access_token || process.env.MERCADO_PAGO_ACCESS_TOKEN || "";
+    return process.env.MERCADO_PAGO_ACCESS_TOKEN || config?.mercado_pago_access_token || "";
   }
 
   private checkIsConfigured(config?: PaymentGatewayConfig): boolean {
     const token = this.getAccessToken(config);
-    const paymentMode = config?.payment_mode || process.env.PAYMENT_MODE || "sandbox";
-    const isSandboxMode = paymentMode === "sandbox";
     const isPlaceholder = !token || 
                           token.includes("YOUR_") || 
                           token.includes("MY_") || 
                           token.includes("placeholder");
-    // Configured if we have an access token and payment mode is not config-forced to sandbox simulation
-    return token.length > 10 && !isSandboxMode && !isPlaceholder;
+    // Configured if we have a valid access token (test or production)
+    return token.length > 10 && !isPlaceholder;
   }
 
   /**
@@ -110,18 +108,17 @@ export class MercadoPagoProvider implements PaymentProvider {
     // For card payments, since there is no native front-end SDK card tokenization,
     // we bypass real card API calls to prevent "Invalid Token" or "Unauthorized use of live credentials" blocks.
     if (data.paymentMethod === "card" && (!data.token || data.token === "card_token_sandbox")) {
-      return {
-        id: `sim-card-prod-${Date.now()}`,
-        status: "approved",
-        statusDetail: "accredited",
-        paymentMethod: "card",
-        amount: Number(data.amount),
-        errorMessage: undefined
-      };
+      if (paymentMode === "sandbox") {
+        return this.createSimulatedPayment(data);
+      }
+      throw new Error("Pagamento por cartão não configurado para produção. É necessário gerar token real do cartão via SDK/Brick do Mercado Pago.");
     }
 
     if (!this.checkIsConfigured(config)) {
-      return this.createSimulatedPayment(data);
+      if (paymentMode === "sandbox") {
+        return this.createSimulatedPayment(data);
+      }
+      throw new Error("Mercado Pago não está configurado para produção. Verifique o Access Token de produção (APP_USR-...) nas configurações.");
     }
 
     try {
@@ -186,8 +183,11 @@ export class MercadoPagoProvider implements PaymentProvider {
       };
     } catch (error: any) {
       console.error("[MercadoPago Provider] Error creating payment:", error);
-      console.warn("[MercadoPago Provider] Falling back to simulated payment response to ensure checkout continuity.");
-      return this.createSimulatedPayment(data);
+      if (paymentMode === "sandbox") {
+        console.warn("[MercadoPago Provider] Sandbox mode active. Returning simulated payment.");
+        return this.createSimulatedPayment(data);
+      }
+      throw new Error(error?.message || "Erro real do Mercado Pago ao criar pagamento em produção.");
     }
   }
 
@@ -210,7 +210,10 @@ export class MercadoPagoProvider implements PaymentProvider {
     }
 
     if (!this.checkIsConfigured(config)) {
-      return this.getSimulatedPaymentStatus(paymentId);
+      if (paymentMode === "sandbox") {
+        return this.getSimulatedPaymentStatus(paymentId);
+      }
+      throw new Error("Mercado Pago não está configurado para buscar status de pagamento em produção.");
     }
 
     try {

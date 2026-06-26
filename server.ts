@@ -254,6 +254,56 @@ async function fetchStoreConfig() {
   };
 }
 
+async function fetchStorePrivateConfig() {
+  // 1. Try REST API first
+  try {
+    const projectId = firebaseProjectId || "gen-lang-client-0240394848";
+    const databaseId = firebaseDatabaseId || "ai-studio-0f6dd547-caa0-4714-b7db-f80a11f42adf";
+    const apiKey = process.env.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey || "";
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/configs/store_private${apiKey ? `?key=${apiKey}` : ""}`;
+    
+    const response = await fetch(url);
+    if (response.ok) {
+      const data = await response.json();
+      const fields = data.fields || {};
+      const config: any = {};
+      
+      for (const [key, valueObj] of Object.entries(fields)) {
+        const val = valueObj as any;
+        if (val.stringValue !== undefined) {
+          config[key] = val.stringValue;
+        } else if (val.integerValue !== undefined) {
+          config[key] = parseInt(val.integerValue, 10);
+        } else if (val.doubleValue !== undefined) {
+          config[key] = parseFloat(val.doubleValue);
+        } else if (val.booleanValue !== undefined) {
+          config[key] = val.booleanValue;
+        }
+      }
+      if (Object.keys(config).length > 0) {
+        return config;
+      }
+    }
+  } catch (err) {}
+
+  // 2. Try Admin SDK
+  try {
+    const configDoc = await firestore.collection("configs").doc("store_private").get();
+    if (configDoc.exists) {
+      return configDoc.data() || {};
+    }
+  } catch (err) {}
+
+  // 3. Fallback to process.env
+  return {
+    whatsapp_api_key: process.env.EVOLUTION_API_KEY || "sportnutri_default_key",
+    ai_api_key: process.env.AI_API_KEY || "",
+    mercado_pago_access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN || "",
+    stripe_secret_key: process.env.STRIPE_SECRET_KEY || "",
+    paypal_client_secret: process.env.PAYPAL_CLIENT_SECRET || ""
+  };
+}
+
 interface CachedAiConfig {
   ai_provider: string;
   ai_api_key: string;
@@ -400,16 +450,20 @@ async function initializeEnvFromFirestore() {
     const env_paypal_client_secret = getEnvValueFromFile(existingContent, "PAYPAL_CLIENT_SECRET");
 
     const configDocRef = firestore.collection("configs").doc("store");
+    const privateConfigDocRef = firestore.collection("configs").doc("store_private");
+    
     let dbData = await fetchStoreConfig() || {};
+    let dbPrivateData = await fetchStorePrivateConfig() || {};
 
     // Flag to see if .env contains updates we need to sync TO Firestore
     const updates: Record<string, any> = {};
+    const privateUpdates: Record<string, any> = {};
 
     if (isValidValue(env_api_url) && env_api_url !== dbData.whatsapp_api_url) {
       updates.whatsapp_api_url = env_api_url;
     }
-    if (isValidValue(env_api_key) && env_api_key !== dbData.whatsapp_api_key) {
-      updates.whatsapp_api_key = env_api_key;
+    if (isValidValue(env_api_key) && env_api_key !== dbPrivateData.whatsapp_api_key) {
+      privateUpdates.whatsapp_api_key = env_api_key;
     }
     if (isValidValue(env_instance) && env_instance !== dbData.whatsapp_instance) {
       updates.whatsapp_instance = env_instance;
@@ -417,8 +471,8 @@ async function initializeEnvFromFirestore() {
     if (isValidValue(env_ai_provider) && env_ai_provider !== dbData.ai_provider) {
       updates.ai_provider = env_ai_provider;
     }
-    if (isValidValue(env_ai_api_key) && env_ai_api_key !== dbData.ai_api_key) {
-      updates.ai_api_key = env_ai_api_key;
+    if (isValidValue(env_ai_api_key) && env_ai_api_key !== dbPrivateData.ai_api_key) {
+      privateUpdates.ai_api_key = env_ai_api_key;
     }
     if (isValidValue(env_ai_model) && env_ai_model !== dbData.ai_model) {
       updates.ai_model = env_ai_model;
@@ -432,31 +486,39 @@ async function initializeEnvFromFirestore() {
     if (isValidValue(env_mp_public_key) && env_mp_public_key !== dbData.mercado_pago_public_key) {
       updates.mercado_pago_public_key = env_mp_public_key;
     }
-    if (isValidValue(env_mp_access_token) && env_mp_access_token !== dbData.mercado_pago_access_token) {
-      updates.mercado_pago_access_token = env_mp_access_token;
+    if (isValidValue(env_mp_access_token) && env_mp_access_token !== dbPrivateData.mercado_pago_access_token) {
+      privateUpdates.mercado_pago_access_token = env_mp_access_token;
     }
     if (isValidValue(env_stripe_pub_key) && env_stripe_pub_key !== dbData.stripe_publishable_key) {
       updates.stripe_publishable_key = env_stripe_pub_key;
     }
-    if (isValidValue(env_stripe_sec_key) && env_stripe_sec_key !== dbData.stripe_secret_key) {
-      updates.stripe_secret_key = env_stripe_sec_key;
+    if (isValidValue(env_stripe_sec_key) && env_stripe_sec_key !== dbPrivateData.stripe_secret_key) {
+      privateUpdates.stripe_secret_key = env_stripe_sec_key;
     }
     if (isValidValue(env_paypal_client_id) && env_paypal_client_id !== dbData.paypal_client_id) {
       updates.paypal_client_id = env_paypal_client_id;
     }
-    if (isValidValue(env_paypal_client_secret) && env_paypal_client_secret !== dbData.paypal_client_secret) {
-      updates.paypal_client_secret = env_paypal_client_secret;
+    if (isValidValue(env_paypal_client_secret) && env_paypal_client_secret !== dbPrivateData.paypal_client_secret) {
+      privateUpdates.paypal_client_secret = env_paypal_client_secret;
     }
 
     // If there are newly updated keys in .env, write them to Firestore to prevent overwrite
     if (Object.keys(updates).length > 0) {
-      console.log("Desvio e sincronização de novas chaves do arquivo .env para o Firestore:", Object.keys(updates));
+      console.log("Sincronização de novas configurações públicas para o Firestore:", Object.keys(updates));
       try {
         await configDocRef.set(updates, { merge: true });
-        // Update our dbData object to reflect these synced values
         dbData = { ...dbData, ...updates };
       } catch (err) {
-        console.warn("Could not save .env updates to Firestore:", err);
+        console.warn("Could not save public .env updates to Firestore:", err);
+      }
+    }
+    if (Object.keys(privateUpdates).length > 0) {
+      console.log("Sincronização de novas credenciais privadas para o Firestore:", Object.keys(privateUpdates));
+      try {
+        await privateConfigDocRef.set(privateUpdates, { merge: true });
+        dbPrivateData = { ...dbPrivateData, ...privateUpdates };
+      } catch (err) {
+        console.warn("Could not save private .env updates to Firestore:", err);
       }
     }
 
@@ -477,19 +539,19 @@ async function initializeEnvFromFirestore() {
     };
 
     if (shouldSyncToEnv("EVOLUTION_API_URL", dbData.whatsapp_api_url, env_api_url)) initialConfigs.EVOLUTION_API_URL = dbData.whatsapp_api_url;
-    if (shouldSyncToEnv("EVOLUTION_API_KEY", dbData.whatsapp_api_key, env_api_key)) initialConfigs.EVOLUTION_API_KEY = dbData.whatsapp_api_key;
+    if (shouldSyncToEnv("EVOLUTION_API_KEY", dbPrivateData.whatsapp_api_key, env_api_key)) initialConfigs.EVOLUTION_API_KEY = dbPrivateData.whatsapp_api_key;
     if (shouldSyncToEnv("EVOLUTION_INSTANCE", dbData.whatsapp_instance, env_instance)) initialConfigs.EVOLUTION_INSTANCE = dbData.whatsapp_instance;
     if (shouldSyncToEnv("AI_PROVIDER", dbData.ai_provider, env_ai_provider)) initialConfigs.AI_PROVIDER = dbData.ai_provider;
-    if (shouldSyncToEnv("AI_API_KEY", dbData.ai_api_key, env_ai_api_key)) initialConfigs.AI_API_KEY = dbData.ai_api_key;
+    if (shouldSyncToEnv("AI_API_KEY", dbPrivateData.ai_api_key, env_ai_api_key)) initialConfigs.AI_API_KEY = dbPrivateData.ai_api_key;
     if (shouldSyncToEnv("AI_MODEL", dbData.ai_model, env_ai_model)) initialConfigs.AI_MODEL = dbData.ai_model;
     if (shouldSyncToEnv("ACTIVE_PAYMENT_GATEWAY", dbData.active_payment_gateway, env_active_payment_gateway)) initialConfigs.ACTIVE_PAYMENT_GATEWAY = dbData.active_payment_gateway;
     if (shouldSyncToEnv("PAYMENT_MODE", dbData.payment_mode, env_payment_mode)) initialConfigs.PAYMENT_MODE = dbData.payment_mode;
     if (shouldSyncToEnv("MERCADO_PAGO_PUBLIC_KEY", dbData.mercado_pago_public_key, env_mp_public_key)) initialConfigs.MERCADO_PAGO_PUBLIC_KEY = dbData.mercado_pago_public_key;
-    if (shouldSyncToEnv("MERCADO_PAGO_ACCESS_TOKEN", dbData.mercado_pago_access_token, env_mp_access_token)) initialConfigs.MERCADO_PAGO_ACCESS_TOKEN = dbData.mercado_pago_access_token;
+    if (shouldSyncToEnv("MERCADO_PAGO_ACCESS_TOKEN", dbPrivateData.mercado_pago_access_token, env_mp_access_token)) initialConfigs.MERCADO_PAGO_ACCESS_TOKEN = dbPrivateData.mercado_pago_access_token;
     if (shouldSyncToEnv("STRIPE_PUBLISHABLE_KEY", dbData.stripe_publishable_key, env_stripe_pub_key)) initialConfigs.STRIPE_PUBLISHABLE_KEY = dbData.stripe_publishable_key;
-    if (shouldSyncToEnv("STRIPE_SECRET_KEY", dbData.stripe_secret_key, env_stripe_sec_key)) initialConfigs.STRIPE_SECRET_KEY = dbData.stripe_secret_key;
+    if (shouldSyncToEnv("STRIPE_SECRET_KEY", dbPrivateData.stripe_secret_key, env_stripe_sec_key)) initialConfigs.STRIPE_SECRET_KEY = dbPrivateData.stripe_secret_key;
     if (shouldSyncToEnv("PAYPAL_CLIENT_ID", dbData.paypal_client_id, env_paypal_client_id)) initialConfigs.PAYPAL_CLIENT_ID = dbData.paypal_client_id;
-    if (shouldSyncToEnv("PAYPAL_CLIENT_SECRET", dbData.paypal_client_secret, env_paypal_client_secret)) initialConfigs.PAYPAL_CLIENT_SECRET = dbData.paypal_client_secret;
+    if (shouldSyncToEnv("PAYPAL_CLIENT_SECRET", dbPrivateData.paypal_client_secret, env_paypal_client_secret)) initialConfigs.PAYPAL_CLIENT_SECRET = dbPrivateData.paypal_client_secret;
 
     if (Object.keys(initialConfigs).length > 0) {
       let lines = existingContent.split("\n");
@@ -4959,7 +5021,7 @@ app.post("/api/admin/config", async (req, res) => {
     console.error("Failed to write env configuration:", err);
   }
 
-  // Sincronize visual dynamic config straight with Firestore database "configs/store"
+  // Sincronize visual dynamic config straight with Firestore database "configs/store" and "configs/store_private"
   try {
     const firestoreConfig = {
       streak_freeze_cost: Number(config.streak_freeze_cost ?? 1000),
@@ -4969,26 +5031,30 @@ app.post("/api/admin/config", async (req, res) => {
       recipes_pass_cost: Number(config.recipes_pass_cost ?? 1200),
       monthly_premium_price: Number(config.monthly_premium_price ?? 19.90),
       whatsapp_api_url: config.whatsapp_api_url ?? "https://api.sportnutri.com",
-      whatsapp_api_key: config.whatsapp_api_key ?? "sportnutri_default_key",
       whatsapp_instance: config.whatsapp_instance ?? "sportnutri_bot",
       ai_provider: config.ai_provider ?? "Google Gemini",
-      ai_api_key: config.ai_api_key ?? "",
       ai_model: config.ai_model ?? "gemini-3.5-flash",
       food_search_mode: config.food_search_mode ?? "web",
       active_payment_gateway: config.active_payment_gateway ?? "mercado_pago",
       payment_mode: config.payment_mode ?? "sandbox",
       mercado_pago_public_key: config.mercado_pago_public_key ?? "",
-      mercado_pago_access_token: config.mercado_pago_access_token ?? "",
       stripe_publishable_key: config.stripe_publishable_key ?? "",
-      stripe_secret_key: config.stripe_secret_key ?? "",
-      paypal_client_id: config.paypal_client_id ?? "",
-      paypal_client_secret: config.paypal_client_secret ?? ""
+      paypal_client_id: config.paypal_client_id ?? ""
     };
     await firestore.collection("configs").doc("store").set(firestoreConfig, { merge: true });
+
+    const privateConfig = {
+      whatsapp_api_key: config.whatsapp_api_key ?? "sportnutri_default_key",
+      ai_api_key: config.ai_api_key ?? "",
+      mercado_pago_access_token: config.mercado_pago_access_token ?? "",
+      stripe_secret_key: config.stripe_secret_key ?? "",
+      paypal_client_secret: config.paypal_client_secret ?? ""
+    };
+    await firestore.collection("configs").doc("store_private").set(privateConfig, { merge: true });
     
     // Invalidate local in-memory dynamic cache for immediate real-time effect
     cachedAiConfig = null;
-    console.log("[Admin Config] Config saved and synchronized to Firestore collection.");
+    console.log("[Admin Config] Config saved and split-synchronized to Firestore public/private docs.");
   } catch (err) {
     // Silently proceed when Firestore update is bypassed in sandbox environment.
     // The configurations are already safely persisted to the local env/config files.

@@ -101,7 +101,7 @@ export async function getStoreConfig(): Promise<StoreConfig> {
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
         const data = docSnap.data();
-        const cfg: StoreConfig = {
+        let cfg: StoreConfig = {
           streak_freeze_cost: typeof data.streak_freeze_cost === "number" ? data.streak_freeze_cost : DEFAULT_STORE_CONFIG.streak_freeze_cost,
           premium_pass_cost: typeof data.premium_pass_cost === "number" ? data.premium_pass_cost : DEFAULT_STORE_CONFIG.premium_pass_cost,
           assistant_pass_cost: typeof data.assistant_pass_cost === "number" ? data.assistant_pass_cost : DEFAULT_STORE_CONFIG.assistant_pass_cost,
@@ -111,29 +111,50 @@ export async function getStoreConfig(): Promise<StoreConfig> {
           monthly_premium_price: typeof data.monthly_premium_price === "number" ? data.monthly_premium_price : DEFAULT_STORE_CONFIG.monthly_premium_price,
           monthly_professional_price: typeof data.monthly_professional_price === "number" ? data.monthly_professional_price : DEFAULT_STORE_CONFIG.monthly_professional_price,
           whatsapp_api_url: data.whatsapp_api_url || DEFAULT_STORE_CONFIG.whatsapp_api_url,
-          whatsapp_api_key: data.whatsapp_api_key || DEFAULT_STORE_CONFIG.whatsapp_api_key,
           whatsapp_instance: data.whatsapp_instance || DEFAULT_STORE_CONFIG.whatsapp_instance,
           ai_provider: data.ai_provider || DEFAULT_STORE_CONFIG.ai_provider,
-          ai_api_key: data.ai_api_key || DEFAULT_STORE_CONFIG.ai_api_key,
           ai_model: data.ai_model || DEFAULT_STORE_CONFIG.ai_model,
           food_search_mode: data.food_search_mode || DEFAULT_STORE_CONFIG.food_search_mode || "web",
           active_payment_gateway: data.active_payment_gateway || DEFAULT_STORE_CONFIG.active_payment_gateway,
           payment_mode: data.payment_mode || DEFAULT_STORE_CONFIG.payment_mode,
           mercado_pago_public_key: data.mercado_pago_public_key || DEFAULT_STORE_CONFIG.mercado_pago_public_key,
-          mercado_pago_access_token: data.mercado_pago_access_token || DEFAULT_STORE_CONFIG.mercado_pago_access_token,
           stripe_publishable_key: data.stripe_publishable_key || DEFAULT_STORE_CONFIG.stripe_publishable_key,
-          stripe_secret_key: data.stripe_secret_key || DEFAULT_STORE_CONFIG.stripe_secret_key,
           paypal_client_id: data.paypal_client_id || DEFAULT_STORE_CONFIG.paypal_client_id,
-          paypal_client_secret: data.paypal_client_secret || DEFAULT_STORE_CONFIG.paypal_client_secret,
+          // Set placeholders for private fields which are fetched securely via back-end API below
+          whatsapp_api_key: "",
+          ai_api_key: "",
+          mercado_pago_access_token: "",
+          stripe_secret_key: "",
+          paypal_client_secret: ""
         };
+
+        // If authenticated, fetch secret credentials from the secure back-end admin configuration proxy
+        const currentUser = auth.currentUser;
+        if (currentUser) {
+          try {
+            const apiRes = await fetch(getApiUrl(`/api/admin/config?userId=${encodeURIComponent(currentUser.uid)}&email=${encodeURIComponent(currentUser.email || "")}`));
+            if (apiRes.ok) {
+              const apiData = await apiRes.json();
+              cfg = {
+                ...cfg,
+                whatsapp_api_key: apiData.whatsapp_api_key || "",
+                ai_api_key: apiData.ai_api_key || "",
+                mercado_pago_access_token: apiData.mercado_pago_access_token || "",
+                stripe_secret_key: apiData.stripe_secret_key || "",
+                paypal_client_secret: apiData.paypal_client_secret || ""
+              };
+            }
+          } catch (e) {
+            console.warn("Could not merge admin-only keys from server API:", e);
+          }
+        }
+
         try {
           localStorage.setItem("sportnutri_store_config", JSON.stringify(cfg));
         } catch (_) {}
 
         // Silently sync with backend to update environment memory variables for administrative logs and fallbacks
-        const currentUser = auth.currentUser;
-        const normUserEmail = (currentUser?.email || "").toLowerCase().trim();
-        if (currentUser && normUserEmail === "edsonricardosouza@gmail.com") {
+        if (currentUser && (currentUser.email || "").toLowerCase().trim() === "edsonricardosouza@gmail.com") {
           fetch(getApiUrl("/api/admin/config"), {
             method: "POST",
             headers: {
@@ -215,8 +236,17 @@ export async function saveStoreConfig(config: StoreConfig): Promise<void> {
     const path = `${CONFIG_PATH}/${CONFIG_DOC_ID}`;
     try {
       const docRef = doc(db, CONFIG_PATH, CONFIG_DOC_ID);
-      await setDoc(docRef, config);
-      console.log("Config saved to Firestore successfully!");
+      // Strip private keys from the Firestore document so they are never saved publicly
+      const {
+        whatsapp_api_key,
+        ai_api_key,
+        mercado_pago_access_token,
+        stripe_secret_key,
+        paypal_client_secret,
+        ...publicConfig
+      } = config;
+      await setDoc(docRef, publicConfig);
+      console.log("Config saved to Firestore successfully without private keys!");
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, path);
     }

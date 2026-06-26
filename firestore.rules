@@ -207,10 +207,17 @@ service cloud.firestore {
       allow delete: if isSignedIn() && (isOwner(existing().user_id) || isAdmin());
     }
 
-    match /configs/{configId} {
+    match /configs/store {
       allow get: if true;
-      allow list: if isSignedIn();
-      allow write, update: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /configs/store_private {
+      allow read, write: if isAdmin();
+    }
+
+    match /configs/{configId} {
+      allow read, write: if isAdmin();
     }
 
     match /whatsapp_webhook_logs/{logId} {
