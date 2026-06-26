@@ -19,7 +19,7 @@ export interface StoreConfig {
   ai_model?: string;
   food_search_mode?: 'apis' | 'web';
   active_payment_gateway?: string;
-  payment_mode?: 'sandbox' | 'live';
+  payment_mode?: 'mock' | 'sandbox' | 'live';
   mercado_pago_public_key?: string;
   mercado_pago_access_token?: string;
   stripe_publishable_key?: string;
@@ -45,7 +45,7 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   ai_model: "gemini-3.5-flash",
   food_search_mode: "web",
   active_payment_gateway: "mercado_pago",
-  payment_mode: "sandbox",
+  payment_mode: "live",
   mercado_pago_public_key: "",
   mercado_pago_access_token: "",
   stripe_publishable_key: "",
@@ -152,21 +152,6 @@ export async function getStoreConfig(): Promise<StoreConfig> {
         try {
           localStorage.setItem("sportnutri_store_config", JSON.stringify(cfg));
         } catch (_) {}
-
-        // Silently sync with backend to update environment memory variables for administrative logs and fallbacks
-        if (currentUser && (currentUser.email || "").toLowerCase().trim() === "edsonricardosouza@gmail.com") {
-          fetch(getApiUrl("/api/admin/config"), {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              userId: currentUser.uid,
-              email: currentUser.email,
-              config: cfg
-            })
-          }).catch(() => {});
-        }
 
         return cfg;
       }
