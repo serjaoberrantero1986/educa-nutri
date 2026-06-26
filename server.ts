@@ -189,7 +189,8 @@ async function fetchStoreConfig() {
   try {
     const projectId = firebaseProjectId || "gen-lang-client-0240394848";
     const databaseId = firebaseDatabaseId || "ai-studio-0f6dd547-caa0-4714-b7db-f80a11f42adf";
-    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/configs/store`;
+    const apiKey = process.env.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey || "";
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/configs/store${apiKey ? `?key=${apiKey}` : ""}`;
     
     const response = await fetch(url);
     if (response.ok) {
@@ -376,6 +377,12 @@ async function initializeEnvFromFirestore() {
       return null;
     };
 
+    const isValidValue = (val: string | null | undefined): boolean => {
+      if (!val) return false;
+      const lower = val.toLowerCase();
+      return !lower.includes("placeholder") && !lower.includes("your_") && !lower.includes("my_") && val.trim().length > 3;
+    };
+
     // Extract current manually edited configurations from .env
     const env_api_url = getEnvValueFromFile(existingContent, "EVOLUTION_API_URL");
     const env_api_key = getEnvValueFromFile(existingContent, "EVOLUTION_API_KEY");
@@ -383,6 +390,14 @@ async function initializeEnvFromFirestore() {
     const env_ai_provider = getEnvValueFromFile(existingContent, "AI_PROVIDER");
     const env_ai_api_key = getEnvValueFromFile(existingContent, "AI_API_KEY");
     const env_ai_model = getEnvValueFromFile(existingContent, "AI_MODEL");
+    const env_active_payment_gateway = getEnvValueFromFile(existingContent, "ACTIVE_PAYMENT_GATEWAY");
+    const env_payment_mode = getEnvValueFromFile(existingContent, "PAYMENT_MODE");
+    const env_mp_public_key = getEnvValueFromFile(existingContent, "MERCADO_PAGO_PUBLIC_KEY");
+    const env_mp_access_token = getEnvValueFromFile(existingContent, "MERCADO_PAGO_ACCESS_TOKEN");
+    const env_stripe_pub_key = getEnvValueFromFile(existingContent, "STRIPE_PUBLISHABLE_KEY");
+    const env_stripe_sec_key = getEnvValueFromFile(existingContent, "STRIPE_SECRET_KEY");
+    const env_paypal_client_id = getEnvValueFromFile(existingContent, "PAYPAL_CLIENT_ID");
+    const env_paypal_client_secret = getEnvValueFromFile(existingContent, "PAYPAL_CLIENT_SECRET");
 
     const configDocRef = firestore.collection("configs").doc("store");
     let dbData = await fetchStoreConfig() || {};
@@ -390,31 +405,59 @@ async function initializeEnvFromFirestore() {
     // Flag to see if .env contains updates we need to sync TO Firestore
     const updates: Record<string, any> = {};
 
-    if (env_api_url && env_api_url !== dbData.whatsapp_api_url) {
+    if (isValidValue(env_api_url) && env_api_url !== dbData.whatsapp_api_url) {
       updates.whatsapp_api_url = env_api_url;
     }
-    if (env_api_key && env_api_key !== dbData.whatsapp_api_key) {
+    if (isValidValue(env_api_key) && env_api_key !== dbData.whatsapp_api_key) {
       updates.whatsapp_api_key = env_api_key;
     }
-    if (env_instance && env_instance !== dbData.whatsapp_instance) {
+    if (isValidValue(env_instance) && env_instance !== dbData.whatsapp_instance) {
       updates.whatsapp_instance = env_instance;
     }
-    if (env_ai_provider && env_ai_provider !== dbData.ai_provider) {
+    if (isValidValue(env_ai_provider) && env_ai_provider !== dbData.ai_provider) {
       updates.ai_provider = env_ai_provider;
     }
-    if (env_ai_api_key && env_ai_api_key !== dbData.ai_api_key) {
+    if (isValidValue(env_ai_api_key) && env_ai_api_key !== dbData.ai_api_key) {
       updates.ai_api_key = env_ai_api_key;
     }
-    if (env_ai_model && env_ai_model !== dbData.ai_model) {
+    if (isValidValue(env_ai_model) && env_ai_model !== dbData.ai_model) {
       updates.ai_model = env_ai_model;
+    }
+    if (isValidValue(env_active_payment_gateway) && env_active_payment_gateway !== dbData.active_payment_gateway) {
+      updates.active_payment_gateway = env_active_payment_gateway;
+    }
+    if (isValidValue(env_payment_mode) && env_payment_mode !== dbData.payment_mode) {
+      updates.payment_mode = env_payment_mode;
+    }
+    if (isValidValue(env_mp_public_key) && env_mp_public_key !== dbData.mercado_pago_public_key) {
+      updates.mercado_pago_public_key = env_mp_public_key;
+    }
+    if (isValidValue(env_mp_access_token) && env_mp_access_token !== dbData.mercado_pago_access_token) {
+      updates.mercado_pago_access_token = env_mp_access_token;
+    }
+    if (isValidValue(env_stripe_pub_key) && env_stripe_pub_key !== dbData.stripe_publishable_key) {
+      updates.stripe_publishable_key = env_stripe_pub_key;
+    }
+    if (isValidValue(env_stripe_sec_key) && env_stripe_sec_key !== dbData.stripe_secret_key) {
+      updates.stripe_secret_key = env_stripe_sec_key;
+    }
+    if (isValidValue(env_paypal_client_id) && env_paypal_client_id !== dbData.paypal_client_id) {
+      updates.paypal_client_id = env_paypal_client_id;
+    }
+    if (isValidValue(env_paypal_client_secret) && env_paypal_client_secret !== dbData.paypal_client_secret) {
+      updates.paypal_client_secret = env_paypal_client_secret;
     }
 
     // If there are newly updated keys in .env, write them to Firestore to prevent overwrite
     if (Object.keys(updates).length > 0) {
       console.log("Desvio e sincronização de novas chaves do arquivo .env para o Firestore:", Object.keys(updates));
-      await configDocRef.set(updates, { merge: true });
-      // Update our dbData object to reflect these synced values
-      dbData = { ...dbData, ...updates };
+      try {
+        await configDocRef.set(updates, { merge: true });
+        // Update our dbData object to reflect these synced values
+        dbData = { ...dbData, ...updates };
+      } catch (err) {
+        console.warn("Could not save .env updates to Firestore:", err);
+      }
     }
 
     const initialConfigs: Record<string, string | number> = {};
@@ -424,20 +467,29 @@ async function initializeEnvFromFirestore() {
     if (dbData.whatsapp_pass_cost !== undefined) initialConfigs.WHATSAPP_PASS_COST = dbData.whatsapp_pass_cost;
     if (dbData.recipes_pass_cost !== undefined) initialConfigs.RECIPES_PASS_COST = dbData.recipes_pass_cost;
     if (dbData.monthly_premium_price !== undefined) initialConfigs.MONTHLY_PREMIUM_PRICE = dbData.monthly_premium_price;
-    if (dbData.whatsapp_api_url !== undefined) initialConfigs.EVOLUTION_API_URL = dbData.whatsapp_api_url;
-    if (dbData.whatsapp_api_key !== undefined) initialConfigs.EVOLUTION_API_KEY = dbData.whatsapp_api_key;
-    if (dbData.whatsapp_instance !== undefined) initialConfigs.EVOLUTION_INSTANCE = dbData.whatsapp_instance;
-    if (dbData.ai_provider !== undefined) initialConfigs.AI_PROVIDER = dbData.ai_provider;
-    if (dbData.ai_api_key !== undefined) initialConfigs.AI_API_KEY = dbData.ai_api_key;
-    if (dbData.ai_model !== undefined) initialConfigs.AI_MODEL = dbData.ai_model;
-    if (dbData.active_payment_gateway !== undefined) initialConfigs.ACTIVE_PAYMENT_GATEWAY = dbData.active_payment_gateway;
-    if (dbData.payment_mode !== undefined) initialConfigs.PAYMENT_MODE = dbData.payment_mode;
-    if (dbData.mercado_pago_public_key !== undefined) initialConfigs.MERCADO_PAGO_PUBLIC_KEY = dbData.mercado_pago_public_key;
-    if (dbData.mercado_pago_access_token !== undefined) initialConfigs.MERCADO_PAGO_ACCESS_TOKEN = dbData.mercado_pago_access_token;
-    if (dbData.stripe_publishable_key !== undefined) initialConfigs.STRIPE_PUBLISHABLE_KEY = dbData.stripe_publishable_key;
-    if (dbData.stripe_secret_key !== undefined) initialConfigs.STRIPE_SECRET_KEY = dbData.stripe_secret_key;
-    if (dbData.paypal_client_id !== undefined) initialConfigs.PAYPAL_CLIENT_ID = dbData.paypal_client_id;
-    if (dbData.paypal_client_secret !== undefined) initialConfigs.PAYPAL_CLIENT_SECRET = dbData.paypal_client_secret;
+
+    const shouldSyncToEnv = (key: string, dbVal: any, envVal: string | null): boolean => {
+      if (dbVal === undefined || dbVal === null) return false;
+      const dbStr = String(dbVal);
+      if (!isValidValue(dbStr)) return false; // Don't write placeholders/empty values from DB to .env
+      if (dbStr === envVal) return false; // Already equal
+      return true;
+    };
+
+    if (shouldSyncToEnv("EVOLUTION_API_URL", dbData.whatsapp_api_url, env_api_url)) initialConfigs.EVOLUTION_API_URL = dbData.whatsapp_api_url;
+    if (shouldSyncToEnv("EVOLUTION_API_KEY", dbData.whatsapp_api_key, env_api_key)) initialConfigs.EVOLUTION_API_KEY = dbData.whatsapp_api_key;
+    if (shouldSyncToEnv("EVOLUTION_INSTANCE", dbData.whatsapp_instance, env_instance)) initialConfigs.EVOLUTION_INSTANCE = dbData.whatsapp_instance;
+    if (shouldSyncToEnv("AI_PROVIDER", dbData.ai_provider, env_ai_provider)) initialConfigs.AI_PROVIDER = dbData.ai_provider;
+    if (shouldSyncToEnv("AI_API_KEY", dbData.ai_api_key, env_ai_api_key)) initialConfigs.AI_API_KEY = dbData.ai_api_key;
+    if (shouldSyncToEnv("AI_MODEL", dbData.ai_model, env_ai_model)) initialConfigs.AI_MODEL = dbData.ai_model;
+    if (shouldSyncToEnv("ACTIVE_PAYMENT_GATEWAY", dbData.active_payment_gateway, env_active_payment_gateway)) initialConfigs.ACTIVE_PAYMENT_GATEWAY = dbData.active_payment_gateway;
+    if (shouldSyncToEnv("PAYMENT_MODE", dbData.payment_mode, env_payment_mode)) initialConfigs.PAYMENT_MODE = dbData.payment_mode;
+    if (shouldSyncToEnv("MERCADO_PAGO_PUBLIC_KEY", dbData.mercado_pago_public_key, env_mp_public_key)) initialConfigs.MERCADO_PAGO_PUBLIC_KEY = dbData.mercado_pago_public_key;
+    if (shouldSyncToEnv("MERCADO_PAGO_ACCESS_TOKEN", dbData.mercado_pago_access_token, env_mp_access_token)) initialConfigs.MERCADO_PAGO_ACCESS_TOKEN = dbData.mercado_pago_access_token;
+    if (shouldSyncToEnv("STRIPE_PUBLISHABLE_KEY", dbData.stripe_publishable_key, env_stripe_pub_key)) initialConfigs.STRIPE_PUBLISHABLE_KEY = dbData.stripe_publishable_key;
+    if (shouldSyncToEnv("STRIPE_SECRET_KEY", dbData.stripe_secret_key, env_stripe_sec_key)) initialConfigs.STRIPE_SECRET_KEY = dbData.stripe_secret_key;
+    if (shouldSyncToEnv("PAYPAL_CLIENT_ID", dbData.paypal_client_id, env_paypal_client_id)) initialConfigs.PAYPAL_CLIENT_ID = dbData.paypal_client_id;
+    if (shouldSyncToEnv("PAYPAL_CLIENT_SECRET", dbData.paypal_client_secret, env_paypal_client_secret)) initialConfigs.PAYPAL_CLIENT_SECRET = dbData.paypal_client_secret;
 
     if (Object.keys(initialConfigs).length > 0) {
       let lines = existingContent.split("\n");
