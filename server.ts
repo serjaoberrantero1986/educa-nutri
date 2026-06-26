@@ -184,6 +184,75 @@ console.error = function(...args: any[]) {
   addServerLog("error", ...args);
 };
 
+async function fetchStoreConfig() {
+  // 1. Try REST API first (handles unauthenticated / missing service account environments like Vercel)
+  try {
+    const projectId = firebaseProjectId || "gen-lang-client-0240394848";
+    const databaseId = firebaseDatabaseId || "ai-studio-0f6dd547-caa0-4714-b7db-f80a11f42adf";
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents/configs/store`;
+    
+    const response = await fetch(url);
+    if (response.ok) {
+      const data = await response.json();
+      const fields = data.fields || {};
+      const config: any = {};
+      
+      for (const [key, valueObj] of Object.entries(fields)) {
+        const val = valueObj as any;
+        if (val.stringValue !== undefined) {
+          config[key] = val.stringValue;
+        } else if (val.integerValue !== undefined) {
+          config[key] = parseInt(val.integerValue, 10);
+        } else if (val.doubleValue !== undefined) {
+          config[key] = parseFloat(val.doubleValue);
+        } else if (val.booleanValue !== undefined) {
+          config[key] = val.booleanValue;
+        }
+      }
+      if (Object.keys(config).length > 0) {
+        return config;
+      }
+    }
+  } catch (err) {
+    // REST API failed
+  }
+
+  // 2. Try Admin SDK
+  try {
+    const configDoc = await firestore.collection("configs").doc("store").get();
+    if (configDoc.exists) {
+      return configDoc.data() || {};
+    }
+  } catch (err) {
+    // Admin SDK failed
+  }
+
+  // 3. Fallback to process.env
+  return {
+    streak_freeze_cost: parseInt(process.env.STREAK_FREEZE_COST || "1000"),
+    premium_pass_cost: parseInt(process.env.PREMIUM_PASS_COST || "1500"),
+    assistant_pass_cost: parseInt(process.env.ASSISTANT_PASS_COST || "2000"),
+    whatsapp_pass_cost: parseInt(process.env.WHATSAPP_PASS_COST || "2000"),
+    recipes_pass_cost: parseInt(process.env.RECIPES_PASS_COST || "1200"),
+    shared_workouts_pass_cost: parseInt(process.env.SHARED_WORKOUTS_PASS_COST || "800"),
+    monthly_premium_price: parseFloat(process.env.MONTHLY_PREMIUM_PRICE || "19.90"),
+    monthly_professional_price: parseFloat(process.env.MONTHLY_PROFESSIONAL_PRICE || "39.90"),
+    whatsapp_api_url: process.env.EVOLUTION_API_URL || "https://api.sportnutri.com",
+    whatsapp_instance: process.env.EVOLUTION_INSTANCE || "sportnutri_bot",
+    ai_provider: process.env.AI_PROVIDER || "Google Gemini",
+    ai_model: process.env.AI_MODEL || "gemini-3.5-flash",
+    food_search_mode: process.env.FOOD_SEARCH_MODE || "web",
+    active_payment_gateway: process.env.ACTIVE_PAYMENT_GATEWAY || "mercado_pago",
+    payment_mode: process.env.PAYMENT_MODE || "sandbox",
+    mercado_pago_public_key: process.env.MERCADO_PAGO_PUBLIC_KEY || "",
+    mercado_pago_access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN || "",
+    stripe_publishable_key: process.env.STRIPE_PUBLISHABLE_KEY || "",
+    stripe_secret_key: process.env.STRIPE_SECRET_KEY || "",
+    paypal_client_id: process.env.PAYPAL_CLIENT_ID || "",
+    paypal_client_secret: process.env.PAYPAL_CLIENT_SECRET || ""
+  };
+}
+
 interface CachedAiConfig {
   ai_provider: string;
   ai_api_key: string;
@@ -229,9 +298,8 @@ async function getDynamicAiConfig(req?: express.Request) {
 
   // Query Firestore to get the real-time configuration updated by the admin panel
   try {
-    const configDoc = await firestore.collection("configs").doc("store").get();
-    if (configDoc.exists) {
-      const data = configDoc.data() || {};
+    const data = await fetchStoreConfig();
+    if (data) {
       const provider = data.ai_provider || process.env.AI_PROVIDER || "Google Gemini";
       let apiKey = data.ai_api_key || "";
 
@@ -317,12 +385,7 @@ async function initializeEnvFromFirestore() {
     const env_ai_model = getEnvValueFromFile(existingContent, "AI_MODEL");
 
     const configDocRef = firestore.collection("configs").doc("store");
-    const configDoc = await configDocRef.get();
-    
-    let dbData: any = {};
-    if (configDoc.exists) {
-      dbData = configDoc.data() || {};
-    }
+    let dbData = await fetchStoreConfig() || {};
 
     // Flag to see if .env contains updates we need to sync TO Firestore
     const updates: Record<string, any> = {};
@@ -4068,16 +4131,7 @@ app.post("/api/payments/create", async (req, res) => {
       issuerId
     };
 
-    // Fetch dynamic gateway configuration from Firestore safely
-    let gatewayConfig = {};
-    try {
-      const configDoc = await firestore.collection("configs").doc("store").get();
-      if (configDoc.exists) {
-        gatewayConfig = configDoc.data() || {};
-      }
-    } catch (dbErr) {
-      console.warn("[Payments Endpoint] Failed to retrieve configs from Firestore:", dbErr);
-    }
+    const gatewayConfig = await fetchStoreConfig();
 
     const paymentResponse = await paymentService.createPayment(payload, gatewayConfig);
     return res.json(paymentResponse);
@@ -4094,16 +4148,7 @@ app.get("/api/payments/status/:id", async (req, res) => {
       return res.status(400).json({ error: "Identificador do pagamento obrigatório" });
     }
 
-    // Fetch dynamic gateway configuration from Firestore safely
-    let gatewayConfig = {};
-    try {
-      const configDoc = await firestore.collection("configs").doc("store").get();
-      if (configDoc.exists) {
-        gatewayConfig = configDoc.data() || {};
-      }
-    } catch (dbErr) {
-      console.warn("[Payments Endpoint] Failed to retrieve configs from Firestore:", dbErr);
-    }
+    const gatewayConfig = await fetchStoreConfig();
 
     const paymentResponse = await paymentService.getPaymentStatus(id, gatewayConfig);
     return res.json(paymentResponse);
