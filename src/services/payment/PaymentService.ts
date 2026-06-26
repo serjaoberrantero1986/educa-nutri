@@ -1,4 +1,4 @@
-import { PaymentProvider, CreatePaymentDTO, PaymentResponse } from "./PaymentProvider";
+import { PaymentProvider, CreatePaymentDTO, PaymentResponse, PaymentGatewayConfig } from "./PaymentProvider";
 import { MercadoPagoProvider } from "./MercadoPagoProvider";
 import { GooglePlayBillingProvider } from "./GooglePlayBillingProvider";
 import { StripeProvider } from "./StripeProvider";
@@ -14,7 +14,7 @@ class PaymentService {
   /**
    * Determine and load active provider
    */
-  private updateProviderFromConfig(): void {
+  private updateProviderFromConfig(config?: PaymentGatewayConfig): void {
     const isAndroidApp = typeof window !== "undefined" && 
       (window as any).Capacitor && 
       (window as any).Capacitor.getPlatform() === "android";
@@ -27,13 +27,15 @@ class PaymentService {
 
     let activeGateway = "mercado_pago";
     
-    if (typeof window !== "undefined") {
+    if (config?.active_payment_gateway) {
+      activeGateway = config.active_payment_gateway;
+    } else if (typeof window !== "undefined") {
       try {
         const cached = localStorage.getItem("sportnutri_store_config");
         if (cached) {
-          const config = JSON.parse(cached);
-          if (config.active_payment_gateway) {
-            activeGateway = config.active_payment_gateway;
+          const configObj = JSON.parse(cached);
+          if (configObj.active_payment_gateway) {
+            activeGateway = configObj.active_payment_gateway;
           }
         }
       } catch (err) {}
@@ -55,8 +57,8 @@ class PaymentService {
   /**
    * Safe getter to retrieve the current active provider instance
    */
-  public getActiveProvider(): PaymentProvider {
-    this.updateProviderFromConfig();
+  public getActiveProvider(config?: PaymentGatewayConfig): PaymentProvider {
+    this.updateProviderFromConfig(config);
     return this.activeProvider;
   }
 
@@ -71,26 +73,26 @@ class PaymentService {
   /**
    * Get the name of current active provider
    */
-  public getProviderName(): string {
-    return this.getActiveProvider().name;
+  public getProviderName(config?: PaymentGatewayConfig): string {
+    return this.getActiveProvider(config).name;
   }
 
   /**
    * Create a single payment session or transaction
    */
-  public async createPayment(data: CreatePaymentDTO): Promise<PaymentResponse> {
-    const provider = this.getActiveProvider();
+  public async createPayment(data: CreatePaymentDTO, config?: PaymentGatewayConfig): Promise<PaymentResponse> {
+    const provider = this.getActiveProvider(config);
     console.log(`[PaymentService] Delegating payment creation to: ${provider.name}`);
-    return provider.createPayment(data);
+    return provider.createPayment(data, config);
   }
 
   /**
    * Read status of a payment transaction
    */
-  public async getPaymentStatus(paymentId: string): Promise<PaymentResponse> {
-    const provider = this.getActiveProvider();
+  public async getPaymentStatus(paymentId: string, config?: PaymentGatewayConfig): Promise<PaymentResponse> {
+    const provider = this.getActiveProvider(config);
     console.log(`[PaymentService] Requesting status for ID: ${paymentId} via ${provider.name}`);
-    return provider.getPaymentStatus(paymentId);
+    return provider.getPaymentStatus(paymentId, config);
   }
 }
 

@@ -1,30 +1,31 @@
-import { PaymentProvider, CreatePaymentDTO, PaymentResponse } from "./PaymentProvider";
+import { PaymentProvider, CreatePaymentDTO, PaymentResponse, PaymentGatewayConfig } from "./PaymentProvider";
 
 export class PayPalProvider implements PaymentProvider {
   public name = "PayPal";
 
   constructor() {}
 
-  private getClientId(): string {
-    return (typeof process !== "undefined" && process.env ? process.env.PAYPAL_CLIENT_ID : "") || "";
+  private getClientId(config?: PaymentGatewayConfig): string {
+    return config?.paypal_client_id || (typeof process !== "undefined" && process.env ? process.env.PAYPAL_CLIENT_ID : "") || "";
   }
 
-  private getClientSecret(): string {
-    return (typeof process !== "undefined" && process.env ? process.env.PAYPAL_CLIENT_SECRET : "") || "";
+  private getClientSecret(config?: PaymentGatewayConfig): string {
+    return config?.paypal_client_secret || (typeof process !== "undefined" && process.env ? process.env.PAYPAL_CLIENT_SECRET : "") || "";
   }
 
-  private checkIsConfigured(): boolean {
-    const clientId = this.getClientId();
-    const clientSecret = this.getClientSecret();
-    const isSandboxMode = typeof process !== "undefined" && process.env ? process.env.PAYMENT_MODE === "sandbox" : true;
+  private checkIsConfigured(config?: PaymentGatewayConfig): boolean {
+    const clientId = this.getClientId(config);
+    const clientSecret = this.getClientSecret(config);
+    const paymentMode = config?.payment_mode || (typeof process !== "undefined" && process.env ? process.env.PAYMENT_MODE : "sandbox") || "sandbox";
+    const isSandboxMode = paymentMode === "sandbox";
     const isPlaceholder = !clientId || 
                           clientId.includes("YOUR_") || 
                           clientId.includes("placeholder");
     return clientId.length > 10 && clientSecret.length > 10 && !isSandboxMode && !isPlaceholder;
   }
 
-  public async createPayment(data: CreatePaymentDTO): Promise<PaymentResponse> {
-    if (!this.checkIsConfigured()) {
+  public async createPayment(data: CreatePaymentDTO, config?: PaymentGatewayConfig): Promise<PaymentResponse> {
+    if (!this.checkIsConfigured(config)) {
       // Simulate PayPal Sandbox transaction
       const randomId = `pay-payment-${Date.now()}`;
       return {
@@ -38,10 +39,11 @@ export class PayPalProvider implements PaymentProvider {
 
     try {
       // Fetch access token from PayPal
-      const isSandboxMode = typeof process !== "undefined" && process.env ? process.env.PAYMENT_MODE === "sandbox" : true;
+      const paymentMode = config?.payment_mode || (typeof process !== "undefined" && process.env ? process.env.PAYMENT_MODE : "sandbox") || "sandbox";
+      const isSandboxMode = paymentMode === "sandbox";
       const apiBase = isSandboxMode ? "https://api-m.sandbox.paypal.com" : "https://api-m.paypal.com";
       
-      const authHeader = Buffer.from(`${this.getClientId()}:${this.getClientSecret()}`).toString("base64");
+      const authHeader = Buffer.from(`${this.getClientId(config)}:${this.getClientSecret(config)}`).toString("base64");
       
       const tokenResponse = await fetch(`${apiBase}/v1/oauth2/token`, {
         method: "POST",
@@ -107,8 +109,8 @@ export class PayPalProvider implements PaymentProvider {
     }
   }
 
-  public async getPaymentStatus(paymentId: string): Promise<PaymentResponse> {
-    if (!this.checkIsConfigured() || paymentId.startsWith("pay-")) {
+  public async getPaymentStatus(paymentId: string, config?: PaymentGatewayConfig): Promise<PaymentResponse> {
+    if (!this.checkIsConfigured(config) || paymentId.startsWith("pay-")) {
       return {
         id: paymentId,
         status: "approved",
@@ -119,9 +121,10 @@ export class PayPalProvider implements PaymentProvider {
     }
 
     try {
-      const isSandboxMode = typeof process !== "undefined" && process.env ? process.env.PAYMENT_MODE === "sandbox" : true;
+      const paymentMode = config?.payment_mode || (typeof process !== "undefined" && process.env ? process.env.PAYMENT_MODE : "sandbox") || "sandbox";
+      const isSandboxMode = paymentMode === "sandbox";
       const apiBase = isSandboxMode ? "https://api-m.sandbox.paypal.com" : "https://api-m.paypal.com";
-      const authHeader = Buffer.from(`${this.getClientId()}:${this.getClientSecret()}`).toString("base64");
+      const authHeader = Buffer.from(`${this.getClientId(config)}:${this.getClientSecret(config)}`).toString("base64");
       
       const tokenResponse = await fetch(`${apiBase}/v1/oauth2/token`, {
         method: "POST",

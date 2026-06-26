@@ -1,3 +1,14 @@
+export interface PaymentGatewayConfig {
+  active_payment_gateway?: string;
+  payment_mode?: string;
+  mercado_pago_public_key?: string;
+  mercado_pago_access_token?: string;
+  stripe_publishable_key?: string;
+  stripe_secret_key?: string;
+  paypal_client_id?: string;
+  paypal_client_secret?: string;
+}
+
 export interface CreatePaymentDTO {
   amount: number;
   description: string;
@@ -24,6 +35,6 @@ export interface PaymentResponse {
 
 export interface PaymentProvider {
   name: string;
-  createPayment(data: CreatePaymentDTO): Promise<PaymentResponse>;
-  getPaymentStatus(paymentId: string): Promise<PaymentResponse>;
+  createPayment(data: CreatePaymentDTO, config?: PaymentGatewayConfig): Promise<PaymentResponse>;
+  getPaymentStatus(paymentId: string, config?: PaymentGatewayConfig): Promise<PaymentResponse>;
 }

@@ -4068,7 +4068,18 @@ app.post("/api/payments/create", async (req, res) => {
       issuerId
     };
 
-    const paymentResponse = await paymentService.createPayment(payload);
+    // Fetch dynamic gateway configuration from Firestore safely
+    let gatewayConfig = {};
+    try {
+      const configDoc = await firestore.collection("configs").doc("store").get();
+      if (configDoc.exists) {
+        gatewayConfig = configDoc.data() || {};
+      }
+    } catch (dbErr) {
+      console.warn("[Payments Endpoint] Failed to retrieve configs from Firestore:", dbErr);
+    }
+
+    const paymentResponse = await paymentService.createPayment(payload, gatewayConfig);
     return res.json(paymentResponse);
   } catch (err: any) {
     console.error("Error creating payment:", err);
@@ -4083,7 +4094,18 @@ app.get("/api/payments/status/:id", async (req, res) => {
       return res.status(400).json({ error: "Identificador do pagamento obrigatório" });
     }
 
-    const paymentResponse = await paymentService.getPaymentStatus(id);
+    // Fetch dynamic gateway configuration from Firestore safely
+    let gatewayConfig = {};
+    try {
+      const configDoc = await firestore.collection("configs").doc("store").get();
+      if (configDoc.exists) {
+        gatewayConfig = configDoc.data() || {};
+      }
+    } catch (dbErr) {
+      console.warn("[Payments Endpoint] Failed to retrieve configs from Firestore:", dbErr);
+    }
+
+    const paymentResponse = await paymentService.getPaymentStatus(id, gatewayConfig);
     return res.json(paymentResponse);
   } catch (err: any) {
     console.error("Error retrieving payment status:", err);

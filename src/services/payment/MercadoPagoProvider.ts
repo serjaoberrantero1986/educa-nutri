@@ -1,22 +1,23 @@
-import { PaymentProvider, CreatePaymentDTO, PaymentResponse } from "./PaymentProvider";
+import { PaymentProvider, CreatePaymentDTO, PaymentResponse, PaymentGatewayConfig } from "./PaymentProvider";
 
 export class MercadoPagoProvider implements PaymentProvider {
   public name = "Mercado Pago";
 
   constructor() {}
 
-  private getAccessToken(): string {
-    return process.env.MERCADO_PAGO_ACCESS_TOKEN || "";
+  private getAccessToken(config?: PaymentGatewayConfig): string {
+    return config?.mercado_pago_access_token || process.env.MERCADO_PAGO_ACCESS_TOKEN || "";
   }
 
-  private checkIsConfigured(): boolean {
-    const token = this.getAccessToken();
-    const isSandboxMode = process.env.PAYMENT_MODE === "sandbox";
+  private checkIsConfigured(config?: PaymentGatewayConfig): boolean {
+    const token = this.getAccessToken(config);
+    const paymentMode = config?.payment_mode || process.env.PAYMENT_MODE || "sandbox";
+    const isSandboxMode = paymentMode === "sandbox";
     const isPlaceholder = !token || 
                           token.includes("YOUR_") || 
                           token.includes("MY_") || 
                           token.includes("placeholder");
-    // Configured if we have an access token and PAYMENT_MODE is not config-forced to sandbox simulation
+    // Configured if we have an access token and payment mode is not config-forced to sandbox simulation
     return token.length > 10 && !isSandboxMode && !isPlaceholder;
   }
 
@@ -52,10 +53,10 @@ export class MercadoPagoProvider implements PaymentProvider {
   /**
    * Helper to perform requests to the Mercado Pago API with safety timeouts
    */
-  private async apiRequest(endpoint: string, method: string, body?: any): Promise<any> {
+  private async apiRequest(endpoint: string, method: string, body?: any, config?: PaymentGatewayConfig): Promise<any> {
     const url = `https://api.mercadopago.com${endpoint}`;
     const headers: Record<string, string> = {
-      "Authorization": `Bearer ${this.getAccessToken()}`,
+      "Authorization": `Bearer ${this.getAccessToken(config)}`,
       "Content-Type": "application/json",
       "x-idempotency-key": `idemp-${Date.now()}-${Math.floor(Math.random() * 100000)}`
     };
@@ -103,9 +104,10 @@ export class MercadoPagoProvider implements PaymentProvider {
     }
   }
 
-  public async createPayment(data: CreatePaymentDTO): Promise<PaymentResponse> {
-    if (!this.checkIsConfigured() || (data.paymentMethod === "card" && (!data.token || data.token === "card_token_sandbox"))) {
-      if (process.env.PAYMENT_MODE === "sandbox") {
+  public async createPayment(data: CreatePaymentDTO, config?: PaymentGatewayConfig): Promise<PaymentResponse> {
+    const paymentMode = config?.payment_mode || process.env.PAYMENT_MODE || "sandbox";
+    if (!this.checkIsConfigured(config) || (data.paymentMethod === "card" && (!data.token || data.token === "card_token_sandbox"))) {
+      if (paymentMode === "sandbox") {
         return this.createSimulatedPayment(data);
       }
       throw new Error("Mercado Pago não está configurado ou token de cartão inválido para ambiente de produção.");
@@ -140,7 +142,7 @@ export class MercadoPagoProvider implements PaymentProvider {
         }
       }
 
-      const mpResponse = await this.apiRequest("/v1/payments", "POST", paymentBody);
+      const mpResponse = await this.apiRequest("/v1/payments", "POST", paymentBody, config);
 
       // Parse status
       let paymentStatus: PaymentResponse["status"] = "pending";
@@ -173,14 +175,15 @@ export class MercadoPagoProvider implements PaymentProvider {
       };
     } catch (error: any) {
       console.error("[MercadoPago Provider] Error creating payment:", error);
-      if (process.env.PAYMENT_MODE === "sandbox") {
+      if (paymentMode === "sandbox") {
         return this.createSimulatedPayment(data);
       }
       throw error;
     }
   }
 
-  public async getPaymentStatus(paymentId: string): Promise<PaymentResponse> {
+  public async getPaymentStatus(paymentId: string, config?: PaymentGatewayConfig): Promise<PaymentResponse> {
+    const paymentMode = config?.payment_mode || process.env.PAYMENT_MODE || "sandbox";
     // If it's a failed transaction ID, return rejected immediately without API lookup
     if (paymentId.startsWith("failed-")) {
       return {
@@ -194,18 +197,18 @@ export class MercadoPagoProvider implements PaymentProvider {
 
     // If it's a simulated payment id, return the simulated status
     if (paymentId.startsWith("sim-")) {
-      if (process.env.PAYMENT_MODE === "sandbox") {
+      if (paymentMode === "sandbox") {
         return this.getSimulatedPaymentStatus(paymentId);
       }
       throw new Error("ID de pagamento simulado não é permitido em ambiente de produção.");
     }
 
-    if (!this.checkIsConfigured()) {
+    if (!this.checkIsConfigured(config)) {
       throw new Error("Mercado Pago client is not configured with an access token");
     }
 
     try {
-      const mpResponse = await this.apiRequest(`/v1/payments/${paymentId}`, "GET");
+      const mpResponse = await this.apiRequest(`/v1/payments/${paymentId}`, "GET", undefined, config);
 
       let paymentStatus: PaymentResponse["status"] = "pending";
       const statusMap: Record<string, PaymentResponse["status"]> = {
@@ -235,7 +238,7 @@ export class MercadoPagoProvider implements PaymentProvider {
       };
     } catch (error: any) {
       console.error(`[MercadoPago Provider] Error fetching status for payment ${paymentId}:`, error);
-      if (process.env.PAYMENT_MODE === "sandbox") {
+      if (paymentMode === "sandbox") {
         return this.getSimulatedPaymentStatus(paymentId);
       }
       throw error;

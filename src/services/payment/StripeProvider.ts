@@ -1,17 +1,18 @@
-import { PaymentProvider, CreatePaymentDTO, PaymentResponse } from "./PaymentProvider";
+import { PaymentProvider, CreatePaymentDTO, PaymentResponse, PaymentGatewayConfig } from "./PaymentProvider";
 
 export class StripeProvider implements PaymentProvider {
   public name = "Stripe";
 
   constructor() {}
 
-  private getSecretKey(): string {
-    return (typeof process !== "undefined" && process.env ? process.env.STRIPE_SECRET_KEY : "") || "";
+  private getSecretKey(config?: PaymentGatewayConfig): string {
+    return config?.stripe_secret_key || (typeof process !== "undefined" && process.env ? process.env.STRIPE_SECRET_KEY : "") || "";
   }
 
-  private checkIsConfigured(): boolean {
-    const key = this.getSecretKey();
-    const isSandboxMode = typeof process !== "undefined" && process.env ? process.env.PAYMENT_MODE === "sandbox" : true;
+  private checkIsConfigured(config?: PaymentGatewayConfig): boolean {
+    const key = this.getSecretKey(config);
+    const paymentMode = config?.payment_mode || (typeof process !== "undefined" && process.env ? process.env.PAYMENT_MODE : "sandbox") || "sandbox";
+    const isSandboxMode = paymentMode === "sandbox";
     const isPlaceholder = !key || 
                           key.includes("YOUR_") || 
                           key.includes("MY_") || 
@@ -19,8 +20,8 @@ export class StripeProvider implements PaymentProvider {
     return key.length > 10 && !isSandboxMode && !isPlaceholder;
   }
 
-  public async createPayment(data: CreatePaymentDTO): Promise<PaymentResponse> {
-    if (!this.checkIsConfigured()) {
+  public async createPayment(data: CreatePaymentDTO, config?: PaymentGatewayConfig): Promise<PaymentResponse> {
+    if (!this.checkIsConfigured(config)) {
       // Simulate Stripe Sandbox transaction
       const randomId = `str-payment-${Date.now()}`;
       if (data.paymentMethod === "pix") {
@@ -56,7 +57,7 @@ export class StripeProvider implements PaymentProvider {
       const response = await fetch(url, {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${this.getSecretKey()}`,
+          "Authorization": `Bearer ${this.getSecretKey(config)}`,
           "Content-Type": "application/x-www-form-urlencoded"
         },
         body: params.toString()
@@ -88,8 +89,8 @@ export class StripeProvider implements PaymentProvider {
     }
   }
 
-  public async getPaymentStatus(paymentId: string): Promise<PaymentResponse> {
-    if (!this.checkIsConfigured() || paymentId.startsWith("str-")) {
+  public async getPaymentStatus(paymentId: string, config?: PaymentGatewayConfig): Promise<PaymentResponse> {
+    if (!this.checkIsConfigured(config) || paymentId.startsWith("str-")) {
       return {
         id: paymentId,
         status: "approved",
@@ -104,7 +105,7 @@ export class StripeProvider implements PaymentProvider {
       const response = await fetch(url, {
         method: "GET",
         headers: {
-          "Authorization": `Bearer ${this.getSecretKey()}`
+          "Authorization": `Bearer ${this.getSecretKey(config)}`
         }
       });
 
