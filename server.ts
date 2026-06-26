@@ -139,8 +139,8 @@ function addServerLog(level: "info" | "warn" | "error", ...args: any[]) {
       return String(arg);
     }).join(" ");
 
-    // Remove asterisks to respect AGENTS_md & GEMINI_md rules
-    const cleanMessage = rawMessage.replace(/\*/g, "");
+    // Remove asterisks to respect AGENTS_md & GEMINI_md rules and limit length to 3000 chars
+    const cleanMessage = rawMessage.replace(/\*/g, "").slice(0, 3000);
 
     const logEntry: SystemLog = {
       id: Math.random().toString(36).substring(7),
@@ -4433,7 +4433,12 @@ async function logWhatsappWebhook(data: {
 // Evolution API Webhook Endpoint - Webhook de Conversação e Lançamento de Dietas
 // Evolution API Webhook Endpoint - Webhook de Conversação e Lançamento de Dietas
 app.post("/api/webhook/whatsapp", async (req, res) => {
-  console.log("Recebido Webhook WhatsApp (Evolution API):", JSON.stringify(req.body));
+  console.log("Recebido Webhook WhatsApp (Evolution API):", {
+    event: req.body?.event,
+    instance: req.body?.instance,
+    hasData: !!req.body?.data,
+    keys: Object.keys(req.body || {})
+  });
 
   const body = req.body;
   if (!body) {
@@ -5314,10 +5319,19 @@ app.get("/api/admin/logs", async (req, res) => {
       // bypass
     }
 
+    const compactMemoryLogs = serverLogs.slice(-100).map(log => ({
+      ...log,
+      message: String(log.message || "").slice(0, 3000)
+    }));
+
+    const compactFileLogs = fileLogs.slice(-100).map(line =>
+      String(line || "").slice(0, 3000)
+    );
+
     return res.json({ 
       success: true, 
-      inMemoryLogs: serverLogs,
-      fileLogs: fileLogs
+      inMemoryLogs: compactMemoryLogs,
+      fileLogs: compactFileLogs
     });
   } catch (err: any) {
     return res.status(200).json({ success: false, error: "Erro interno no servidor de logs: " + err.message });
