@@ -6,17 +6,33 @@ export class MercadoPagoProvider implements PaymentProvider {
   constructor() {}
 
   private getAccessToken(config?: PaymentGatewayConfig): string {
-    return process.env.MERCADO_PAGO_ACCESS_TOKEN || config?.mercado_pago_access_token || "";
+    const configToken = (config?.mercado_pago_access_token || "").trim();
+    const envToken = (process.env.MERCADO_PAGO_ACCESS_TOKEN || "").trim();
+
+    return configToken || envToken || "";
   }
 
   private checkIsConfigured(config?: PaymentGatewayConfig): boolean {
     const token = this.getAccessToken(config);
-    const isPlaceholder = !token || 
-                          token.includes("YOUR_") || 
-                          token.includes("MY_") || 
-                          token.includes("placeholder");
-    // Configured if we have a valid access token (test or production)
-    return token.length > 10 && !isPlaceholder;
+    const paymentMode = config?.payment_mode || process.env.PAYMENT_MODE || "sandbox";
+
+    const isPlaceholder =
+      !token ||
+      token.includes("YOUR_") ||
+      token.includes("MY_") ||
+      token.includes("placeholder") ||
+      token === "undefined" ||
+      token === "null";
+
+    if (isPlaceholder || token.length <= 20) {
+      return false;
+    }
+
+    if (paymentMode === "live") {
+      return token.startsWith("APP_USR-");
+    }
+
+    return token.startsWith("TEST-") || token.startsWith("APP_USR-");
   }
 
   /**

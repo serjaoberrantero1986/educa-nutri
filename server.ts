@@ -304,6 +304,36 @@ async function fetchStorePrivateConfig() {
   };
 }
 
+async function fetchPaymentGatewayConfig() {
+  const publicConfig = await fetchStoreConfig();
+  const privateConfig = await fetchStorePrivateConfig();
+
+  return {
+    ...publicConfig,
+    ...privateConfig,
+
+    active_payment_gateway:
+      publicConfig?.active_payment_gateway ||
+      process.env.ACTIVE_PAYMENT_GATEWAY ||
+      "mercado_pago",
+
+    payment_mode:
+      publicConfig?.payment_mode ||
+      process.env.PAYMENT_MODE ||
+      "sandbox",
+
+    mercado_pago_public_key:
+      publicConfig?.mercado_pago_public_key ||
+      process.env.MERCADO_PAGO_PUBLIC_KEY ||
+      "",
+
+    mercado_pago_access_token:
+      privateConfig?.mercado_pago_access_token ||
+      process.env.MERCADO_PAGO_ACCESS_TOKEN ||
+      "",
+  };
+}
+
 interface CachedAiConfig {
   ai_provider: string;
   ai_api_key: string;
@@ -4245,7 +4275,7 @@ app.post("/api/payments/create", async (req, res) => {
       issuerId
     };
 
-    const gatewayConfig = await fetchStoreConfig();
+    const gatewayConfig = await fetchPaymentGatewayConfig();
 
     const paymentResponse = await paymentService.createPayment(payload, gatewayConfig);
     return res.json(paymentResponse);
@@ -4262,7 +4292,7 @@ app.get("/api/payments/status/:id", async (req, res) => {
       return res.status(400).json({ error: "Identificador do pagamento obrigatório" });
     }
 
-    const gatewayConfig = await fetchStoreConfig();
+    const gatewayConfig = await fetchPaymentGatewayConfig();
 
     const paymentResponse = await paymentService.getPaymentStatus(id, gatewayConfig);
     return res.json(paymentResponse);
@@ -4947,13 +4977,34 @@ app.get("/api/admin/config", async (req, res) => {
   };
 
   if (isAdmin) {
+    const privateConfig = await fetchStorePrivateConfig();
+
     return res.json({
       ...config,
-      whatsapp_api_key: process.env.EVOLUTION_API_KEY || "sportnutri_default_key",
-      ai_api_key: process.env.AI_API_KEY || "",
-      mercado_pago_access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN || "",
-      stripe_secret_key: process.env.STRIPE_SECRET_KEY || "",
-      paypal_client_secret: process.env.PAYPAL_CLIENT_SECRET || "",
+      whatsapp_api_key:
+        privateConfig?.whatsapp_api_key ||
+        process.env.EVOLUTION_API_KEY ||
+        "sportnutri_default_key",
+
+      ai_api_key:
+        privateConfig?.ai_api_key ||
+        process.env.AI_API_KEY ||
+        "",
+
+      mercado_pago_access_token:
+        privateConfig?.mercado_pago_access_token ||
+        process.env.MERCADO_PAGO_ACCESS_TOKEN ||
+        "",
+
+      stripe_secret_key:
+        privateConfig?.stripe_secret_key ||
+        process.env.STRIPE_SECRET_KEY ||
+        "",
+
+      paypal_client_secret:
+        privateConfig?.paypal_client_secret ||
+        process.env.PAYPAL_CLIENT_SECRET ||
+        "",
     });
   } else {
     return res.json(config);
