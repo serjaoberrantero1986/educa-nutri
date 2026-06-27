@@ -3106,6 +3106,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         profile={profile}
         setProfile={setProfile}
         setActiveTab={setActiveTab}
+        selectedDate={selectedDate}
       />
 
       <MealManagementModal 

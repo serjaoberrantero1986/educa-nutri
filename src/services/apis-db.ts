@@ -86,9 +86,11 @@ export async function searchFoodsApi(foodInput: string): Promise<Food[]> {
     const combined = [...serverResults, ...clientResults];
 
     combined.forEach(item => {
-      const lowerName = item.name.toLowerCase().trim();
-      if (!seenNames.has(lowerName)) {
-        seenNames.add(lowerName);
+      let cleanName = item.name.toLowerCase().trim();
+      // Remove any trailing "(off-web)" markers to deduplicate matches between TACO database and Open Food Facts
+      cleanName = cleanName.replace(/\s*\(off-web\)\s*$/, '');
+      if (!seenNames.has(cleanName)) {
+        seenNames.add(cleanName);
         mergedResults.push(item);
       }
     });

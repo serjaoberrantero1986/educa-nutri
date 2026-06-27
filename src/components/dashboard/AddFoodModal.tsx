@@ -21,6 +21,7 @@ interface AddFoodModalProps {
   profile: Profile | null;
   setProfile: React.Dispatch<React.SetStateAction<Profile | null>>;
   setActiveTab: (tab: any) => void;
+  selectedDate?: Date;
 }
 
 const SoundwaveVisualizer = ({ isPaused }: { isPaused: boolean }) => {
@@ -135,10 +136,18 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({
   user,
   profile,
   setProfile,
-  setActiveTab
+  setActiveTab,
+  selectedDate
 }) => {
   const [foodInput, setFoodInput] = useState('');
   const [activeMealId, setActiveMealId] = useState<string>(mealId || '');
+
+  const getLogDateWithCurrentTime = () => {
+    const now = new Date();
+    const logDate = new Date(selectedDate || now);
+    logDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+    return logDate.toISOString();
+  };
 
   const getSuggestedMealIdByTime = (): string => {
     const now = new Date();
@@ -701,18 +710,23 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({
   const handleSelectFood = (food: Food) => {
     const standardUnit = mapToStandardUnit(food.measure_unit);
     const defaultAmount = (standardUnit === 'gramas' || standardUnit === 'mililitros') ? 100 : 1;
-    setPendingFood({ 
-      name: food.name, 
+    
+    const newBulkFood = {
+      id: 'search-' + Math.random().toString(36).substring(2, 5),
+      name: food.name,
       amount: defaultAmount,
       unit: standardUnit,
-      calories: food.calories,
-      protein: food.protein,
-      carbs: food.carbs,
-      fat: food.fat,
-      grams_per_unit: food.grams_per_unit,
-      measure_unit: food.measure_unit,
-      portion: food.portion
-    });
+      grams_per_unit: food.grams_per_unit || 1,
+      calories_per_100: food.calories,
+      protein_per_100: food.protein,
+      carbs_per_100: food.carbs,
+      fat_per_100: food.fat,
+      confidence_explanation: 'Alimento selecionado da base de dados',
+      checked: true
+    };
+
+    setBulkFoods(prev => [...prev, newBulkFood]);
+    setPendingFood(null);
     setSearchResults([]);
     setFoodInput('');
   };
@@ -791,7 +805,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({
       fat: Math.round((pendingFood.fat || 0) * amountFactor),
       amount: pendingFood.amount,
       unit: pendingFood.unit || 'gramas',
-      logged_at: new Date().toISOString(),
+      logged_at: getLogDateWithCurrentTime(),
       added_via: registrationMethod
     };
 
@@ -846,7 +860,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({
         fat: Math.round(food.fat_per_100 * amountFactor),
         amount: amtVal,
         unit: food.unit,
-        logged_at: new Date().toISOString(),
+        logged_at: getLogDateWithCurrentTime(),
         added_via: registrationMethod
       };
     });
@@ -888,50 +902,6 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({
 
             <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">Adicionar Alimento</h2>
 
-            {/* Meal Selector Pills */}
-            <div className="mb-6">
-              <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 mb-2 uppercase tracking-wider">
-                Refeição de Destino
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { id: 'cafe', name: 'Café', icon: '🍳' },
-                  { id: 'lanche_manha', name: 'Lanche Manhã', icon: '🍎' },
-                  { id: 'almoco', name: 'Almoço', icon: '🍲' },
-                  { id: 'lanche_tarde', name: 'Lanche Tarde', icon: '🥪' },
-                  { id: 'jantar', name: 'Jantar', icon: '🥗' },
-                  { id: 'ceia', name: 'Ceia', icon: '🥛' }
-                ].map((m) => {
-                  const isSuggested = m.id === getSuggestedMealIdByTime();
-                  const isSelected = m.id === activeMealId;
-                  return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setActiveMealId(m.id)}
-                      className={`relative flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
-                        isSelected
-                          ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
-                          : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-100 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/60'
-                      }`}
-                    >
-                      <span>{m.icon}</span>
-                      <span>{m.name}</span>
-                      {isSuggested && (
-                        <span className={`text-[8px] px-1 py-0.2 rounded ${
-                          isSelected 
-                            ? 'bg-purple-800 text-purple-100' 
-                            : 'bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 font-extrabold border border-amber-200/30'
-                        }`}>
-                          Sugerido
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
             <div className="space-y-6">
               <div className="relative">
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
@@ -958,7 +928,7 @@ export const AddFoodModal: React.FC<AddFoodModalProps> = ({
                 </button>
 
                 <AnimatePresence>
-                  {(searchResults.length > 0 || (foodInput.length >= 2 && !isSearching)) && (
+                  {foodInput.length >= 2 && bulkFoods.length === 0 && !pendingFood && (searchResults.length > 0 || !isSearching) && (
                     <motion.div 
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
