@@ -17,78 +17,19 @@ export async function searchFoodsApi(foodInput: string): Promise<Food[]> {
   }
 
   try {
-    // 1. Query server API (local SQLite database + robust Open Food Facts / FatSecret proxying & simulation)
+    // Query server API (local SQLite database + robust Open Food Facts / FatSecret proxying)
     const serverResults = await fetch(getApiUrl(`/api/foods?q=${encodeURIComponent(foodInput)}`))
       .then(async r => r.ok ? (await r.json() as Food[]) : [])
       .catch(() => [] as Food[]);
-
-    // 2. Direct client-side fetch to Open Food Facts in parallel!
-    // This runs directly in the user's browser, bypassing Cloud Run egress firewalls.
-    let clientResults: Food[] = [];
-    try {
-      const clientUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(foodInput)}&json=true&page_size=15&cc=br&lc=pt`;
-      const clientResponse = await fetch(clientUrl, {
-        headers: {
-          "Accept": "application/json"
-        }
-      });
-      if (clientResponse.ok) {
-        const offData = await clientResponse.json();
-        if (offData && offData.products && Array.isArray(offData.products)) {
-          clientResults = offData.products.map((p: any) => {
-            const name = p.product_name_pt || p.product_name || p.product_name_en;
-            if (!name) return null;
-            
-            const protein = parseFloat(p.nutriments?.proteins_100g ?? 0) || 0;
-            const carbs = parseFloat(p.nutriments?.carbohydrates_100g ?? 0) || 0;
-            const fat = parseFloat(p.nutriments?.fat_100g ?? 0) || 0;
-            const calories = Math.round(p.nutriments?.["energy-kcal_100g"] || (p.nutriments?.["energy_100g"] ? p.nutriments["energy_100g"] / 4.184 : 0)) || 0;
-            
-            // Determine category dynamically
-            let category: "proteina" | "carboidrato" | "fruta" | "vegetal" | "gordura" | "laticinio" = "carboidrato";
-            const checkName = name.toLowerCase();
-            if (protein > carbs && protein > fat) {
-              category = "proteina";
-            } else if (fat > protein && fat > carbs) {
-              category = "gordura";
-            } else if (checkName.includes("banana") || checkName.includes("maça") || checkName.includes("morango") || checkName.includes("uva") || checkName.includes("fruta")) {
-              category = "fruta";
-            } else if (checkName.includes("alface") || checkName.includes("tomate") || checkName.includes("cenoura") || checkName.includes("vegetal")) {
-              category = "vegetal";
-            } else if (checkName.includes("leite") || checkName.includes("queijo") || checkName.includes("iogurte")) {
-              category = "laticinio";
-            }
-            
-            return {
-              id: p.code || String(Math.floor(Math.random() * 10000000)),
-              name: `${name} (OFF-Web)`,
-              category,
-              calories,
-              protein,
-              carbs,
-              fat,
-              portion: p.serving_size || "100g",
-              measure_unit: "g",
-              grams_per_unit: 1
-            } as Food;
-          }).filter((item: any): item is Food => item !== null);
-        }
-      }
-    } catch (clientErr) {
-      console.log("Client-side Open Food Facts direct search failed, using server/fallback results.", clientErr);
-    }
 
     // Merge results and deduplicate by name (ignore case/extra spaces)
     const seenNames = new Set<string>();
     const mergedResults: Food[] = [];
 
-    // Prioritize high-quality curated server database results first (SQLite / TACO catalog), then browser-retrieved real-time results
-    const combined = [...serverResults, ...clientResults];
-
-    combined.forEach(item => {
+    serverResults.forEach(item => {
       let cleanName = item.name.toLowerCase().trim();
-      // Remove any trailing "(off-web)" markers to deduplicate matches between TACO database and Open Food Facts
-      cleanName = cleanName.replace(/\s*\(off-web\)\s*$/, '');
+      // Remove any trailing source markers to deduplicate matches
+      cleanName = cleanName.replace(/\s*\((off-web|off|fatsecret|cód\.\s*barras|catálogo)\)\s*$/i, '');
       if (!seenNames.has(cleanName)) {
         seenNames.add(cleanName);
         mergedResults.push(item);

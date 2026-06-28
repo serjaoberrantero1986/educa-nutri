@@ -1919,15 +1919,7 @@ O JSON DEVE respeitar esta estrutura exata de tipos. Sem usar asteriscos em nenh
           };
         });
 
-        // Cache e salva esses itens no SQLite local!
-        for (const item of mappedProducts) {
-          try {
-            await saveAndCacheFood(item);
-          } catch (dbErr) {
-            console.warn("[Online Search AI] Erro ao salvar item no banco SQLite local:", dbErr);
-          }
-        }
-
+        // Web search results are returned dynamically as a fallback but are not saved automatically to the database to ensure data hygiene.
         return mappedProducts;
       }
     }
@@ -2047,11 +2039,41 @@ app.get("/api/foods", async (req, res) => {
                       serving = Array.isArray(s) ? s[0] : s;
                     }
                     
-                    const calories = serving ? Math.round(parseFloat(serving.calories || 0)) : 0;
-                    const protein = serving ? parseFloat(serving.protein || 0) : 0;
-                    const carbs = serving ? parseFloat(serving.carbohydrate || 0) : 0;
-                    const fat = serving ? parseFloat(serving.fat || 0) : 0;
+                    const rawCalories = serving ? parseFloat(serving.calories || 0) : 0;
+                    const rawProtein = serving ? parseFloat(serving.protein || 0) : 0;
+                    const rawCarbs = serving ? parseFloat(serving.carbohydrate || 0) : 0;
+                    const rawFat = serving ? parseFloat(serving.fat || 0) : 0;
                     const portion = serving ? (serving.serving_description || "100g") : "100g";
+                    
+                    // Determine actual serving weight/volume in grams or ml to normalize to 100g
+                    let servingWeight = parseFloat(serving?.metric_serving_amount || 0);
+                    if (!servingWeight && portion) {
+                      const match = portion.match(/\((\d+(?:\.\d+)?)\s*g\)/i);
+                      if (match) {
+                        servingWeight = parseFloat(match[1]);
+                      }
+                    }
+                    if (!servingWeight && (portion.toLowerCase().includes("100g") || portion.toLowerCase().includes("100ml"))) {
+                      servingWeight = 100;
+                    }
+                    
+                    // Normalize to 100g if we have a valid serving weight
+                    let calories = Math.round(rawCalories);
+                    let protein = rawProtein;
+                    let carbs = rawCarbs;
+                    let fat = rawFat;
+                    let gramsPerUnit = 1;
+                    
+                    if (servingWeight && servingWeight > 0) {
+                      gramsPerUnit = servingWeight;
+                      if (servingWeight !== 100) {
+                        const factor = 100 / servingWeight;
+                        calories = Math.round(rawCalories * factor);
+                        protein = parseFloat((rawProtein * factor).toFixed(2));
+                        carbs = parseFloat((rawCarbs * factor).toFixed(2));
+                        fat = parseFloat((rawFat * factor).toFixed(2));
+                      }
+                    }
                     
                     const category = determineFatSecretCategory(name, "", protein, carbs, fat);
                     
@@ -2064,8 +2086,8 @@ app.get("/api/foods", async (req, res) => {
                       carbs,
                       fat,
                       portion,
-                      measure_unit: portion.includes("ml") ? "ml" : "g",
-                      grams_per_unit: 1
+                      measure_unit: portion.toLowerCase().includes("ml") ? "ml" : "g",
+                      grams_per_unit: gramsPerUnit
                     };
                     saveAndCacheFood(mappedFood);
                     return res.json([mappedFood]);
@@ -2078,24 +2100,8 @@ app.get("/api/foods", async (req, res) => {
           }
         }
 
-        // Fallback: Generate custom simulated brand product for barcode scanner
-        const lastDigits = parseInt(originalTerm.slice(-4)) || 789;
-        const brandNames = ["Nestlé", "Sadia", "Seara", "Danone", "Qualy", "Wickbold", "Molico", "Growth", "Itambé"];
-        const brand = brandNames[lastDigits % brandNames.length];
-        
-        const mappedFood = {
-          id: originalTerm,
-          name: `Produto Cód. ${originalTerm.slice(0, 4)}... ${brand} (Cód. Barras)`,
-          category: "carboidrato",
-          calories: 140,
-          protein: 5,
-          carbs: 22,
-          fat: 4,
-          portion: "100g",
-          measure_unit: "g",
-          grams_per_unit: 1
-        };
-        return res.json([mappedFood]);
+        // Fallback: No simulated barcode product is returned to avoid unverified information
+        return res.json([]);
       }
 
       // 2. Fetch local SQLite results
@@ -2105,58 +2111,8 @@ app.get("/api/foods", async (req, res) => {
         return normalizedName.includes(term);
       });
 
-      // Supplement search with realistic food generation if any main category is searched for
+      // Bypassed simulated offline supplements to prioritize real database catalog
       const offlineSupplements: any[] = [];
-      const keywords: Record<string, { name: string; protein: number; carbs: number; fat: number; calories: number; portion: string; measure_unit: string; grams_per_unit: number; category: string; brands: string[] }> = {
-        whey: { name: "Whey Protein", protein: 24, carbs: 3, fat: 1.5, calories: 120, portion: "30g", measure_unit: "scoop", grams_per_unit: 30, category: "proteina", brands: ["Growth", "Max Titanium", "Integralmedica", "Optimum Nutrition"] },
-        creatina: { name: "Creatina Monohidratada", protein: 0, carbs: 0, fat: 0, calories: 0, portion: "3g", measure_unit: "g", grams_per_unit: 1, category: "carboidrato", brands: ["Growth", "Max Titanium", "Integralmedica", "Probiótica"] },
-        pao: { name: "Pão de Forma", protein: 4.5, carbs: 22, fat: 1.2, calories: 120, portion: "2 fatias (50g)", measure_unit: "fatia", grams_per_unit: 25, category: "carboidrato", brands: ["Wickbold", "Pullman", "Visconti", "Plusvita"] },
-        iogurte: { name: "Iogurte Grego", protein: 7, carbs: 15, fat: 2.5, calories: 110, portion: "1 pote (100g)", measure_unit: "pote", grams_per_unit: 100, category: "laticinio", brands: ["Danone", "Nestlé", "Itambé", "Vigor"] },
-        queijo: { name: "Queijo Muçarela", protein: 6.6, carbs: 0.9, fat: 6, calories: 85, portion: "1 fatia (30g)", measure_unit: "fatia", grams_per_unit: 30, category: "laticinio", brands: ["Tirolez", "President", "Polenghi", "Itambé"] },
-        frango: { name: "Filé de Frango Grelhado", protein: 31, carbs: 0, fat: 3.6, calories: 165, portion: "100g", measure_unit: "g", grams_per_unit: 1, category: "proteina", brands: ["Sadia", "Seara", "Korin"] },
-        carne: { name: "Patinho Grelhado", protein: 26, carbs: 0, fat: 15, calories: 250, portion: "100g", measure_unit: "g", grams_per_unit: 1, category: "proteina", brands: ["Swift", "Friboi"] },
-        peixe: { name: "Filé de Tilápia Grelhado", protein: 26, carbs: 0, fat: 2.7, calories: 129, portion: "100g", measure_unit: "g", grams_per_unit: 1, category: "proteina", brands: ["Swift", "Copacol"] },
-        leite: { name: "Leite Desnatado", protein: 6.8, carbs: 10, fat: 0, calories: 68, portion: "1 copo (200ml)", measure_unit: "copo", grams_per_unit: 200, category: "laticinio", brands: ["Ninho", "Molico", "Piracanjuba", "Itambé"] },
-        pasta: { name: "Pasta de Amendoim", protein: 3.75, carbs: 3, fat: 7.5, calories: 88, portion: "1 colher de sopa (15g)", measure_unit: "colher de sopa", grams_per_unit: 15, category: "gordura", brands: ["Dr. Peanut", "Growth", "Max Titanium", "Probiótica"] },
-        aveia: { name: "Aveia em Flocos", protein: 2.5, carbs: 10, fat: 1, calories: 58, portion: "1 colher de sopa (15g)", measure_unit: "colher de sopa", grams_per_unit: 15, category: "carboidrato", brands: ["Quaker", "Yoki"] },
-        suco: { name: "Suco de Laranja Natural", protein: 1.4, carbs: 26, fat: 0.4, calories: 112, portion: "1 copo (200ml)", measure_unit: "copo", grams_per_unit: 200, category: "fruta", brands: ["Prats", "Natural One", "Do Bem"] },
-        refrigerante: { name: "Coca-Cola Zero", protein: 0, carbs: 0, fat: 0, calories: 0, portion: "1 lata (350ml)", measure_unit: "unidade", grams_per_unit: 350, category: "carboidrato", brands: ["Coca-Cola", "Guaraná Antarctica"] },
-        doce: { name: "Doce de Leite", protein: 1.5, carbs: 11, fat: 1.5, calories: 63, portion: "1 colher de sopa (20g)", measure_unit: "colher de sopa", grams_per_unit: 20, category: "gordura", brands: ["Viçosa", "Itambé", "Moça"] },
-      };
-
-      for (const [key, info] of Object.entries(keywords)) {
-        if (term.includes(key)) {
-          // Add primary generic match
-          offlineSupplements.push({
-            id: `supp-gen-${key}`,
-            name: `${info.name} (Catálogo)`,
-            category: info.category,
-            calories: info.calories,
-            protein: info.protein,
-            carbs: info.carbs,
-            fat: info.fat,
-            portion: info.portion,
-            measure_unit: info.measure_unit,
-            grams_per_unit: info.grams_per_unit
-          });
-
-          // Add brand specific matches
-          info.brands.forEach((brand, idx) => {
-            offlineSupplements.push({
-              id: `supp-brand-${key}-${idx}`,
-              name: `${info.name} (${brand})`,
-              category: info.category,
-              calories: info.calories,
-              protein: info.protein,
-              carbs: info.carbs,
-              fat: info.fat,
-              portion: info.portion,
-              measure_unit: info.measure_unit,
-              grams_per_unit: info.grams_per_unit
-            });
-          });
-        }
-      }
 
       // 3. Search Open Food Facts by term
       let offMapped: any[] = [];
@@ -2254,20 +2210,52 @@ app.get("/api/foods", async (req, res) => {
               const desc = item.food_description || "";
               
               const caloriesMatch = desc.match(/Calories:\s*(\d+(?:\.\d+)?)\s*kcal/i);
-              const calories = caloriesMatch ? Math.round(parseFloat(caloriesMatch[1])) : 0;
+              const rawCalories = caloriesMatch ? parseFloat(caloriesMatch[1]) : 0;
 
               const fatMatch = desc.match(/Fat:\s*(\d+(?:\.\d+)?)\s*g/i);
-              const fat = fatMatch ? parseFloat(fatMatch[1]) : 0;
+              const rawFat = fatMatch ? parseFloat(fatMatch[1]) : 0;
 
               const carbsMatch = desc.match(/Carbs:\s*(\d+(?:\.\d+)?)\s*g/i);
-              const carbs = carbsMatch ? parseFloat(carbsMatch[1]) : 0;
+              const rawCarbs = carbsMatch ? parseFloat(carbsMatch[1]) : 0;
 
               const proteinMatch = desc.match(/Protein:\s*(\d+(?:\.\d+)?)\s*g/i);
-              const protein = proteinMatch ? parseFloat(proteinMatch[1]) : 0;
+              const rawProtein = proteinMatch ? parseFloat(proteinMatch[1]) : 0;
 
               const portionMatch = desc.match(/Per\s*([^-\|]+)/i);
               const portion = portionMatch ? portionMatch[1].trim() : "100g";
               
+              // Parse serving weight/volume from portion description (e.g. "1 serving (30g)" or "100g")
+              let servingWeight = parseFloat(portion);
+              if (isNaN(servingWeight) || servingWeight <= 0) {
+                // Try parsing from parenthesis like "1 serving (30g)"
+                const weightMatch = portion.match(/(\d+(?:\.\d+)?)\s*g/i);
+                if (weightMatch) {
+                  servingWeight = parseFloat(weightMatch[1]);
+                } else if (portion.toLowerCase().includes("100g") || portion.toLowerCase().includes("100ml")) {
+                  servingWeight = 100;
+                } else {
+                  servingWeight = 100; // Default to 100g
+                }
+              }
+              
+              // Normalize to 100g
+              let calories = Math.round(rawCalories);
+              let protein = rawProtein;
+              let carbs = rawCarbs;
+              let fat = rawFat;
+              let gramsPerUnit = 1;
+
+              if (servingWeight && servingWeight > 0) {
+                gramsPerUnit = servingWeight;
+                if (servingWeight !== 100) {
+                  const factor = 100 / servingWeight;
+                  calories = Math.round(rawCalories * factor);
+                  protein = parseFloat((rawProtein * factor).toFixed(2));
+                  carbs = parseFloat((rawCarbs * factor).toFixed(2));
+                  fat = parseFloat((rawFat * factor).toFixed(2));
+                }
+              }
+
               const category = determineFatSecretCategory(name, desc, protein, carbs, fat);
               
               return {
@@ -2279,8 +2267,8 @@ app.get("/api/foods", async (req, res) => {
                 carbs,
                 fat,
                 portion,
-                measure_unit: portion.includes("ml") ? "ml" : "g",
-                grams_per_unit: 1
+                measure_unit: portion.toLowerCase().includes("ml") ? "ml" : "g",
+                grams_per_unit: gramsPerUnit
               };
             });
 
