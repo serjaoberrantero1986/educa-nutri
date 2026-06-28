@@ -208,13 +208,20 @@ export interface UserWorkoutProfile {
   equipment: string[]; // ['pesos_livres', 'maquinas', 'calistenia', 'polias']
   limitations: string[];
   muscleFatigue: {
-    peito: number;
+    peitoral: number;
     costas: number;
-    pernas: number;
+    ombros: number;
+    trapezio: number;
+    posterior_ombros: number;
     biceps: number;
     triceps: number;
-    ombros: number;
-    abdome: number;
+    abdomen: number;
+    obliquos: number;
+    quadriceps: number;
+    posterior_coxas: number;
+    gluteos: number;
+    panturrilhas: number;
+    antebracos: number;
   };
   divisionType?: 'Full Body A/B' | 'ABC' | 'ABCD' | 'ABCDE' | 'Push/Pull/Legs 2x' | 'Personalizado';
 }

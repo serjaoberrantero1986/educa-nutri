@@ -133,17 +133,71 @@ export const getSeededRandom = (seedStr: string) => {
 // Helper to determine the muscle group of a logged exercise using active routine lookup or fallback Portuguese/English keywords mapping
 export const getMuscleGroupForExercise = (exerciseName: string, activeRoutine: WorkoutRoutine | null): string => {
   const exName = (exerciseName || "").toLowerCase().trim();
-  if (!exName) return "abdome";
+  if (!exName) return "abdomen";
 
-  // 0. Cardio exercises target leg muscles predominantly in terms of local dynamic fatigue
-  const cardioKeywords = [
-    "corrida", "caminhada", "cardio", "aerobico", "aeróbico", "ciclismo", "spinning", "bike", "pedalar", "pular corda", "corda", "polichinelo", "eliptico", "elíptico", "dança", "danca", "zumba", "sprint", "trote"
-  ];
-  if (cardioKeywords.some(kw => exName.includes(kw))) {
-    return "pernas";
-  }
+  // 1. Specific Keyword Matchers in hierarchical order (more specific first)
 
-  // 1. Check in Active Routine first for precise matching
+  // trapézio (trapézio)
+  const trapezioKeywords = ["trapézio", "trapezio", "encolhimento", "shrug", "remada alta", "remada_alta"];
+  if (trapezioKeywords.some(kw => exName.includes(kw))) return "trapezio";
+
+  // posterior de ombros
+  const postOmbrosKeywords = ["crucifixo inverso", "crucifixo_inverso", "posterior de ombro", "posterior de ombros", "rear delt", "fly inverso", "fly_inverso", "face pull", "facepull"];
+  if (postOmbrosKeywords.some(kw => exName.includes(kw))) return "posterior_ombros";
+
+  // oblíquos
+  const obliquosKeywords = ["oblíquo", "obliquo", "twist", "flexão lateral", "flexao lateral", "abdominal lateral", "woodchop"];
+  if (obliquosKeywords.some(kw => exName.includes(kw))) return "obliquos";
+
+  // quadríceps
+  const quadricepsKeywords = ["extensora", "quadríceps", "quadriceps", "leg press 45", "legpress 45", "hack", "sissy", "agachamento frontal"];
+  if (quadricepsKeywords.some(kw => exName.includes(kw))) return "quadriceps";
+
+  // posterior de coxas
+  const postCoxasKeywords = ["mesa flexora", "cadeira flexora", "flexora", "stiff", "posterior de coxa", "posterior de coxas", "hamstring", "bom dia", "good morning"];
+  if (postCoxasKeywords.some(kw => exName.includes(kw))) return "posterior_coxas";
+
+  // glúteos
+  const gluteosKeywords = ["glúteo", "gluteo", "glutes", "elevação pélvica", "elevacao pelvica", "pélvica", "pelvica", "coice de gluteo", "abdução", "abducao", "caneleira"];
+  if (gluteosKeywords.some(kw => exName.includes(kw))) return "gluteos";
+
+  // panturrilhas
+  const panturrilhasKeywords = ["panturrilha", "panturrilhas", "gêmeos", "gemeos", "gastrocnêmio", "gastrocnemio", "sóleo", "soleo", "calf"];
+  if (panturrilhasKeywords.some(kw => exName.includes(kw))) return "panturrilhas";
+
+  // antebraços
+  const antebracosKeywords = ["antebraço", "antebraços", "flexão de punho", "extensão de punho", "rosca inversa", "rosca punho", "wrist curl", "reverse curl", "farmer walk"];
+  if (antebracosKeywords.some(kw => exName.includes(kw))) return "antebracos";
+
+  // bíceps
+  const bicepsKeywords = ["rosca", "biceps", "bíceps", "martelo", "concentrada", "scott"];
+  if (bicepsKeywords.some(kw => exName.includes(kw))) return "biceps";
+
+  // tríceps
+  const tricepsKeywords = ["pulley", "testa", "mergulho", "triceps", "tríceps", "francesa", "coice", "supino fechado"];
+  if (tricepsKeywords.some(kw => exName.includes(kw))) return "triceps";
+
+  // peitoral
+  const peitoralKeywords = ["supino", "flexão", "flexao", "apoio", "crossover", "cross-over", "peck deck", "voador", "crucifixo", "pullover", "chest", "fly", "peitoral", "peito"];
+  if (peitoralKeywords.some(kw => exName.includes(kw))) return "peitoral";
+
+  // costas
+  const costasKeywords = ["puxada", "remada", "barra", "pulley costas", "levantamento terra", "terra", "pulldown", "pull-down", "lat machine", "row", "costas"];
+  if (costasKeywords.some(kw => exName.includes(kw))) return "costas";
+
+  // ombros
+  const ombrosKeywords = ["desenvolvimento", "elevação", "elevacao", "lateral", "frontal", "ombro", "ombros", "deltoide", "deltoíde", "manguito"];
+  if (ombrosKeywords.some(kw => exName.includes(kw))) return "ombros";
+
+  // abdômen
+  const abdomeKeywords = ["abdominal", "abdome", "abdômen", "abdomen", "abd", "prancha", "infra", "supra", "core", "canivete", "perdigueiro", "roda", "rodinha"];
+  if (abdomeKeywords.some(kw => exName.includes(kw))) return "abdomen";
+
+  // General legs keywords maps to quadriceps as fallback
+  const legKeywords = ["agachamento", "squat", "leg press", "legpress", "cadeira", "mesa", "afundo", "avanço", "avanco", "passada", "leg", "lunge"];
+  if (legKeywords.some(kw => exName.includes(kw))) return "quadriceps";
+
+  // 2. Fallback to active routine's defined grupoPrincipal if matches
   if (activeRoutine && activeRoutine.days) {
     for (const day of activeRoutine.days) {
       if (day.exercises) {
@@ -154,9 +208,19 @@ export const getMuscleGroupForExercise = (exerciseName: string, activeRoutine: W
               const matched = gp.toLowerCase().trim();
               if (matched === "biceps" || matched === "bíceps") return "biceps";
               if (matched === "triceps" || matched === "tríceps") return "triceps";
-              if (matched === "abdome" || matched === "abdômen" || matched === "abdomen" || matched === "abdominal") return "abdome";
+              if (matched === "abdome" || matched === "abdômen" || matched === "abdomen" || matched === "abdominal") return "abdomen";
               if (matched === "ombros" || matched === "ombro") return "ombros";
-              return matched; // peito, costas, pernas
+              if (matched === "peito" || matched === "peitoral") return "peitoral";
+              if (matched === "costas") return "costas";
+              if (matched === "pernas" || matched === "perna") return "quadriceps";
+              if (matched === "trapezio" || matched === "trapézio") return "trapezio";
+              if (matched === "posterior_ombros") return "posterior_ombros";
+              if (matched === "obliquos" || matched === "oblíquos") return "obliquos";
+              if (matched === "quadriceps" || matched === "quadríceps") return "quadriceps";
+              if (matched === "posterior_coxas") return "posterior_coxas";
+              if (matched === "gluteos" || matched === "glúteos") return "gluteos";
+              if (matched === "panturrilhas") return "panturrilhas";
+              if (matched === "antebracos" || matched === "antebraço" || matched === "antebraços") return "antebracos";
             }
           }
         }
@@ -164,82 +228,26 @@ export const getMuscleGroupForExercise = (exerciseName: string, activeRoutine: W
     }
   }
 
-  // 2. Keyword fallback matching
-  // Pernas / Lower Body (Rich, smart Portuguese-Brazilian gym terminology matching for Pernas/Legs, including Panturrilha, Stiff, Afundo, Hack etc.)
-  const legKeywords = [
-    "agachamento", "squat", "leg press", "legpress", "cadeira", "mesa", "extensora", "flexora", "panturrilha", "gêmeos", "gemeos", 
-    "stiff", "búlgaro", "bulgaro", "afundo", "avanço", "avanco", "passada", "hack", "adutor", "abutor", "pélvica", "pelvica", 
-    "glúteo", "gluteo", "-gluteo", "glute", "posterior de coxa", "quadríceps", "quadriceps", "quadril", "coxa", "panturrilhas", 
-    "adutora", "abdutora", "elevação pélvica", "elevacao pelvica", "leg", "lunge", "hack machine", "gastrocnemio", "sóleo", "soleo"
-  ];
-  if (legKeywords.some(kw => exName.includes(kw))) {
-    return "pernas";
-  }
-
-  // Peito / Chest
-  const chestKeywords = [
-    "supino", "flexão", "flexao", "apoio", "crossover", "cross-over", "peck deck", "voador", "crucifixo", "pullover", "chest", "fly"
-  ];
-  if (chestKeywords.some(kw => exName.includes(kw))) {
-    return "peito";
-  }
-
-  // Costas / Back
-  const backKeywords = [
-    "puxada", "remada", "barra", "pulley costas", "levantamento terra", "terra", "pulldown", "pull-down", "crucifixo inverso", 
-    "voador dorsal", "remada curva", "remada baixa", "lat machine", "row"
-  ];
-  if (backKeywords.some(kw => exName.includes(kw))) {
-    return "costas";
-  }
-
-  // Biceps
-  const bicepsKeywords = [
-    "rosca", "biceps", "bíceps", "martelo", "concentrada", "scott"
-  ];
-  if (bicepsKeywords.some(kw => exName.includes(kw))) {
-    return "biceps";
-  }
-
-  // Triceps
-  const tricepsKeywords = [
-    "pulley", "testa", "mergulho", "triceps", "tríceps", "francesa", "coice"
-  ];
-  if (tricepsKeywords.some(kw => exName.includes(kw))) {
-    return "triceps";
-  }
-
-  // Ombros / Shoulders / Traps
-  const shoulderKeywords = [
-    "desenvolvimento", "elevação", "elevacao", "lateral", "frontal", "ombro", "deltoide", "deltoíde", "manguito", "trapézio", 
-    "trapezio", "encolhimento"
-  ];
-  if (shoulderKeywords.some(kw => exName.includes(kw))) {
-    return "ombros";
-  }
-
-  // Abdome / Core
-  const absKeywords = [
-    "abdominal", "abdome", "abdômen", "abdomen", "abd", "prancha", "infra", "supra", "oblíquo", "obliquo", "core",
-    "canivete", "perdigueiro", "twist", "roda abdominal", "rodinha"
-  ];
-  if (absKeywords.some(kw => exName.includes(kw))) {
-    return "abdome";
-  }
-
-  return "abdome"; // Default fallback
+  return "abdomen"; // Ultimate fallback
 };
 
 // Helper to recalculate fatigue from full history (decays dynamically over 60 hours based on elapsed rest and training Effort/RPE)
 export const recalculateMuscleFatigue = (history: ExerciseLog[], activeRoutine: WorkoutRoutine | null) => {
   const computed = {
-    peito: 0,
+    peitoral: 0,
     costas: 0,
-    pernas: 0,
+    ombros: 0,
+    trapezio: 0,
+    posterior_ombros: 0,
     biceps: 0,
     triceps: 0,
-    ombros: 0,
-    abdome: 0
+    abdomen: 0,
+    obliquos: 0,
+    quadriceps: 0,
+    posterior_coxas: 0,
+    gluteos: 0,
+    panturrilhas: 0,
+    antebracos: 0
   };
 
   if (!history || history.length === 0) {

@@ -10,13 +10,20 @@ import { getAiHeaders } from '../../services/storeConfigService';
 import { tryFetchWithClientFallback, clientGenerateExercise } from '../../services/clientAiFallback';
 
 const DEFAULT_MUSCLE_GROUPS = [
-  { id: 'peito', label: 'Peito' },
+  { id: 'peitoral', label: 'Peitoral' },
   { id: 'costas', label: 'Costas' },
-  { id: 'pernas', label: 'Pernas' },
+  { id: 'ombros', label: 'Ombros' },
+  { id: 'trapezio', label: 'Trapézio' },
+  { id: 'posterior_ombros', label: 'Posterior de Ombros' },
   { id: 'biceps', label: 'Bíceps' },
   { id: 'triceps', label: 'Tríceps' },
-  { id: 'ombros', label: 'Ombros' },
-  { id: 'abdome', label: 'Abdômen' }
+  { id: 'abdomen', label: 'Abdômen' },
+  { id: 'obliquos', label: 'Oblíquos' },
+  { id: 'quadriceps', label: 'Quadríceps' },
+  { id: 'posterior_coxas', label: 'Posterior de Coxas' },
+  { id: 'gluteos', label: 'Glúteos' },
+  { id: 'panturrilhas', label: 'Panturrilhas' },
+  { id: 'antebracos', label: 'Antebraços' }
 ];
 
 interface SortableExerciseItemProps {

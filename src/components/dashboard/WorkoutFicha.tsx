@@ -66,13 +66,20 @@ export const WorkoutFicha: React.FC<WorkoutFichaProps> = ({
       }
     }
     return [
-      { id: 'peito', label: 'Peito' },
+      { id: 'peitoral', label: 'Peitoral' },
       { id: 'costas', label: 'Costas' },
-      { id: 'pernas', label: 'Pernas' },
+      { id: 'ombros', label: 'Ombros' },
+      { id: 'trapezio', label: 'Trapézio' },
+      { id: 'posterior_ombros', label: 'Posterior de Ombros' },
       { id: 'biceps', label: 'Bíceps' },
       { id: 'triceps', label: 'Tríceps' },
-      { id: 'ombros', label: 'Ombros' },
-      { id: 'abdome', label: 'Abdômen' }
+      { id: 'abdomen', label: 'Abdômen' },
+      { id: 'obliquos', label: 'Oblíquos' },
+      { id: 'quadriceps', label: 'Quadríceps' },
+      { id: 'posterior_coxas', label: 'Posterior de Coxas' },
+      { id: 'gluteos', label: 'Glúteos' },
+      { id: 'panturrilhas', label: 'Panturrilhas' },
+      { id: 'antebracos', label: 'Antebraços' }
     ];
   };
 
@@ -231,13 +238,20 @@ export const WorkoutFicha: React.FC<WorkoutFichaProps> = ({
         equipment: selectedEquipment,
         limitations: selectedLimitations,
         muscleFatigue: workoutProfile?.muscleFatigue || {
-          peito: 0,
+          peitoral: 0,
           costas: 0,
-          pernas: 0,
+          ombros: 0,
+          trapezio: 0,
+          posterior_ombros: 0,
           biceps: 0,
           triceps: 0,
-          ombros: 0,
-          abdome: 0
+          abdomen: 0,
+          obliquos: 0,
+          quadriceps: 0,
+          posterior_coxas: 0,
+          gluteos: 0,
+          panturrilhas: 0,
+          antebracos: 0
         },
         divisionType: currentAutoSplit(daysPerWeek)
       };

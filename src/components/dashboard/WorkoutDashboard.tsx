@@ -292,13 +292,20 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
 
   // Fatigue score mapping
   const fatigue = workoutProfile?.muscleFatigue || {
-    peito: 0,
+    peitoral: 0,
     costas: 0,
-    pernas: 0,
+    ombros: 0,
+    trapezio: 0,
+    posterior_ombros: 0,
     biceps: 0,
     triceps: 0,
-    ombros: 0,
-    abdome: 0
+    abdomen: 0,
+    obliquos: 0,
+    quadriceps: 0,
+    posterior_coxas: 0,
+    gluteos: 0,
+    panturrilhas: 0,
+    antebracos: 0
   };
 
   // Determine user's gender/sex, default to male if undefined
@@ -416,14 +423,14 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
     const skeletonColor = "fill-slate-100 dark:fill-slate-800 stroke-slate-200 dark:stroke-slate-700";
     const lineStroke = "stroke-slate-300 dark:stroke-slate-600";
     
-    // Dynamic styles for muscle parts
-    const peitoColor = getAnatomicalColor(fatigue.peito);
-    const costasColor = getAnatomicalColor(fatigue.costas);
-    const pernasColor = getAnatomicalColor(fatigue.pernas);
-    const bicepsColor = getAnatomicalColor(fatigue.biceps);
-    const tricepsColor = getAnatomicalColor(fatigue.triceps);
-    const ombrosColor = getAnatomicalColor(fatigue.ombros);
-    const abdomeColor = getAnatomicalColor(fatigue.abdome);
+    // Dynamic styles for muscle parts mapped from the 14 granular groups
+    const peitoColor = getAnatomicalColor(fatigue.peitoral ?? 0);
+    const costasColor = getAnatomicalColor(fatigue.costas ?? 0);
+    const pernasColor = getAnatomicalColor(Math.max(fatigue.quadriceps ?? 0, fatigue.posterior_coxas ?? 0, fatigue.gluteos ?? 0, fatigue.panturrilhas ?? 0));
+    const bicepsColor = getAnatomicalColor(fatigue.biceps ?? 0);
+    const tricepsColor = getAnatomicalColor(fatigue.triceps ?? 0);
+    const ombrosColor = getAnatomicalColor(Math.max(fatigue.ombros ?? 0, fatigue.trapezio ?? 0, fatigue.posterior_ombros ?? 0));
+    const abdomeColor = getAnatomicalColor(Math.max(fatigue.abdomen ?? 0, fatigue.obliquos ?? 0));
 
     if (activeView === "front") {
       return (
@@ -874,26 +881,44 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
               </div>
 
               <div className="space-y-4">
-                {Object.entries(fatigue).map(([muscle, value]) => (
-                  <div key={muscle} className="space-y-1.5">
-                    <div className="flex justify-between text-xs font-bold">
-                      <span className="capitalize text-slate-700 dark:text-slate-300">
-                        {muscle === "ombros" ? "Ombros / Trapézio" : muscle === "peito" ? "Peito / Anterior" : muscle === "costas" ? "Costas / Posturas" : muscle === "pernas" ? "Pernas / Quadríceps" : muscle}
-                      </span>
-                      <span className={getRecoveryTextColorClass(value)}>
-                        {getRecoveryLabel(value)} ({100 - value}%)
-                      </span>
+                {[
+                  { key: "peitoral", label: "peitoral" },
+                  { key: "costas", label: "costas" },
+                  { key: "ombros", label: "ombros" },
+                  { key: "trapezio", label: "trapézio" },
+                  { key: "posterior_ombros", label: "posterior de ombros" },
+                  { key: "biceps", label: "bíceps" },
+                  { key: "triceps", label: "tríceps" },
+                  { key: "abdomen", label: "abdômen" },
+                  { key: "obliquos", label: "oblíquos" },
+                  { key: "quadriceps", label: "quadríceps" },
+                  { key: "posterior_coxas", label: "posterior de coxas" },
+                  { key: "gluteos", label: "glúteos" },
+                  { key: "panturrilhas", label: "panturrilhas" },
+                  { key: "antebracos", label: "antebraços" }
+                ].map(({ key, label }) => {
+                  const value = fatigue[key as keyof typeof fatigue] ?? 0;
+                  return (
+                    <div key={key} className="space-y-1.5">
+                      <div className="flex justify-between text-xs font-bold">
+                        <span className="capitalize text-slate-700 dark:text-slate-300">
+                          {label}
+                        </span>
+                        <span className={getRecoveryTextColorClass(value)}>
+                          {getRecoveryLabel(value)} ({100 - value}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-100 dark:bg-slate-800 h-3 rounded-full overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${100 - value}%` }}
+                          transition={{ duration: 0.8, ease: "easeOut" }}
+                          className={`h-full rounded-full ${getRecoveryColorClass(value)}`}
+                        />
+                      </div>
                     </div>
-                    <div className="w-full bg-slate-100 dark:bg-slate-800 h-3 rounded-full overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${100 - value}%` }}
-                        transition={{ duration: 0.8, ease: "easeOut" }}
-                        className={`h-full rounded-full ${getRecoveryColorClass(value)}`}
-                      />
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="flex items-start gap-2 text-xs bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-slate-500 dark:text-slate-400">
@@ -1276,9 +1301,13 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
                               return 'Posterior de Ombros';
                             }
                             const map: { [key: string]: string } = {
-                              peito: "Peito", costas: "Costas", pernas: "Pernas",
-                              biceps: "Bíceps", triceps: "Tríceps", ombros: "Ombros",
-                              abdome: "Abdômen", lombar: "Lombar", abdome_lombar: "Abdômen/Lombar"
+                              peito: "Peitoral", peitoral: "Peitoral", costas: "Costas", ombros: "Ombros",
+                              trapezio: "Trapézio", posterior_ombros: "Posterior de Ombros",
+                              biceps: "Bíceps", triceps: "Tríceps", abdomen: "Abdômen", abdome: "Abdômen",
+                              obliquos: "Oblíquos", quadriceps: "Quadríceps", pernas: "Quadríceps",
+                              posterior_coxas: "Posterior de Coxas", gluteos: "Glúteos",
+                              panturrilhas: "Panturrilhas", antebracos: "Antebraços",
+                              lombar: "Lombar", abdome_lombar: "Abdômen/Lombar"
                             };
                             
                             // Check if we can map custom muscle group IDs from localStorage

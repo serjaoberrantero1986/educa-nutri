@@ -661,13 +661,23 @@ export function getMuscleGroupLabel(group: string, customGroups?: { id: string; 
     return 'Posterior de Ombros';
   }
   const defaults: Record<string, string> = {
-    peito: 'Peito',
+    peitoral: 'Peitoral',
+    peito: 'Peitoral',
     costas: 'Costas',
-    pernas: 'Pernas',
+    ombros: 'Ombros',
+    trapezio: 'Trapézio',
+    posterior_ombros: 'Posterior de Ombros',
     biceps: 'Bíceps',
     triceps: 'Tríceps',
-    ombros: 'Ombros',
-    abdome: 'Abdômen'
+    abdomen: 'Abdômen',
+    abdome: 'Abdômen',
+    obliquos: 'Oblíquos',
+    quadriceps: 'Quadríceps',
+    pernas: 'Quadríceps',
+    posterior_coxas: 'Posterior de Coxas',
+    gluteos: 'Glúteos',
+    panturrilhas: 'Panturrilhas',
+    antebracos: 'Antebraços'
   };
   
   if (defaults[group.toLowerCase()]) {
