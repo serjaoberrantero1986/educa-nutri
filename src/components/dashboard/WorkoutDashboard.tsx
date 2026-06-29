@@ -901,7 +901,7 @@ export const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({
                   return (
                     <div key={key} className="space-y-1.5">
                       <div className="flex justify-between text-xs font-bold">
-                        <span className="capitalize text-slate-700 dark:text-slate-300">
+                        <span className="text-slate-700 dark:text-slate-300">
                           {label}
                         </span>
                         <span className={getRecoveryTextColorClass(value)}>

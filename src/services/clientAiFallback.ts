@@ -43,7 +43,7 @@ function getDeterministicGramsForFoodAndUnit(foodName: string, unit: string, fal
 
   // 1. Cooked Rice (Arroz Branco Cozido, Arroz Integral Cozido, etc.)
   if (normFood.includes("arroz")) {
-    if (normUnit === "concha") return 150;
+    if (normUnit === "concha") return 100; // 2 conchas = 200g (about 260 kcal)
     if (normUnit === "colher de arroz" || normUnit === "colher de servir" || normUnit === "colhar de arroz") return 25;
     if (normUnit === "colher de sopa") return 15;
     if (normUnit === "copo" || normUnit === "xicara") return 150;
@@ -55,6 +55,7 @@ function getDeterministicGramsForFoodAndUnit(foodName: string, unit: string, fal
     if (normUnit === "concha") return 100;
     if (normUnit === "colher de sopa") return 15;
     if (normUnit === "copo" || normUnit === "xicara") return 150;
+    if (normUnit === "unidade") return 100;
   }
 
   // 3. Eggs
@@ -63,44 +64,92 @@ function getDeterministicGramsForFoodAndUnit(foodName: string, unit: string, fal
     if (normUnit === "colher de sopa") return 50;
   }
 
-  // 4. Frango / Meats / Beef / Tilápia / Filé
-  if (normFood.includes("frango") || normFood.includes("patinho") || normFood.includes("carne beef") || normFood.includes("carne bovina") || normFood.includes("tilapia") || normFood.includes("file")) {
-    if (normUnit === "unidade" || normUnit === "file" || normUnit === "bife") return 100;
+  // 4. Frango / Meats / Beef / Tilápia / Filé / Peixe / Salmão
+  if (normFood.includes("frango") || normFood.includes("patinho") || normFood.includes("carne beef") || normFood.includes("carne bovina") || normFood.includes("tilapia") || normFood.includes("file") || normFood.includes("carne") || normFood.includes("peixe") || normFood.includes("salmao")) {
+    if (normUnit === "unidade" || normUnit === "file" || normUnit === "bife" || normUnit === "posta") return 100;
     if (normUnit === "colher de sopa") return 25;
     if (normUnit === "fatia") return 30;
     if (normUnit === "concha") return 120;
   }
 
-  // 5. Pão Francês
-  if (normFood.includes("pao frances")) {
+  // 5. Cold cuts / Frios (Mortadela, Presunto, Peito de peru, Salame, etc.)
+  if (normFood.includes("mortadela") || normFood.includes("presunto") || normFood.includes("peito de peru") || normFood.includes("salame") || normFood.includes("bacon") || normFood.includes("frios")) {
+    if (normUnit === "fatia") return 15; // standard thin slice is 15g (2 fatias = 30g)
+    if (normUnit === "unidade") return 15;
+    if (normUnit === "colher de sopa") return 15;
+  }
+
+  // 6. Cheese / Queijos (Queijo Muçarela, Queijo Prato, Queijo Minas, etc.)
+  if (normFood.includes("queijo") || normFood.includes("mucarela") || normFood.includes("prato") || normFood.includes("gorgonzola") || normFood.includes("parmesao") || normFood.includes("provolone") || normFood.includes("cheddar") || normFood.includes("ricota") || normFood.includes("minas")) {
+    if (normUnit === "fatia") return 30;
+    if (normUnit === "unidade") return 30;
+    if (normUnit === "colher de sopa") return 20;
+  }
+
+  // 7. Pão Francês / Pão de Sal
+  if (normFood.includes("pao frances") || normFood.includes("pao de sal")) {
     if (normUnit === "unidade") return 50;
   }
 
-  // 6. Pão Integral / Pão de Forma
-  if (normFood.includes("pao integral") || normFood.includes("pao de forma")) {
+  // 8. Pão Integral / Pão de Forma / Pão Sírio / Pão de Centeio
+  if (normFood.includes("pao integral") || normFood.includes("pao de forma") || normFood.includes("pao sirio") || normFood.includes("pao de centeio") || normFood.includes("bisnaga") || normFood.includes("torrada")) {
     if (normUnit === "fatia" || normUnit === "unidade") return 25;
+    if (normUnit === "colher de sopa") return 15;
   }
 
-  // 7. Banana
+  // 9. Fruits (Banana, Maçã, Mamão, Morango, etc.)
   if (normFood.includes("banana")) {
     if (normUnit === "unidade") return 65;
   }
-
-  // 8. Maçã
   if (normFood.includes("maca")) {
     if (normUnit === "unidade") return 130;
   }
-
-  // 9. Batata Inglesa or Batata Doce
-  if (normFood.includes("batata")) {
-    if (normUnit === "unidade") return 100;
-    if (normUnit === "fatia") return 20;
+  if (normFood.includes("mamao") || normFood.includes("melancia") || normFood.includes("melao") || normFood.includes("abacaxi")) {
+    if (normUnit === "fatia" || normUnit === "unidade") return 100;
+  }
+  if (normFood.includes("morango") || normFood.includes("uva") || normFood.includes("cereja") || normFood.includes("amora")) {
+    if (normUnit === "unidade") return 15;
   }
 
-  // 10. Whey Protein
-  if (normFood.includes("whey")) {
-    if (normUnit === "scoop" || normUnit === "unidade") return 30;
+  // 10. Batata Inglesa, Batata Doce, Mandioca, Inhame
+  if (normFood.includes("batata") || normFood.includes("mandioca") || normFood.includes("inhame") || normFood.includes("aipim") || normFood.includes("macaxeira")) {
+    if (normUnit === "unidade" || normUnit === "pedaco") return 100;
+    if (normUnit === "fatia") return 20;
+    if (normUnit === "colher de sopa") return 30;
+  }
+
+  // 11. Whey Protein / Powder Supplements
+  if (normFood.includes("whey") || normFood.includes("creatina") || normFood.includes("suplemento") || normFood.includes("glutamina") || normFood.includes("colageno") || normFood.includes("protein")) {
+    if (normUnit === "scoop" || normUnit === "unidade" || normUnit === "dose") return 30;
     if (normUnit === "colher de sopa") return 15;
+    if (normUnit === "colher de cha") return 5;
+  }
+
+  // 12. Dairy creams / Requeijão, Cottage, Requeijão cremoso, Cream cheese, Iogurte, Leite de vaca
+  if (normFood.includes("requeijao") || normFood.includes("cottage") || normFood.includes("cream cheese") || normFood.includes("creme de leite") || normFood.includes("manteiga") || normFood.includes("margarina") || normFood.includes("requeijao cremoso")) {
+    if (normUnit === "colher de sopa") return 20;
+    if (normUnit === "colher de cha") return 5;
+    if (normUnit === "unidade" || normUnit === "pote") return 200;
+    if (normUnit === "fatia") return 15;
+  }
+  if (normFood.includes("iogurte")) {
+    if (normUnit === "unidade" || normUnit === "pote" || normUnit === "copo") return 170;
+    if (normUnit === "colher de sopa") return 20;
+  }
+  if (normFood.includes("leite") || normFood.includes("suco") || normFood.includes("refrigerante") || normFood.includes("agua") || normFood.includes("cha") || normFood.includes("bebida")) {
+    if (normUnit === "copo" || normUnit === "xicara" || normUnit === "caneca" || normUnit === "unidade") return 200;
+    if (normUnit === "colher de sopa") return 15;
+  }
+
+  // 13. Bakery & Savory items (Pastel, Coxinha, Empada, Pão de Queijo, etc.)
+  if (normFood.includes("pastel") || normFood.includes("coxinha") || normFood.includes("empada") || normFood.includes("esfiha") || normFood.includes("folhado") || normFood.includes("salgado")) {
+    if (normUnit === "unidade") {
+      if (normFood.includes("mini")) return 30;
+      return 80;
+    }
+  }
+  if (normFood.includes("pao de queijo")) {
+    if (normUnit === "unidade") return 30;
   }
 
   // General default conversions
@@ -721,7 +770,16 @@ Certifique-se de que se houver múltiplos alimentos, você crie itens separados.
   const cleanJson = cleanJsonBlock(rawResponse);
   const result = JSON.parse(cleanJson || '{"foods":[]}');
   if (result && result.foods && Array.isArray(result.foods)) {
-    result.foods = result.foods.map((f: any) => enrichFoodWithExactCaloriesAndMacrosClient(f));
+    result.foods = result.foods.map((f: any) => {
+      const enrichedItem = enrichFoodWithExactCaloriesAndMacrosClient(f);
+      const finalUnit = enrichedItem.unit || f.unit || "unidade";
+      const finalName = enrichedItem.food_name || f.food_name || f.name || "";
+      const exactMathGrams = getDeterministicGramsForFoodAndUnit(finalName, finalUnit, Number(enrichedItem.grams_per_unit || f.grams_per_unit || 100));
+      return {
+        ...enrichedItem,
+        grams_per_unit: exactMathGrams
+      };
+    });
   }
   return result;
 }
