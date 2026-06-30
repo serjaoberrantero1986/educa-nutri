@@ -1410,18 +1410,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
     let finalRankingList: Profile[] = [];
 
     if (!isFirebaseConfigured) {
+      const bots = generateBotsForLeague(userLeague);
       finalRankingList = [
-        { id: user.uid, username: profile.username || 'Você', xp: userXP, league: userLeague, streak: profile.streak || 0, avatar_url: profile.avatar_url }
-      ];
+        { id: user.uid, username: profile.username || 'Você', xp: userXP, league: userLeague, streak: profile.streak || 0, avatar_url: profile.avatar_url },
+        ...bots
+      ].sort((a, b) => b.xp - a.xp);
     } else {
       try {
         const profilesCol = collection(db, 'profiles');
-        const q = query(profilesCol, orderBy('xp', 'desc'));
-        const querySnapshot = await getDocs(q);
+        const querySnapshot = await getDocs(profilesCol);
         const data: Profile[] = [];
         querySnapshot.forEach((docSnap) => {
           const d = docSnap.data() as Profile;
-          if (!d.is_deleted) {
+          const playerLeague = d.league || 'Bronze';
+          if (!d.is_deleted && playerLeague === userLeague) {
             data.push({
               ...d,
               id: d.id || docSnap.id
@@ -1439,12 +1441,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
             avatar_url: profile.avatar_url
           } as Profile);
         }
-        finalRankingList = data.sort((a, b) => b.xp - a.xp);
+
+        // Generate bots for this league
+        const bots = generateBotsForLeague(userLeague);
+
+        // Merge real users of this league and bots
+        let combined = [...data];
+        
+        // Add bots to fill up to at least 10 competitors
+        for (const bot of bots) {
+          if (combined.length >= 10) break;
+          if (!combined.some(p => p.id === bot.id)) {
+            combined.push(bot);
+          }
+        }
+
+        finalRankingList = combined.sort((a, b) => b.xp - a.xp);
       } catch (err) {
         console.error('Error fetching ranking:', err);
+        const bots = generateBotsForLeague(userLeague);
         finalRankingList = [
-          { id: user.uid, username: profile.username || 'Você', xp: userXP, league: userLeague, streak: profile.streak || 0, avatar_url: profile.avatar_url }
-        ];
+          { id: user.uid, username: profile.username || 'Você', xp: userXP, league: userLeague, streak: profile.streak || 0, avatar_url: profile.avatar_url },
+          ...bots
+        ].sort((a, b) => b.xp - a.xp);
       }
     }
 
