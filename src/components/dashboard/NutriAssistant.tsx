@@ -52,12 +52,12 @@ function getGramsForUnit(unit: string, pendingFood: any): number {
     return pendingFood.grams_per_unit || 25;
   }
   
-  if ((normUnit === "colher de sopa" || normUnit === "colher de arroz") && (foodUnit.includes("colher") || foodUnit.includes("servir"))) {
+  if ((normUnit === "colher de sopa") && (foodUnit.includes("colher") || foodUnit.includes("servir"))) {
     return pendingFood.grams_per_unit || 15;
   }
   
   if (normUnit === "concha" && foodUnit.includes("concha")) {
-    return pendingFood.grams_per_unit || 100;
+    return 50;
   }
 
   if (normUnit === "copo" && (foodUnit.includes("copo") || foodUnit.includes("xícara"))) {
@@ -78,10 +78,8 @@ function getGramsForUnit(unit: string, pendingFood: any): number {
       return 25;
     case "copo":
       return 200;
-    case "colher de arroz":
-      return 25;
     case "concha":
-      return 100;
+      return 50;
     default:
       return pendingFood.grams_per_unit || 100;
   }
@@ -102,12 +100,10 @@ const normalizePendingAction = (act: any): any => {
     unit = 'unidade';
   } else if (norm === 'fatia' || norm === 'fatias') {
     unit = 'fatia';
-  } else if (norm === 'colher de sopa' || norm === 'colher') {
+  } else if (norm === 'colher de sopa' || norm === 'colher' || norm === 'colher de arroz' || norm === 'colher de servir' || norm === 'colhar de arroz') {
     unit = 'colher de sopa';
   } else if (norm === 'copo' || norm === 'copos' || norm === 'xícara' || norm === 'xicara' || norm === 'xícaras' || norm === 'xicaras') {
     unit = 'copo';
-  } else if (norm === 'colher de arroz') {
-    unit = 'colher de arroz';
   } else if (norm === 'concha' || norm === 'conchas') {
     unit = 'concha';
   } else {
@@ -1856,7 +1852,7 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
                                       const factor = totalGrams / 100;
                                       const currentCalories = Math.round((act.calories_per_100 || 100) * factor);
 
-                                      const availableUnits = ['unidade', 'fatia', 'colher de sopa', 'copo', 'colher de arroz', 'concha', 'gramas', 'mililitros'];
+                                      const availableUnits = ['unidade', 'fatia', 'colher de sopa', 'copo', 'concha', 'gramas', 'mililitros'];
 
                                       return (
                                         <div 

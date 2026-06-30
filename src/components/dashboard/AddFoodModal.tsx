@@ -47,7 +47,7 @@ const SoundwaveVisualizer = ({ isPaused }: { isPaused: boolean }) => {
   );
 };
 
-const units = ["gramas", "unidade", "colher de sopa", "fatia", "copo", "mililitros", "colher de arroz", "concha"];
+const units = ["gramas", "unidade", "colher de sopa", "fatia", "copo", "mililitros", "concha"];
 
 function mapToStandardUnit(unitStr: string): string {
   const u = (unitStr || '').toLowerCase().trim();
@@ -55,7 +55,7 @@ function mapToStandardUnit(unitStr: string): string {
   if (u.includes('ml') || u.includes('mililitro')) return 'mililitros';
   if (u.includes('fatia')) return 'fatia';
   if (u.includes('sopa')) return 'colher de sopa';
-  if (u.includes('servir') || u.includes('arroz')) return 'colher de arroz';
+  if (u.includes('servir') || u.includes('arroz')) return 'colher de sopa';
   if (u.includes('concha')) return 'concha';
   if (u.includes('copo') || u.includes('xícara')) return 'copo';
   if (u.includes('unidade') || u.includes('filé') || u.includes('bife') || u.includes('posta') || u.includes('lata') || u.includes('pote') || u.includes('scoop') || u.includes('quadrado') || u.includes('espiga')) {
@@ -76,12 +76,12 @@ function getGramsForUnit(unit: string, pendingFood: any): number {
     return pendingFood.grams_per_unit || 25;
   }
   
-  if ((normUnit === "colher de sopa" || normUnit === "colher de arroz") && (foodUnit.includes("colher") || foodUnit.includes("servir"))) {
+  if ((normUnit === "colher de sopa") && (foodUnit.includes("colher") || foodUnit.includes("servir"))) {
     return pendingFood.grams_per_unit || 15;
   }
   
   if (normUnit === "concha" && foodUnit.includes("concha")) {
-    return pendingFood.grams_per_unit || 100;
+    return 50;
   }
 
   if (normUnit === "copo" && (foodUnit.includes("copo") || foodUnit.includes("xícara"))) {
@@ -100,10 +100,8 @@ function getGramsForUnit(unit: string, pendingFood: any): number {
       return 25;
     case "copo":
       return 200;
-    case "colher de arroz":
-      return 25;
     case "concha":
-      return 100;
+      return 50;
     default:
       return pendingFood.grams_per_unit || 100;
   }

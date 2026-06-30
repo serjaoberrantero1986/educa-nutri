@@ -1116,7 +1116,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [ranking, setRanking] = useState<Profile[]>([]);
   const [showAddFood, setShowAddFood] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [selectedMeal, setSelectedMeal] = useState<string | null>(null);
+  
+  // Pre-select meal based on time of day
+  const getMealByTimeOfDay = (): string => {
+    const hours = new Date().getHours();
+    if (hours >= 5 && hours < 10) return 'cafe';
+    if (hours >= 10 && hours < 12) return 'lanche_manha';
+    if (hours >= 12 && hours < 15) return 'almoco';
+    if (hours >= 15 && hours < 19) return 'lanche_tarde';
+    if (hours >= 19 && hours < 22) return 'jantar';
+    return 'ceia';
+  };
+  const [selectedMeal, setSelectedMeal] = useState<string | null>(getMealByTimeOfDay());
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);

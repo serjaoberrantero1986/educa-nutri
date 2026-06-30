@@ -43,8 +43,8 @@ function getDeterministicGramsForFoodAndUnit(foodName: string, unit: string, fal
 
   // 1. Cooked Rice (Arroz Branco Cozido, Arroz Integral Cozido, etc.)
   if (normFood.includes("arroz")) {
-    if (normUnit === "concha") return 100; // 2 conchas = 200g (about 260 kcal)
-    if (normUnit === "colher de arroz" || normUnit === "colher de servir" || normUnit === "colhar de arroz") return 25;
+    if (normUnit === "concha") return 50; // 50g universally for concha
+    if (normUnit === "colher de arroz" || normUnit === "colher de servir" || normUnit === "colhar de arroz") return 15;
     if (normUnit === "colher de sopa") return 15;
     if (normUnit === "copo" || normUnit === "xicara") return 150;
     if (normUnit === "unidade") return 25;
@@ -52,7 +52,7 @@ function getDeterministicGramsForFoodAndUnit(foodName: string, unit: string, fal
 
   // 2. Cooked Beans (Feijão Carioca Cozido, Feijão Preto Cozido, etc.)
   if (normFood.includes("feijao")) {
-    if (normUnit === "concha") return 100;
+    if (normUnit === "concha") return 50; // 50g universally for concha
     if (normUnit === "colher de sopa") return 15;
     if (normUnit === "copo" || normUnit === "xicara") return 150;
     if (normUnit === "unidade") return 100;
@@ -69,7 +69,7 @@ function getDeterministicGramsForFoodAndUnit(foodName: string, unit: string, fal
     if (normUnit === "unidade" || normUnit === "file" || normUnit === "bife" || normUnit === "posta") return 100;
     if (normUnit === "colher de sopa") return 25;
     if (normUnit === "fatia") return 30;
-    if (normUnit === "concha") return 120;
+    if (normUnit === "concha") return 50; // 50g universally for concha
   }
 
   // 5. Cold cuts / Frios (Mortadela, Presunto, Peito de peru, Salame, etc.)
@@ -156,8 +156,8 @@ function getDeterministicGramsForFoodAndUnit(foodName: string, unit: string, fal
   if (normUnit === "colher de sopa") return 15;
   if (normUnit === "fatia") return 25;
   if (normUnit === "copo" || normUnit === "xicara") return 200;
-  if (normUnit === "colher de arroz") return 25;
-  if (normUnit === "concha") return 100;
+  if (normUnit === "colher de arroz") return 15;
+  if (normUnit === "concha") return 50; // 50g universally for concha
   if (normUnit === "unidade") {
     if (fallbackGrams && fallbackGrams > 0 && fallbackGrams !== 100 && fallbackGrams !== 50) {
       return fallbackGrams;
@@ -168,7 +168,75 @@ function getDeterministicGramsForFoodAndUnit(foodName: string, unit: string, fal
   return fallbackGrams || 100;
 }
 
-export function enrichFoodWithExactCaloriesAndMacrosClient(item: any): any {
+export function enrichFoodWithExactCaloriesAndMacrosClient(item: any, originalUserMessage?: string): any {
+  // Extract and force user specified unit and amount specifically for this food if available
+  if (originalUserMessage && (item.food_name || item.name)) {
+    const cleanMsg = originalUserMessage.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const nameStr = item.food_name || item.name || "";
+    const cleanFoodName = nameStr.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    
+    const hasConcha = cleanMsg.includes("concha");
+    const hasFatia = cleanMsg.includes("fatia");
+    const hasCopo = cleanMsg.includes("copo") || cleanMsg.includes("xicara") || cleanMsg.includes("xícara");
+    const hasColher = cleanMsg.includes("colher");
+    const hasGrama = cleanMsg.includes("grama") || cleanMsg.includes("g ") || / \d+g\b/.test(cleanMsg);
+    const hasMl = cleanMsg.includes("ml") || cleanMsg.includes("mililitro");
+    
+    let forcedUnit = "";
+    
+    // Proximity check: did the user say "X conchas de [food]" or "[food] ... X conchas"?
+    const firstWord = cleanFoodName.split(" ")[0];
+    const foodIdx = cleanMsg.indexOf(firstWord);
+    if (foodIdx !== -1) {
+      const conchaIdx = cleanMsg.indexOf("concha");
+      const fatiaIdx = cleanMsg.indexOf("fatia");
+      const copoIdx = cleanMsg.indexOf("copo") !== -1 ? cleanMsg.indexOf("copo") : (cleanMsg.indexOf("xicara") !== -1 ? cleanMsg.indexOf("xicara") : cleanMsg.indexOf("xicara"));
+      const colherIdx = cleanMsg.indexOf("colher");
+      
+      const unitsWithDist = [
+        { unit: "concha", idx: conchaIdx },
+        { unit: "fatia", idx: fatiaIdx },
+        { unit: "copo", idx: copoIdx },
+        { unit: "colher de sopa", idx: colherIdx }
+      ].filter(u => u.idx !== -1);
+      
+      if (unitsWithDist.length > 0) {
+        unitsWithDist.sort((a, b) => Math.abs(a.idx - foodIdx) - Math.abs(b.idx - foodIdx));
+        if (Math.abs(unitsWithDist[0].idx - foodIdx) < 25) {
+          forcedUnit = unitsWithDist[0].unit;
+        }
+      }
+    }
+    
+    if (!forcedUnit) {
+      if (hasConcha && (cleanFoodName.includes("arroz") || cleanFoodName.includes("feijao") || cleanFoodName.includes("feijão") || cleanFoodName.includes("caldo") || cleanFoodName.includes("sopa"))) {
+        forcedUnit = "concha";
+      } else if (hasFatia && (cleanFoodName.includes("pao") || cleanFoodName.includes("pão") || cleanFoodName.includes("queijo") || cleanFoodName.includes("presunto") || cleanFoodName.includes("bolo") || cleanFoodName.includes("melao") || cleanFoodName.includes("melancia"))) {
+        forcedUnit = "fatia";
+      } else if (hasCopo && (cleanFoodName.includes("suco") || cleanFoodName.includes("leite") || cleanFoodName.includes("refrigerante") || cleanFoodName.includes("agua") || cleanFoodName.includes("água") || cleanFoodName.includes("cafe") || cleanFoodName.includes("café") || cleanFoodName.includes("iogurte") || cleanFoodName.includes("shake") || cleanFoodName.includes("whey"))) {
+        forcedUnit = "copo";
+      } else if (hasColher && (cleanFoodName.includes("aveia") || cleanFoodName.includes("creme") || cleanFoodName.includes("pasta") || cleanFoodName.includes("mel") || cleanFoodName.includes("azeite") || cleanFoodName.includes("manteiga") || cleanFoodName.includes("requeijao") || cleanFoodName.includes("requeijão") || cleanFoodName.includes("semente") || cleanFoodName.includes("chia") || cleanFoodName.includes("linhaça"))) {
+        forcedUnit = "colher de sopa";
+      }
+    }
+    
+    if (forcedUnit) {
+      item.unit = forcedUnit;
+    }
+
+    // Localized amount extraction
+    if (foodIdx !== -1) {
+      const sub = cleanMsg.substring(Math.max(0, foodIdx - 20), Math.min(cleanMsg.length, foodIdx + firstWord.length + 20));
+      const numMatch = sub.match(/(\d+(?:[.,]\d+)?)/);
+      if (numMatch) {
+        const parsedAmt = parseFloat(numMatch[1].replace(",", "."));
+        if (parsedAmt > 0 && parsedAmt < 1000) {
+          item.amount = parsedAmt;
+        }
+      }
+    }
+  }
+
   const name = item.food_name || item.name || "";
   if (!name) return item;
 
@@ -245,7 +313,7 @@ export function enrichFoodWithExactCaloriesAndMacrosClient(item: any): any {
       if (norm === "fatia" || norm === "fatias") return "fatia";
       if (norm === "colher de sopa" || norm === "colher" || norm === "colheres" || norm === "colher sopa" || norm === "colher de cha" || norm === "colher de sobremesa") return "colher de sopa";
       if (norm === "copo" || norm === "copos" || norm === "xicara" || norm === "xícara" || norm === "xicaras" || norm === "xícaras" || norm === "caneca" || norm === "canecas" || norm === "jarra" || norm === "garrafa" || norm === "vidro") return "copo";
-      if (norm === "colher de arroz" || norm === "colher arroz" || norm === "colher de servir" || norm === "colher servir") return "colher de arroz";
+      if (norm === "colher de arroz" || norm === "colher arroz" || norm === "colher de servir" || norm === "colher servir") return "colher de sopa";
       if (norm === "concha" || norm === "conchas" || norm === "concha média" || norm === "concha de feijão") return "concha";
       if (norm === "unidade" || norm === "unidades" || norm === "un" || norm === "unid" || norm === "unids" || norm === "u") return "unidade";
       return "unidade";
@@ -272,7 +340,7 @@ export function enrichFoodWithExactCaloriesAndMacrosClient(item: any): any {
       let finalUnit = originalUnit;
       let finalGramsPerUnit;
 
-      if (["gramas", "mililitros", "unidade", "colher de sopa", "fatia", "copo", "colher de arroz", "concha"].includes(originalUnit)) {
+      if (["gramas", "mililitros", "unidade", "colher de sopa", "fatia", "copo", "concha"].includes(originalUnit)) {
         finalUnit = originalUnit;
         if (originalUnit === "unidade" && matchedFood.grams_per_unit) {
           finalGramsPerUnit = matchedFood.grams_per_unit;
@@ -653,7 +721,7 @@ Você deve responder rigorosamente no formato JSON com as seguintes propriedades
    - "meal_type" (string): O nome da refeição (ex: "Café da Manhã", "Almoço", "Lanche da Tarde", "Jantar", "Ceia").
    - "food_name" (string): Nome legível do alimento em português (ex: "Ovo Cozido", "Arroz Branco", "Pão Francês", "Leite de Vaca", "Suco de Laranja").
    - "amount" (number): Quantidade numérica consumida (ex: 1, 2, 1.5, 120).
-   - "unit" (string): Uma das unidades válidas: "gramas", "mililitros", "unidade", "colher de sopa", "fatia", "copo", "colher de arroz", "concha".
+   - "unit" (string): Uma das unidades válidas: "gramas", "mililitros", "unidade", "colher de sopa", "fatia", "copo", "concha".
    - "grams_per_unit" (number): Peso estimado em gramas de uma unidade da medida indicada (ex: 50 para ovo cozido, 15 para fatia, 50 para pão francês, 1 para mililitros).
    - "calories_per_100" (number): Densidade calórica estimada a cada 100g ou 100ml de alimento/bebida (ex: 140 para ovo cozido, 130 para arroz, 250 para hambúrguer).
    - "protein_per_100" (number): Gramas de proteína a cada 100g ou 100ml.
@@ -678,7 +746,7 @@ Instruções para cálculo de macros/alimentos adicionados:
     - Presunto/Apresuntado/Queijo: 1 fatia = 15g a 20g (ex: presunto/apresuntado a ~20 kcal cada fatia, queijo prato/mussarela a ~60 kcal cada fatia, queijo branco/minas a ~50 kcal cada fatia de 30g).
     - Café com Leite: 1 xícara = 200ml a 240ml (Integral com açúcar: ~120 kcal, 6g P, 14g C, 5g G; Desnatado sem açúcar: ~70 kcal).
 - QUANTIDADE E UNIDADE CORRETA (RECONHEÇA A UNIDADE DIGITALIZADA):
-  O campo "amount" DEVE refletir perfeitamente a quantidade numérica dita ou implícita pelo usuário, e o campo "unit" DEVE ser exatamente a unidade de medida digitada/mencionada pelo usuário (como "concha", "unidade", "gramas", "mililitros", "fatia", "colher de sopa", "copo", "colher de arroz"). NUNCA substitua ou altere a unidade digitada pelo usuário por conveniência (ex: se o usuário diz que comeu "1 concha", use unit: "concha" e amount: 1; se ele dita "1 colher de arroz", use unit: "colher de arroz" e amount: 1; se diz "1 fatia", use unit: "fatia", etc.). Configure o campo grams_per_unit de acordo com o peso de referência correspondente a essa unidade específica.
+  O campo "amount" DEVE refletir perfeitamente a quantidade numérica dita ou implícita pelo usuário, e o campo "unit" DEVE ser exatamente a unidade de medida digitada/mencionada pelo usuário (como "concha", "unidade", "gramas", "mililitros", "fatia", "colher de sopa", "copo"). NUNCA substitua ou altere a unidade digitada pelo usuário por conveniência (ex: se o usuário diz que comeu "1 concha", use unit: "concha" e amount: 1; se diz "1 fatia", use unit: "fatia", etc.). Configure o campo grams_per_unit de acordo com o peso de referência correspondente a essa unidade específica. EXCLUSÃO TOTAL: A unidade de medida "colher de arroz" está completamente desativada. Se o usuário falar em "colher de arroz" ou "colher de servir", normalize-a internamente e retorne a unidade como "colher de sopa" e mapeio seu peso de referência para 15g!
 - REGISTRE APENAS QUANDO SOLICITADO:
   Você DEVE apenas cadastrar/adicionar alimentos e preencher o array "added_foods" quando o usuário ordenar ou pedir explicitamente para registrar, salvar ou declarar o consumo real ("comi", "adicione", "lance no diário", "bebi", "consumi"). Se o usuário estiver tirando dúvidas teóricas, fazendo suposições, pedindo receitas ou perguntando quantos macros tem uma comida sem relatar consumo ("quanto de proteína tem na carne de panela?"), você NÃO DEVE preencher o array "added_foods"! Apenas responda a dúvida na propriedade "response".
 - SE NENHUM REGISTRO DE ÁGUA FOI SOLICITADO pelo usuário na mensagem atual, o array "added_waters" DEVE ser retornado obrigatoriamente vazio: []. NUNCA adicione ou sugira água de forma fictícia, presumida ou automática se o usuário não pediu especificamente para registrar consumo de água ou se o usuário pediu apenas comida! Se o usuário comeu apresuntado, pão, frango, etc., "added_waters" deve ser [].
@@ -705,7 +773,7 @@ Retorne SOMENTE o JSON estruturado completo em Português do Brasil. Sem usar as
   const actions: any[] = [];
   if (parsed.added_foods && Array.isArray(parsed.added_foods)) {
     for (const f of parsed.added_foods) {
-      const enriched = enrichFoodWithExactCaloriesAndMacrosClient(f);
+      const enriched = enrichFoodWithExactCaloriesAndMacrosClient(f, message);
       actions.push({
         type: "ADD_FOOD",
         ...enriched
@@ -754,7 +822,7 @@ Identifique CADA elemento da refeição separadamente. Para cada elemento indivi
 Retorne um objeto JSON contendo uma lista sob a chave "foods". Para cada alimento, preencha:
 - food_name: nome amigável em português do alimento (ex: "Tapioca", "Presunto Cozido", "Queijo de Minas")
 - amount: número correspondente à quantidade (ex: se o usuário comeu "3 tapiocas", amount é 3)
-- unit: a unidade de medida correspondente, que deve ser estritamente uma destas opções válidas em português e minúsculas: "gramas", "mililitros", "unidade", "colher de sopa", "fatia", "copo", "colher de arroz", "concha"
+- unit: a unidade de medida correspondente, que deve ser estritamente uma destas opções válidas em português e minúsculas: "gramas", "mililitros", "unidade", "colher de sopa", "fatia", "copo", "concha"
 - grams_per_unit: o peso estimado real em gramas de UMA unidade da medida escolhida para esse alimento específico
 - calories_per_100: calorias de uma porção de referência de 100g ou 100ml deste alimento
 - protein_per_100: gramas de proteína em 100g ou 100ml deste alimento
@@ -771,7 +839,7 @@ Certifique-se de que se houver múltiplos alimentos, você crie itens separados.
   const result = JSON.parse(cleanJson || '{"foods":[]}');
   if (result && result.foods && Array.isArray(result.foods)) {
     result.foods = result.foods.map((f: any) => {
-      const enrichedItem = enrichFoodWithExactCaloriesAndMacrosClient(f);
+      const enrichedItem = enrichFoodWithExactCaloriesAndMacrosClient(f, text);
       const finalUnit = enrichedItem.unit || f.unit || "unidade";
       const finalName = enrichedItem.food_name || f.food_name || f.name || "";
       const exactMathGrams = getDeterministicGramsForFoodAndUnit(finalName, finalUnit, Number(enrichedItem.grams_per_unit || f.grams_per_unit || 100));
