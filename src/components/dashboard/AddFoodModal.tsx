@@ -73,11 +73,15 @@ function getGramsForUnit(unit: string, pendingFood: any): number {
   }
   
   if (normUnit === "fatia" && foodUnit.includes("fatia")) {
-    return pendingFood.grams_per_unit || 25;
+    const val = pendingFood.grams_per_unit || 25;
+    if (val > 60 || val === 100) return 25;
+    return val;
   }
   
   if ((normUnit === "colher de sopa") && (foodUnit.includes("colher") || foodUnit.includes("servir"))) {
-    return pendingFood.grams_per_unit || 15;
+    const val = pendingFood.grams_per_unit || 15;
+    if (val > 35 || val === 100) return 15;
+    return val;
   }
   
   if (normUnit === "concha" && foodUnit.includes("concha")) {
@@ -85,7 +89,9 @@ function getGramsForUnit(unit: string, pendingFood: any): number {
   }
 
   if (normUnit === "copo" && (foodUnit.includes("copo") || foodUnit.includes("xícara"))) {
-    return pendingFood.grams_per_unit || 200;
+    const val = pendingFood.grams_per_unit || 200;
+    if (val > 400 || val === 100) return 200;
+    return val;
   }
 
   switch (normUnit) {

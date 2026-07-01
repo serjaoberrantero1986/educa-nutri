@@ -1540,6 +1540,13 @@ function getDeterministicGramsForFoodAndUnit(foodName: string, unit: string, fal
     if (normUnit === "unidade") return 30;
   }
 
+  // 14. Cereals & Seeds & Powders (Aveia, Granola, Chia, Linhaça, etc.)
+  if (normFood.includes("aveia") || normFood.includes("granola") || normFood.includes("chia") || normFood.includes("linhaca") || normFood.includes("semente") || normFood.includes("farinha") || normFood.includes("achocolatado") || normFood.includes("nescau") || normFood.includes("toddy") || normFood.includes("leite em po")) {
+    if (normUnit === "colher de sopa") return 15;
+    if (normUnit === "unidade") return 15;
+    if (normUnit === "copo" || normUnit === "xicara") return 100;
+  }
+
   // General default conversions
   if (normUnit === "colher de sopa") return 15;
   if (normUnit === "fatia") return 25;
@@ -1553,10 +1560,51 @@ function getDeterministicGramsForFoodAndUnit(foodName: string, unit: string, fal
     return 50;
   }
 
-  return fallbackGrams || 100;
+  let result = fallbackGrams || 100;
+  if (normUnit === "colher de sopa" && result > 35) {
+    result = 15;
+  }
+  if (normUnit === "fatia" && result > 60) {
+    result = 25;
+  }
+  if (normUnit === "concha" && result > 120) {
+    result = 50;
+  }
+  if ((normUnit === "copo" || normUnit === "xicara") && result > 400) {
+    result = 200;
+  }
+  return result;
 }
 
 async function enrichFoodWithExactCaloriesAndMacros(item: any, originalUserMessage?: string): Promise<any> {
+  const helperNormalizeUnit = (u: string): string => {
+    const norm = (u || "").toLowerCase().trim();
+    if (norm === "g" || norm === "gr" || norm === "grama" || norm === "gramas") return "gramas";
+    if (norm === "ml" || norm === "mls" || norm === "mililitro" || norm === "mililitros" || norm === "ml.") return "mililitros";
+    if (norm === "fatia" || norm === "fatias") return "fatia";
+    if (norm === "colher de sopa" || norm === "colher" || norm === "colheres" || norm === "colher sopa" || norm === "colher de cha" || norm === "colher de sobremesa") return "colher de sopa";
+    if (norm === "copo" || norm === "copos" || norm === "xicara" || norm === "xícara" || norm === "xicaras" || norm === "xícaras" || norm === "caneca" || norm === "canecas" || norm === "jarra" || norm === "garrafa" || norm === "vidro") return "copo";
+    if (norm === "colher de arroz" || norm === "colher arroz" || norm === "colher de servir" || norm === "colher servir") return "colher de sopa";
+    if (norm === "concha" || norm === "conchas" || norm === "concha média" || norm === "concha de feijão") return "concha";
+    if (norm === "unidade" || norm === "unidades" || norm === "un" || norm === "unid" || norm === "unids" || norm === "u") return "unidade";
+    return "unidade";
+  };
+
+  const finalizeItem = (enriched: any): any => {
+    if (!enriched) return enriched;
+    const finalUnit = helperNormalizeUnit(enriched.unit || item.unit || "unidade");
+    const finalGrams = getDeterministicGramsForFoodAndUnit(
+      enriched.food_name || item.food_name || "",
+      finalUnit,
+      Number(enriched.grams_per_unit || item.grams_per_unit || 100)
+    );
+    return {
+      ...enriched,
+      unit: finalUnit,
+      grams_per_unit: finalGrams
+    };
+  };
+
   // Extract and force user specified unit and amount specifically for this food if available
   if (originalUserMessage && item.food_name) {
     const cleanMsg = originalUserMessage.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -1642,7 +1690,7 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any, originalUserMessa
         if (webResults && webResults.length > 0) {
           const bestMatched = webResults[0];
           console.log(`[AI-Enrichment] Calibrado com sucesso de forma dinâmica no Google Search para: "${name}" -> "${bestMatched.name}" (${bestMatched.calories} kcal)`);
-          return {
+          return finalizeItem({
             ...item,
             food_name: bestMatched.name,
             calories_per_100: bestMatched.calories,
@@ -1652,7 +1700,7 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any, originalUserMessa
             grams_per_unit: bestMatched.grams_per_unit || item.grams_per_unit || 100,
             unit: bestMatched.measure_unit || item.unit || "unidade",
             confidence_explanation: `Calibrado em tempo real com pesquisa web do Google Search para a marca oficial (${bestMatched.name}).`
-          };
+          });
         }
       } catch (searchErr) {
         console.warn(`[AI-Enrichment] Busca prioritária na web falhou por "${cleanTerm}", tentando camada local:`, searchErr);
@@ -1770,19 +1818,6 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any, originalUserMessa
       return { food: f, score };
     }).filter(item => item.score > 0);
 
-    const helperNormalizeUnit = (u: string): string => {
-      const norm = (u || "").toLowerCase().trim();
-      if (norm === "g" || norm === "gr" || norm === "grama" || norm === "gramas") return "gramas";
-      if (norm === "ml" || norm === "mls" || norm === "mililitro" || norm === "mililitros" || norm === "ml.") return "mililitros";
-      if (norm === "fatia" || norm === "fatias") return "fatia";
-      if (norm === "colher de sopa" || norm === "colher" || norm === "colheres" || norm === "colher sopa" || norm === "colher de cha" || norm === "colher de sobremesa") return "colher de sopa";
-      if (norm === "copo" || norm === "copos" || norm === "xicara" || norm === "xícara" || norm === "xicaras" || norm === "xícaras" || norm === "caneca" || norm === "canecas" || norm === "jarra" || norm === "garrafa" || norm === "vidro") return "copo";
-      if (norm === "colher de arroz" || norm === "colher arroz" || norm === "colher de servir" || norm === "colher servir") return "colher de sopa";
-      if (norm === "concha" || norm === "conchas" || norm === "concha média" || norm === "concha de feijão") return "concha";
-      if (norm === "unidade" || norm === "unidades" || norm === "un" || norm === "unid" || norm === "unids" || norm === "u") return "unidade";
-      return "unidade";
-    };
-
     if (scoredMatches.length > 0) {
       // Sort descending by score
       scoredMatches.sort((a, b) => b.score - a.score);
@@ -1814,7 +1849,7 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any, originalUserMessa
         }
 
         // Let's preserve the original AI amount, but update other fields to match official local DB values
-        return {
+        return finalizeItem({
           ...item,
           food_name: bestLocal.name.split("(")[0].trim(),
           calories_per_100: bestLocal.calories,
@@ -1824,7 +1859,7 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any, originalUserMessa
           grams_per_unit: finalGramsPerUnit,
           unit: finalUnit,
           confidence_explanation: `Estimativa calibrada perfeitamente com a tabela de referência do aplicativo (${bestLocal.name}).`
-        };
+        });
       }
     }
 
@@ -1879,7 +1914,7 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any, originalUserMessa
 
           console.log(`[AI-Enrichment] Successfully calibrated "${name}" via FatSecret API: ${calories}kcal, ${protein}P, ${carbs}C, ${fat}F`);
 
-          return {
+          return finalizeItem({
             ...item,
             food_name: matched.food_name,
             calories_per_100: calories,
@@ -1887,7 +1922,7 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any, originalUserMessa
             carbs_per_100: carbs,
             fat_per_100: fat,
             confidence_explanation: `Estimativa em tempo real calibrada perfeitamente via API integrada FatSecret.`
-          };
+          });
         }
       }
     }
@@ -1899,7 +1934,7 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any, originalUserMessa
       if (webResults && webResults.length > 0) {
         const bestMatched = webResults[0];
         console.log(`[AI-Enrichment] Calibrated "${name}" via dynamic Google Search Grounding: ${bestMatched.name} (${bestMatched.calories} kcal)`);
-        return {
+        return finalizeItem({
           ...item,
           food_name: bestMatched.name,
           calories_per_100: bestMatched.calories,
@@ -1909,7 +1944,7 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any, originalUserMessa
           grams_per_unit: bestMatched.grams_per_unit || item.grams_per_unit || 100,
           unit: bestMatched.measure_unit || item.unit || "unidade",
           confidence_explanation: `Estimativa ultra precisa calibrada via pesquisa em tempo real na web pela IA (${bestMatched.name}).`
-        };
+        });
       }
     }
   } catch (err: any) {
@@ -1917,7 +1952,7 @@ async function enrichFoodWithExactCaloriesAndMacros(item: any, originalUserMessa
   }
 
   // Fallback to original AI estimate
-  return item;
+  return finalizeItem(item);
 }
 
 function cleanJsonBlock(text: string): string {

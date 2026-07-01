@@ -152,6 +152,13 @@ function getDeterministicGramsForFoodAndUnit(foodName: string, unit: string, fal
     if (normUnit === "unidade") return 30;
   }
 
+  // 14. Cereals & Seeds & Powders (Aveia, Granola, Chia, Linhaça, etc.)
+  if (normFood.includes("aveia") || normFood.includes("granola") || normFood.includes("chia") || normFood.includes("linhaca") || normFood.includes("semente") || normFood.includes("farinha") || normFood.includes("achocolatado") || normFood.includes("nescau") || normFood.includes("toddy") || normFood.includes("leite em po")) {
+    if (normUnit === "colher de sopa") return 15;
+    if (normUnit === "unidade") return 15;
+    if (normUnit === "copo" || normUnit === "xicara") return 100;
+  }
+
   // General default conversions
   if (normUnit === "colher de sopa") return 15;
   if (normUnit === "fatia") return 25;
@@ -165,7 +172,20 @@ function getDeterministicGramsForFoodAndUnit(foodName: string, unit: string, fal
     return 50;
   }
 
-  return fallbackGrams || 100;
+  let result = fallbackGrams || 100;
+  if (normUnit === "colher de sopa" && result > 35) {
+    result = 15;
+  }
+  if (normUnit === "fatia" && result > 60) {
+    result = 25;
+  }
+  if (normUnit === "concha" && result > 120) {
+    result = 50;
+  }
+  if ((normUnit === "copo" || normUnit === "xicara") && result > 400) {
+    result = 200;
+  }
+  return result;
 }
 
 export function enrichFoodWithExactCaloriesAndMacrosClient(item: any, originalUserMessage?: string): any {
