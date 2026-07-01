@@ -319,85 +319,67 @@ async function getDynamicAiConfig(req?: express.Request) {
   const headerKey = req?.headers["x-ai-api-key"] as string;
   const headerModel = req?.headers["x-ai-model"] as string;
 
-  // If the request headers contain explicit overrides, prioritize them directly
-  if (headerProvider || headerKey || headerModel) {
-    const provider = headerProvider || "Google Gemini";
-    let apiKey = headerKey || "";
-    if (!apiKey) {
-      if (provider.toLowerCase().includes("openai") || provider.toLowerCase().includes("open ai")) {
-        apiKey = process.env.OPENAI_API_KEY || "";
-      } else {
-        apiKey = process.env.GEMINI_API_KEY || "";
-      }
-    }
-    return {
-      ai_provider: provider,
-      ai_api_key: apiKey,
-      ai_model: headerModel || "gemini-3.5-flash"
-    };
-  }
+  // Let's first load the dynamic configuration from Firestore to have the absolute up-to-date config
+  let dbProvider = "";
+  let dbModel = "";
+  let dbApiKey = "";
 
   // Check in-memory cache first
   const now = Date.now();
+  let gotFromCache = false;
   if (cachedAiConfig && (now - cachedAiConfig.timestamp < CACHE_TTL_MS)) {
-    return {
-      ai_provider: cachedAiConfig.ai_provider,
-      ai_api_key: cachedAiConfig.ai_api_key,
-      ai_model: cachedAiConfig.ai_model
-    };
-  }
-
-  // Query Firestore to get the real-time configuration updated by the admin panel
-  try {
-    const data = await fetchStoreConfig();
-    if (data) {
-      const provider = data.ai_provider || process.env.AI_PROVIDER || "Google Gemini";
-      let apiKey = data.ai_api_key || "";
-
-      if (!apiKey) {
-        if (provider.toLowerCase().includes("openai") || provider.toLowerCase().includes("open ai")) {
-          apiKey = process.env.OPENAI_API_KEY || "";
-        } else {
-          apiKey = process.env.GEMINI_API_KEY || "";
+    dbProvider = cachedAiConfig.ai_provider;
+    dbApiKey = cachedAiConfig.ai_api_key;
+    dbModel = cachedAiConfig.ai_model;
+    gotFromCache = true;
+  } else {
+    try {
+      const data = await fetchStoreConfig();
+      if (data) {
+        dbProvider = data.ai_provider || "";
+        dbModel = data.ai_model || "";
+        
+        // Fetch private config securely to get the AI API key
+        try {
+          const privateData = await fetchStorePrivateConfig();
+          if (privateData && privateData.ai_api_key) {
+            dbApiKey = privateData.ai_api_key;
+          }
+        } catch (privateErr) {
+          console.warn("Could not load private AI API key from Firestore configs:", privateErr);
         }
+        
+        // Cache the result
+        cachedAiConfig = {
+          ai_provider: dbProvider || "Google Gemini",
+          ai_api_key: dbApiKey || "",
+          ai_model: dbModel || "gemini-3.5-flash",
+          timestamp: now
+        };
+        gotFromCache = true;
       }
-
-      const model = data.ai_model || process.env.AI_MODEL || "gemini-3.5-flash";
-
-      // Cache the result
-      cachedAiConfig = {
-        ai_provider: provider,
-        ai_api_key: apiKey,
-        ai_model: model,
-        timestamp: now
-      };
-
-      return {
-        ai_provider: provider,
-        ai_api_key: apiKey,
-        ai_model: model
-      };
+    } catch (err) {
+      // Fallback gracefully on Firestore permission blocks in sandbox mode
     }
-  } catch (error) {
-    // Fallback gracefully on Firestore permission blocks in sandbox mode
   }
 
-  // Final fallback to process.env
-  const provider = process.env.AI_PROVIDER || "Google Gemini";
-  let apiKey = process.env.AI_API_KEY || "";
-
+  // Determine final provider, model and key
+  const provider = headerProvider || dbProvider || process.env.AI_PROVIDER || "Google Gemini";
+  const model = headerModel || dbModel || process.env.AI_MODEL || "gemini-3.5-flash";
+  
+  let apiKey = headerKey || dbApiKey || "";
   if (!apiKey) {
-    if (provider.toLowerCase().includes("openai")) {
-      apiKey = process.env.OPENAI_API_KEY || "";
+    if (provider.toLowerCase().includes("openai") || provider.toLowerCase().includes("open ai")) {
+      apiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY || "";
     } else {
-      apiKey = process.env.GEMINI_API_KEY || "";
+      apiKey = process.env.AI_API_KEY || process.env.GEMINI_API_KEY || "";
     }
   }
 
   return {
     ai_provider: provider,
     ai_api_key: apiKey,
-    ai_model: headerModel || process.env.AI_MODEL || "gemini-3.5-flash"
+    ai_model: model
   };
 }
 

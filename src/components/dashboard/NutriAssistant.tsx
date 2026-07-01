@@ -2171,51 +2171,49 @@ export const NutriAssistant: React.FC<NutriAssistantProps> = ({
                   </div>
 
                   {/* Informative Missions Checklist under Chat */}
-                  {messages.length < 3 && !isLoading && (
-                    <div className="p-3 px-4 bg-slate-100/50 dark:bg-slate-900/50 border-t border-b border-slate-100 dark:border-slate-900/40">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 block mb-2.5 tracking-wide flex items-center gap-1">
-                        <Trophy size={11} className="text-purple-500" /> Missões de Hoje
-                      </span>
-                      <div className="space-y-2">
-                        {dailyMissions.map((m) => (
-                          <div
-                            key={m.id}
-                            className={`flex items-start gap-2.5 p-2 bg-white dark:bg-slate-950 border rounded-xl transition-all ${
-                              m.completed
-                                ? "border-emerald-100 dark:border-emerald-900/20 bg-emerald-50/10 dark:bg-emerald-950/5 opacity-80"
-                                : "border-slate-100 dark:border-slate-850 bg-white dark:bg-slate-950"
-                            }`}
-                          >
-                            {/* Checkbox */}
-                            <div className="mt-0.5 shrink-0">
-                              {m.completed ? (
-                                <div className="h-4.5 w-4.5 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[9px]">
-                                  ✓
-                                </div>
-                              ) : (
-                                <div className="h-4.5 w-4.5 rounded-full border-2 border-slate-200 dark:border-slate-800 bg-transparent" />
-                              )}
-                            </div>
-                            {/* Title & Description */}
-                            <div className="flex-1">
-                              <span
-                                className={`text-xs font-bold block ${
-                                  m.completed
-                                    ? "text-slate-400 dark:text-slate-500 line-through"
-                                    : "text-slate-700 dark:text-slate-200"
-                                }`}
-                              >
-                                {m.icon} {m.title}
-                              </span>
-                              <span className="text-[10px] text-slate-450 dark:text-slate-400 leading-normal block">
-                                {m.description}
-                              </span>
-                            </div>
+                  <div className="p-3 px-4 bg-slate-100/50 dark:bg-slate-900/50 border-t border-b border-slate-100 dark:border-slate-900/40">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 block mb-2.5 tracking-wide flex items-center gap-1">
+                      <Trophy size={11} className="text-purple-500" /> Missões de Hoje
+                    </span>
+                    <div className="space-y-2">
+                      {dailyMissions.map((m) => (
+                        <div
+                          key={m.id}
+                          className={`flex items-start gap-2.5 p-2 bg-white dark:bg-slate-950 border rounded-xl transition-all ${
+                            m.completed
+                              ? "border-emerald-100 dark:border-emerald-900/20 bg-emerald-50/10 dark:bg-emerald-950/5 opacity-80"
+                              : "border-slate-100 dark:border-slate-850 bg-white dark:bg-slate-950"
+                          }`}
+                        >
+                          {/* Checkbox */}
+                          <div className="mt-0.5 shrink-0">
+                            {m.completed ? (
+                              <div className="h-4.5 w-4.5 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[9px]">
+                                ✓
+                              </div>
+                            ) : (
+                              <div className="h-4.5 w-4.5 rounded-full border-2 border-slate-200 dark:border-slate-800 bg-transparent" />
+                            )}
                           </div>
-                        ))}
-                      </div>
+                          {/* Title & Description */}
+                          <div className="flex-1">
+                            <span
+                              className={`text-xs font-bold block ${
+                                m.completed
+                                  ? "text-slate-400 dark:text-slate-500 line-through"
+                                  : "text-slate-700 dark:text-slate-200"
+                              }`}
+                            >
+                              {m.icon} {m.title}
+                            </span>
+                            <span className="text-[10px] text-slate-450 dark:text-slate-400 leading-normal block">
+                              {m.description}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  )}
+                  </div>
 
                   {/* Audio Status Block */}
                   {isRecording && (
